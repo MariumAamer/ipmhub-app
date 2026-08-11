@@ -10,9 +10,6 @@ workflows:
         BUNDLE_ID: "com.instituteprojectmanagement.ipmhub"
         XCODE_SCHEME: "IPMMobileApp"
         XCODE_WORKSPACE: "ios/IPMMobileApp.xcworkspace"
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: "com.instituteprojectmanagement.ipmhub"
       node: 20.11.1
       xcode: latest
       cocoapods: default
