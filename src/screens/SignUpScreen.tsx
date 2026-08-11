@@ -54,7 +54,11 @@ GoogleSignin.configure({
 // problem, since there's no webpage Chrome could render instead.
 const LINKEDIN_CLIENT_ID = '86aeqmka1c4bj1';
 const LINKEDIN_REDIRECT =
-  'https://hub.instituteprojectmanagement.com/linkedin-callback';
+  // Path changed 2026-08-08 (Robby): now /linkedin-callback-app, NOT the
+  // original /linkedin-callback — his new bounce-page path with the
+  // tappable "Continue to IPM Hub App" button. Must stay in sync with the
+  // same redirect_uri sent in authApi.ts's linkedInSocialLogin.
+  'https://hub.instituteprojectmanagement.com/linkedin-callback-app';
 const LINKEDIN_APP_REDIRECT = 'ipmhub://linkedin-callback';
 const LINKEDIN_AUTH_URL =
   `https://www.linkedin.com/oauth/v2/authorization?response_type=code` +

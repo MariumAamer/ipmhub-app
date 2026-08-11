@@ -249,6 +249,10 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
   const handleContinue = async () => {
     if (step === 1) {
+      if (!photoUri) {
+        Alert.alert('Profile Photo Required', 'Please upload a profile photo to continue.');
+        return;
+      }
       if (!jobTitle.trim() || !company.trim()) {
         Alert.alert('Required Fields', 'Please fill in your Job Title and Company to continue.');
         return;
@@ -267,6 +271,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
   };
 
   const isStep3Valid = !!phoneNumber.trim() && !!linkedIn.trim() && !!introduction.trim();
+  const isStep1Valid = !!photoUri && !!jobTitle.trim() && !!company.trim();
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -356,7 +361,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
               <View style={styles.uploadFrame}>
                 <CameraIcon />
                 {/* "Tap to Upload Photo" — #46B0E3 14px 500 */}
-                <Text style={styles.uploadText}>{'Tap to Upload Photo'}</Text>
+                <Text style={styles.uploadText}>{'Tap to Upload Photo '}<Text style={styles.requiredAsterisk}>{'*'}</Text></Text>
                 {/* Subtext — #192546 12px 500 */}
                 <Text style={styles.uploadSubtext}>{'PNG or JPG (Image dimensions must not exceed 200x200 pixels)'}</Text>
               </View>
@@ -543,7 +548,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
           <TouchableOpacity
             style={[
               styles.continueBtn,
-              (saving || (step === 1 && (!jobTitle.trim() || !company.trim())) || (step === 2 && step2Tab === 'industry' && !selectedIndustry)) && styles.continueBtnDisabled,
+              (saving || (step === 1 && !isStep1Valid) || (step === 2 && step2Tab === 'industry' && !selectedIndustry)) && styles.continueBtnDisabled,
             ]}
             onPress={handleContinue}
             disabled={saving}
@@ -614,6 +619,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#46B0E3',
     textAlign: 'center',
+  },
+  requiredAsterisk: {
+    color: '#E4573D',
+    fontWeight: '700',
   },
   // Subtext — #192546 H5 12px 500
   uploadSubtext: {

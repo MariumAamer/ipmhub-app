@@ -209,7 +209,11 @@ export const linkedInSocialLogin = async (
     body: JSON.stringify({
       code: authCode,
       redirect_uri:
-        'https://hub.instituteprojectmanagement.com/linkedin-callback',
+        // Path changed 2026-08-08 (Robby): now /linkedin-callback-app — his
+        // new bounce-page path with the tappable "Continue to IPM Hub App"
+        // button. Must stay in sync with LINKEDIN_REDIRECT in
+        // SignInScreen.tsx / SignUpScreen.tsx.
+        'https://hub.instituteprojectmanagement.com/linkedin-callback-app',
     }),
   });
   const data = await response.json();

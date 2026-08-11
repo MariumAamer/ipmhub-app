@@ -40,20 +40,25 @@ GoogleSignin.configure({
 // URIs, never a custom scheme, so this can't be swapped for the app scheme
 // below.
 //
-// LINKEDIN_APP_REDIRECT is a SEPARATE, second hop: Robby's /linkedin-callback
-// page (after LinkedIn lands the user there with the code) forwards the
-// browser to this custom scheme, which our own manifest intent-filter
-// catches. Research into react-native-inappbrowser-reborn + Chrome Custom
-// Tabs confirmed the previous approach (relying on the https redirect alone
-// to hand back to the app) is fundamentally unreliable on Android: Chrome
-// blocks *automatic* (non-tapped) redirects to app links as a security
-// measure, which is exactly what happens for a LinkedIn user who's already
-// logged in — no tap, no hand-off, tab just stays open. A custom scheme
-// reached via an actual link/button tap on Robby's page doesn't have that
-// problem, since there's no webpage Chrome could render instead.
+// Path changed 2026-08-08 (Robby): now /linkedin-callback-app, NOT the
+// original /linkedin-callback — this is the new bounce-page path he built
+// that shows a tappable "Continue to IPM Hub App" button. Must stay in sync
+// with the same redirect_uri sent in authApi.ts's linkedInSocialLogin.
+//
+// LINKEDIN_APP_REDIRECT is a SEPARATE, second hop: Robby's bounce page
+// (after LinkedIn lands the user there with the code) forwards the browser
+// to this custom scheme, which our own manifest intent-filter catches.
+// Research into react-native-inappbrowser-reborn + Chrome Custom Tabs
+// confirmed relying on the https redirect alone to hand back to the app is
+// fundamentally unreliable on Android: Chrome blocks *automatic*
+// (non-tapped) redirects to app links as a security measure, which is
+// exactly what happens for a LinkedIn user who's already logged in — no
+// tap, no hand-off, tab just stays open. A custom scheme reached via an
+// actual link/button tap on Robby's page doesn't have that problem, since
+// there's no webpage Chrome could render instead.
 const LINKEDIN_CLIENT_ID = '86aeqmka1c4bj1';
 const LINKEDIN_REDIRECT =
-  'https://hub.instituteprojectmanagement.com/linkedin-callback';
+  'https://hub.instituteprojectmanagement.com/linkedin-callback-app';
 const LINKEDIN_APP_REDIRECT = 'ipmhub://linkedin-callback';
 const LINKEDIN_AUTH_URL =
   `https://www.linkedin.com/oauth/v2/authorization?response_type=code` +

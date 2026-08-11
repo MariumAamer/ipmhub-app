@@ -592,7 +592,12 @@ const QuizScreen = ({route, navigation}: any) => {
         ) : screenMode === 'results' && submitResult ? (
           <>
             {/* Results screen — per Figma spec (July 2026), now wired to the
-                CONFIRMED submitQuiz response. */}
+                CONFIRMED submitQuiz response. FIXED (Aug 2026): quiz
+                summary fields (timespent_formatted, score, points_total,
+                percentage, can_retake) are CONFIRMED nested under
+                submitResult.quiz.*, not top-level as earlier assumed —
+                also points_total renamed to total_points in the real
+                response. */}
             <Text style={styles.resultsHeading}>{'Results'}</Text>
             <View style={{alignSelf: 'stretch', gap: 16}}>
               <Text style={styles.resultsSubtext}>
@@ -600,11 +605,11 @@ const QuizScreen = ({route, navigation}: any) => {
               </Text>
               <View>
                 <Text style={styles.yourTimeLabel}>{'YOUR TIME'}</Text>
-                <Text style={styles.yourTimeValue}>{submitResult.timespent_formatted}</Text>
+                <Text style={styles.yourTimeValue}>{submitResult.quiz.timespent_formatted}</Text>
               </View>
               <View style={styles.percentageFrame}>
                 <Text style={styles.percentageText}>
-                  {`You have reached ${submitResult.score} of ${submitResult.points_total} point(s), (${submitResult.percentage.toFixed(2)}%)`}
+                  {`You have reached ${submitResult.quiz.score} of ${submitResult.quiz.total_points} point(s), (${submitResult.quiz.percentage.toFixed(2)}%)`}
                 </Text>
               </View>
               <TouchableOpacity
@@ -615,7 +620,7 @@ const QuizScreen = ({route, navigation}: any) => {
                 }}>
                 <Text style={styles.nextQuestionBtnText}>{'View Questions'}</Text>
               </TouchableOpacity>
-              {submitResult.can_retake ? (
+              {submitResult.quiz.can_retake ? (
                 <TouchableOpacity style={styles.nextQuestionBtn} onPress={handleRestartQuiz}>
                   <RestartIcon />
                   <Text style={styles.nextQuestionBtnText}>{'Restart Quiz'}</Text>
@@ -714,7 +719,16 @@ const QuizScreen = ({route, navigation}: any) => {
                         })}
                       </View>
 
-                      {graded.explanation ? (
+                      {/* explanation/tip are CONFIRMED {raw, rendered} objects
+                          (Aug 2026 real Postman response) — NOT plain strings.
+                          Render .rendered (HTML-stripped), never the object
+                          itself, or this crashes the same way
+                          activity.course.title did earlier ("Objects are not
+                          valid as a React child"). `reference` never existed
+                          in the real response — replaced with `tip`, the
+                          actual confirmed analogous field (empty in every
+                          sample seen so far, but structurally present). */}
+                      {graded.explanation?.rendered ? (
                         <View style={{alignSelf: 'stretch', alignItems: 'center'}}>
                           <View style={{marginBottom: -1}}>
                             {graded.correct ? <ExplanationTriangleGreen /> : <ExplanationTriangleRed />}
@@ -727,9 +741,9 @@ const QuizScreen = ({route, navigation}: any) => {
                             <Text style={[styles.explanationLabel, {color: graded.correct ? '#3BBB06' : '#ED3241'}]}>
                               {graded.correct ? 'CORRECT' : 'INCORRECT'}
                             </Text>
-                            <Text style={styles.explanationText}>{graded.explanation}</Text>
-                            {graded.reference ? (
-                              <Text style={styles.referenceText}>{`Reference: ${graded.reference}`}</Text>
+                            <Text style={styles.explanationText}>{stripHtmlTags(graded.explanation.rendered)}</Text>
+                            {graded.tip?.rendered ? (
+                              <Text style={styles.referenceText}>{stripHtmlTags(graded.tip.rendered)}</Text>
                             ) : null}
                           </View>
                         </View>
@@ -920,20 +934,23 @@ export default QuizScreen;
       the-blank UI has been specced. Flag before this ships if any real
       quiz has cloze_answer questions (the sample data does).
 
-   2. UPDATED (Aug 2026): field names revised per Robby's more specific
-      confirmation — the earlier July 2026 description used is_correct/
-      selected_indexes/correct_indexes at the question level; those were
-      wrong and have been replaced with correct/user_answer/correct_answer
-      (see coursesApi.ts's GradedQuestionResult). Question text and type
-      are now included directly in each graded result too — the Review
-      screen no longer needs quiz.questions[] for question text/answer
-      options, only for the number-row's question count/ordering.
-      REMAINING CAVEAT: user_answer/correct_answer's exact shape (string?
-      index? array?) is still NOT Postman-verified — this screen
-      deliberately doesn't use either field; it renders entirely from the
-      reconfirmed per-option `answers[].selected`/`is_correct` array
-      instead, which IS safe to build against. Get a real submit response
-      pasted before trusting user_answer/correct_answer for anything.
+   2. FULLY CONFIRMED (Aug 2026) via a real end-to-end Postman round-trip
+      (both request and response) — see coursesApi.ts's GradedQuestionResult/
+      QuizSubmitResponse for the complete confirmed shape. Two corrections
+      from earlier guesses worth flagging:
+        - explanation/tip are {raw, rendered} objects, NOT plain strings —
+          this screen renders .rendered (HTML-stripped via stripHtmlTags),
+          never the object itself. Same crash class as the earlier
+          activity.course.title bug ("Objects are not valid as a React
+          child") would have hit here too if left as a plain-string guess.
+        - user_answer/correct_answer DO have confirmed shapes now
+          ({selected_indexes, text, texts} / {indexes, texts, text}), but
+          this screen still deliberately renders from the per-option
+          `answers[].selected`/`is_correct` array instead — that's simpler
+          for the green/red highlight UI and was already proven safe.
+      `reference` never existed in the real response — replaced with `tip`,
+      the actual confirmed analogous field (empty in every sample seen so
+      far, but structurally present on every question).
 
    3. RESOLVED (July 2026): breadcrumb now derives course/lesson titles
       from this screen's own getCourseActivity fetch rather than depending
@@ -959,8 +976,9 @@ export default QuizScreen;
       step is already completed, fetch results instead of/alongside the
       quiz and go straight to the Results screen. UPDATED (Aug 2026):
       getQuizResults now takes an optional quiz_key (returned as
-      submitResult.quiz_key from a fresh submit) instead of user_id —
-      omit it to get the latest attempt. If wiring this for "revisit a
-      completed quiz," omitting quiz_key is almost certainly the right
-      call here, since there's no prior quiz_key to pass in that flow.
+      submitResult.quiz.quiz_key from a fresh submit — CONFIRMED nested
+      under `quiz`, not top-level) instead of user_id — omit it to get the
+      latest attempt. If wiring this for "revisit a completed quiz,"
+      omitting quiz_key is almost certainly the right call here, since
+      there's no prior quiz_key to pass in that flow.
 ──────────────────────────────────────────────────────────────────────── */

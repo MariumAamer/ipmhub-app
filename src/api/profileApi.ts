@@ -4,32 +4,6 @@ import * as Keychain from 'react-native-keychain';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
-// ─── Hermes-safe base64 decode (atob not available in React Native) ───────
-// NEVER use atob() — throws on Hermes/Android, which was silently caught
-// by getUserIdFromToken's catch block below and made it always return null
-// on-device (worked fine on debug tooling that isn't Hermes, which is how
-// this went unnoticed). Same helper as authApi.ts/forumsApi.ts/
-// ProfileDrawer.tsx/CreatePostScreen.tsx — keep in sync if it ever changes.
-const b64decode = (str: string): string => {
-  const chars =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  let output = '';
-  const s = str.replace(/[^A-Za-z0-9+/=]/g, '');
-  for (let i = 0; i < s.length; ) {
-    const e1 = chars.indexOf(s[i++]),
-      e2 = chars.indexOf(s[i++]);
-    const e3 = chars.indexOf(s[i++]),
-      e4 = chars.indexOf(s[i++]);
-    const c1 = (e1 << 2) | (e2 >> 4);
-    const c2 = ((e2 & 15) << 4) | (e3 >> 2);
-    const c3 = ((e3 & 3) << 6) | e4;
-    output += String.fromCharCode(c1);
-    if (e3 !== 64) output += String.fromCharCode(c2);
-    if (e4 !== 64) output += String.fromCharCode(c3);
-  }
-  return output;
-};
-
 // ─── xProfile field IDs — confirmed from live site ───────────────────────────
 export const XPROFILE_FIELDS = {
   FIRST_NAME: 1,
@@ -69,9 +43,7 @@ export const getUserIdFromToken = async (): Promise<number | null> => {
     // Decode JWT payload to get user ID
     const token = stored?.token;
     if (!token) return null;
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-    const payload = JSON.parse(b64decode(padded));
+    const payload = JSON.parse(atob(token.split('.')[1]));
     return Number(payload?.data?.user?.id) || null;
   } catch {
     return null;
@@ -186,14 +158,32 @@ export const uploadAvatar = async (
   }
 };
 
-// ─── Post introduction to activity feed ──────────────────────────────────────
+// ─── Post introduction (creates the actual Introductions CPT entry) ──────────
+// Confirmed via the site's own /wp-json/ route index (2026-08-08): there is
+// NO create route on /custom/v1/introductions (GET only) — but /wp/v2/introduction
+// is a standard WordPress custom post type with full core REST support,
+// including POST. This IS the real creation endpoint.
+//
+// Previously this posted to /buddyboss/v1/activity instead, which is why
+// intros were showing up on the Feed screen instead of the Intros screen —
+// that was always the wrong endpoint, not a display bug.
+//
+// title is intentionally omitted — confirmed not required by the route
+// schema, and IntrosScreen/getIntroductions never reads a title field, only
+// content.
+//
+// Using standard wp_insert_post() via this core REST route fires the same
+// save_post hooks a normal website intro submission would, which is what's
+// expected to create the linked BuddyBoss activity_id that
+// GET /custom/v1/introductions already returns for web-submitted intros —
+// worth confirming this linkage actually appears on the next real test.
 export const postIntroductionActivity = async (
   content: string,
 ): Promise<void> => {
   try {
     const token = await getToken();
     if (!token) return;
-    await fetch(`${BASE}/buddyboss/v1/activity`, {
+    await fetch(`${BASE}/wp/v2/introduction`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -201,8 +191,7 @@ export const postIntroductionActivity = async (
       },
       body: JSON.stringify({
         content,
-        type: 'activity_update',
-        component: 'activity',
+        status: 'publish',
       }),
     });
   } catch {}

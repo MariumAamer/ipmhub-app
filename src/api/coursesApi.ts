@@ -948,7 +948,16 @@ export interface MarkStepCompleteResponse {
     display: string; // e.g. "95% Complete | 64/67 Steps"
   };
   course_status: {slug: string; label: string};
-  current_step: Record<string, any>;
+  // CONFIRMED shape (seen identically in both markStepComplete and
+  // submitQuiz responses, Aug 2026) — points to the next step to work on.
+  current_step: {
+    lesson_id: number;
+    lesson_title: string;
+    step_id: number;
+    step_title: string;
+    step_type: string;
+    permalink: string;
+  };
 }
 
 /** POST custom/v1/ld-courses/{courseId}/steps/{stepId}/complete?user_id={userId} — CONFIRMED */
@@ -1052,16 +1061,17 @@ export const getQuiz = async (courseId: number, stepId: number, userId: number):
 };
 
 // ─── Quiz submit / grade / results ──────────────────────────────────────
-// CONFIRMED endpoint contract (described by Robby, July 2026) — exact
-// field names below are as he described them in the endpoint spec, NOT
-// yet verified against a real Postman JSON response. Flag to Marium if
-// any field here comes back differently shaped once tested for real —
-// these types should be tightened against the actual response ASAP.
+// CONFIRMED (Aug 2026) via a real end-to-end Postman round-trip: this
+// exact request shape (question_id + selected_indexes per answer, plus
+// top-level user_id/timespent) was submitted and returned a real 200 with
+// a fully graded response — see GradedQuestionResult/QuizSubmitResponse
+// below for the confirmed response shape. Tested with both single-select
+// and multiple-select (multi-answer) questions in the same request.
 
 export interface QuizAnswerSubmission {
   question_id: number;
-  selected_indexes?: number[]; // for single/multi-select question types
-  text?: string; // for free-text/essay-style question types
+  selected_indexes?: number[]; // for single/multi-select question types — CONFIRMED working for both
+  text?: string; // for free-text/essay-style question types — NOT tested, no essay question seen in a real quiz yet
 }
 
 export interface QuizSubmitRequest {
@@ -1073,59 +1083,108 @@ export interface QuizSubmitRequest {
 export interface GradedAnswerOption {
   index: number;
   answer: string;
+  html: string; // CONFIRMED — same text as `answer` but with LearnDash's own trailing-space quirks preserved; `answer` is the clean version, prefer it for display
   selected: boolean;
   is_correct: boolean;
 }
 
-// UPDATED (Aug 2026) per Robby's confirmed field names — replaces the
-// earlier July 2026 guess (which used is_correct/selected_indexes/
-// correct_indexes at the question level; those were never Postman-
-// verified and are now known wrong). Per Robby:
-//   - "whether they got it right" -> correct (not is_correct)
-//   - "what they picked" -> user_answer (not selected_indexes)
-//   - "correct answer" -> correct_answer (not correct_indexes)
-//   - question text + type are included directly on each result now, so
-//     the UI no longer needs to cross-reference the original quiz
-//     questions list to show the question itself.
-//   - per-option selected/is_correct (the `answers` array below) is
-//     UNCHANGED/reconfirmed — still present, still the same shape.
-// user_answer/correct_answer are typed as `any` deliberately: Robby's
-// description doesn't say whether these are plain text, an option index,
-// or an array (single vs multi-select questions may differ) — NOT yet
-// Postman-verified against a real submit response. Get a real paste
-// before building UI logic that assumes a specific shape for these two
-// fields specifically; the `answers` array is safe to build against now.
-export interface GradedQuestionResult {
-  question_id: number;
-  question: string; // question text — NEW, confirmed
-  type: string; // question type — NEW, confirmed, exact value strings unconfirmed
-  correct: boolean;
-  user_answer: any; // shape NOT Postman-verified — see note above
-  correct_answer: any; // shape NOT Postman-verified — see note above
-  explanation?: string; // LearnDash custom answer feedback, per Robby
-  reference?: string; // e.g. "Topic 9: The Project Management Office" — NOT reconfirmed in this pass, kept from earlier description
-  answers: GradedAnswerOption[]; // per-option selected/is_correct for green/red UI — reconfirmed
+// A WordPress-style {raw, rendered} pair — CONFIRMED (Aug 2026) real
+// submit response shape for explanation/tip. This is the SAME pattern
+// that crashed StepContentScreen's course.title render earlier this
+// session ("Objects are not valid as a React child") — always render
+// `.rendered` (or `.raw`), NEVER the object itself.
+export interface RichTextField {
+  raw: string;
+  rendered: string;
 }
 
+// CONFIRMED (Aug 2026) via real Postman submit response — replaces every
+// earlier guess. Was: is_correct/selected_indexes/correct_indexes (July
+// 2026, never verified, wrong); then correct/user_answer/correct_answer
+// with unverified `any` shapes (per Robby's prose description). Now
+// locked to the real response.
+export interface GradedQuestionResult {
+  question_id: number;
+  post_id: number;
+  title: string; // short label, e.g. "Q1"
+  question: string; // full question text, may contain HTML — CONFIRMED
+  question_type: 'single' | 'multiple' | string; // CONFIRMED values seen: single, multiple. Open to other LearnDash types (e.g. cloze_answer, essay) not yet seen in a real response — treat unknown values gracefully, don't assume only these two exist.
+  correct: boolean;
+  points: number; // points EARNED for this question (0 if incorrect)
+  possible_points: number; // max points this question was worth
+  user_answer: {
+    selected_indexes: number[];
+    text: string; // CONFIRMED always "" for single/multiple types in real data — likely populated for free-text/essay question types not yet seen
+    texts: string[]; // the actual selected answer text(s), in selected_indexes order
+  };
+  correct_answer: {
+    indexes: number[];
+    texts: string[];
+    text: string; // CONFIRMED: only ever the FIRST correct text, not a join of all — use `texts` for multi-answer questions, not this field
+  };
+  answers: GradedAnswerOption[]; // per-option selected/is_correct — CONFIRMED, safe to build UI against
+  explanation: RichTextField; // CONFIRMED object shape (see RichTextField) — was incorrectly typed as a plain string before
+  tip: RichTextField; // NEW, CONFIRMED — empty ("") in every real question seen so far, but structurally present on all of them
+  graded: null | unknown; // CONFIRMED always null in real data (all single/multiple auto-graded questions) — likely populated for essay/manually-graded question types, shape unknown
+}
+
+// CONFIRMED (Aug 2026): quiz/submit reuses almost the exact same envelope
+// as markStepComplete (success, user_id, course_id, step_id, marked,
+// already_completed, step_status, step, progress, course_status,
+// current_step) — makes sense, since submitting a quiz also completes the
+// step in one action. It ADDS `quiz` (summary) and `results` (per-question
+// review) on top. success/step/progress/course_status/current_step below
+// are typed loosely (not re-declaring MarkStepCompleteResponse's full
+// shape) — see that interface above for the confirmed field list.
 export interface QuizSubmitResponse {
   success: boolean;
-  passed: boolean;
-  percentage: number;
-  score: number; // points earned
-  points_total: number;
-  timespent: number; // seconds
-  timespent_formatted: string; // "00:02:11"
-  can_retake: boolean;
-  attempt_count: number;
-  quiz_key: string; // NEW (Aug 2026, confirmed) — pass this to getQuizResults to reopen this exact attempt later
-  results: GradedQuestionResult[]; // RENAMED from `questions` per Robby's wording ("results / attempt.results") — NOT 100% certain this is top-level vs nested under an `attempt` wrapper; get a real Postman paste to confirm before final UI polish
+  user_id: number;
+  course_id: number;
+  step_id: number;
+  marked: boolean;
+  already_completed: boolean;
+  step_status: string;
+  step: MarkStepCompleteResponse['step'];
+  progress: MarkStepCompleteResponse['progress'];
+  course_status: MarkStepCompleteResponse['course_status'];
+  current_step: MarkStepCompleteResponse['current_step'];
+  // Quiz-level summary — CONFIRMED nested under `quiz`, NOT top-level as
+  // earlier assumed.
+  quiz: {
+    id: number;
+    title: string;
+    pass: boolean; // CONFIRMED field name is `pass`, not `passed`
+    percentage: number;
+    score: number; // points earned, total across all questions
+    count: number; // number of questions in this attempt
+    points: number; // CONFIRMED: same value as `score` in real data — redundant field, prefer `score`
+    total_points: number;
+    passing_percentage: number;
+    has_graded: boolean;
+    pending_essay_grade: boolean;
+    statistic_ref_id: number;
+    can_retake: boolean;
+    attempt_count: number;
+    timespent: number; // seconds
+    timespent_formatted: string; // "00:03:00"
+    quiz_key: string; // pass this to getQuizResults to reopen this exact attempt later
+    started_at: number; // unix timestamp
+    completed_at: number; // unix timestamp
+  };
+  results: GradedQuestionResult[]; // CONFIRMED top-level (not nested) — per-question review, self-sufficient (question text/type/answers all included), no second call needed
+  // CONFIRMED: `attempt` also exists and DUPLICATES quiz_key/pass/
+  // percentage/score/etc AND the entire `results` array again inside
+  // itself. Redundant with the fields above — use the top-level `quiz`/
+  // `results` instead; `attempt` isn't typed out separately here since
+  // it's a strict superset duplicate, not new information.
+  attempt?: Record<string, any>;
 }
 
 export interface QuizResultsResponse extends QuizSubmitResponse {
-  attempts?: {attempt_number: number; percentage: number; passed: boolean; completed_at: string}[];
+  attempts?: {attempt_number: number; percentage: number; passed: boolean; completed_at: string}[]; // NOT reconfirmed in this pass — kept from earlier description, unverified whether this field actually exists on the results endpoint
 }
 
-/** POST custom/v1/ld-courses/{courseId}/steps/{stepId}/quiz/submit — CONFIRMED by Robby (Aug 2026): the submit response IS the review data, no second call needed for that attempt. Field names updated per Robby's description (Aug 2026) — see GradedQuestionResult notes above for what's still unverified. */
+/** POST custom/v1/ld-courses/{courseId}/steps/{stepId}/quiz/submit — CONFIRMED (Aug 2026) via real Postman response. The submit response IS the review data, no second call needed for that attempt. */
 export const submitQuiz = async (
   courseId: number,
   stepId: number,
@@ -1138,15 +1197,24 @@ export const submitQuiz = async (
       headers: {...headers, 'Content-Type': 'application/json'},
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`${res.status}: submitQuiz`);
-    return await res.json();
+    // A 409 here means the backend is enforcing sequential step completion
+    // — CONFIRMED real case (Aug 2026): "This quiz cannot be attempted yet.
+    // Finish earlier required steps first.", with a data.previous_incomplete_id
+    // pointing at the exact blocking step. Surface the real message (same
+    // pattern as markStepComplete) rather than a bare status code.
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const message = (data && data.message) || `${res.status}: submitQuiz`;
+      throw new Error(message);
+    }
+    return data;
   } catch (err) {
     console.error('[coursesApi] submitQuiz', err);
     return null;
   }
 };
 
-/** GET custom/v1/ld-courses/{courseId}/steps/{stepId}/quiz/results?quiz_key={quizKey} — CONFIRMED by Robby (Aug 2026). Param CHANGED from ?user_id= (earlier guess) to ?quiz_key= — omit quiz_key entirely to get the latest attempt. Auth comes from the Bearer token (attached automatically by apiFetch), not a user_id param. */
+/** GET custom/v1/ld-courses/{courseId}/steps/{stepId}/quiz/results?quiz_key={quizKey} — CONFIRMED by Robby (Aug 2026). Param CHANGED from ?user_id= (earlier guess) to ?quiz_key= — omit quiz_key entirely to get the latest attempt. Auth comes from the Bearer token (attached automatically by apiFetch), not a user_id param. Response shape assumed to match QuizSubmitResponse (not independently Postman-tested this pass — submitQuiz's response was the one confirmed). */
 export const getQuizResults = async (
   courseId: number,
   stepId: number,
