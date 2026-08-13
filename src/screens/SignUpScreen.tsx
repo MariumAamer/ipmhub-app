@@ -27,9 +27,20 @@ import Svg, {Path, G} from 'react-native-svg';
 // the Google Cloud console, unlike Android-type clients which are verified
 // by SHA-1 fingerprint instead). The client SECRET never goes in the app —
 // GoogleSignin only ever needs the Client ID below.
+// iosClientId is REQUIRED on iOS even when not using Firebase — without it
+// GoogleSignin has no way to determine the client ID and throws
+// "failed to determine clientID" (the DEBUG banner seen on the iOS Sign Up
+// screen). This is a SEPARATE OAuth client from webClientId above — it must
+// be the iOS-type client ID from Google Cloud Console > Credentials, not the
+// Web-type one. TODO(Marium/Robby): swap in the real iOS client ID here —
+// currently a placeholder so this doesn't silently ship broken.
+const GOOGLE_IOS_CLIENT_ID =
+  'REPLACE_WITH_IOS_OAUTH_CLIENT_ID.apps.googleusercontent.com';
+
 GoogleSignin.configure({
   webClientId:
     '497284409682-sn3tjrcn0ihusc7b38i4b474n08s3ave.apps.googleusercontent.com',
+  iosClientId: GOOGLE_IOS_CLIENT_ID,
 });
 
 // ─── LinkedIn OAuth ─────────────────────────────────────────────────────────
@@ -466,7 +477,15 @@ const SignUpScreen = ({navigation}: any) => {
           <Text style={styles.checkLabel}>
             {'I agree to the '}
             {/* Action/Action M: #46B0E3 12px 500 */}
-            <Text style={styles.privacyLink}>{'Privacy Policy'}</Text>
+            <Text
+              style={styles.privacyLink}
+              onPress={() =>
+                Linking.openURL(
+                  'https://hub.instituteprojectmanagement.com/privacy-policy/',
+                )
+              }>
+              {'Privacy Policy'}
+            </Text>
           </Text>
         </View>
         {errors.agreed ? (
@@ -691,7 +710,6 @@ const styles = StyleSheet.create({
   socialRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
     marginBottom: 14,
   },
   googleBtn: {
@@ -701,6 +719,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4A90D9',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
     elevation: 2,
   },
   linkedinBtn: {

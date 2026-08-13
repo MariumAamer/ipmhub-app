@@ -404,9 +404,15 @@ export const isNewUser = async (
   token: string,
 ): Promise<boolean> => {
   try {
-    const res = await fetch(`${BASE_URL}/buddyboss/v1/members/${userId}`, {
-      headers: {Authorization: `Bearer ${token}`},
-    });
+    // ?xprofile=1 is required — BuddyBoss member endpoints don't include
+    // xProfile field data at all without it, which is why this was always
+    // falling through to "new user" for EVERY sign-in (email, Google,
+    // LinkedIn alike), even for accounts that had already completed
+    // profile setup before.
+    const res = await fetch(
+      `${BASE_URL}/buddyboss/v1/members/${userId}?xprofile=1`,
+      {headers: {Authorization: `Bearer ${token}`}},
+    );
     if (!res.ok) return true; // can't confirm → safer to treat as new
     const data = await res.json();
     const groups = data?.xprofile?.groups;

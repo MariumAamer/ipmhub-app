@@ -18,6 +18,7 @@ import Svg, {
 } from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const {width: W, height: H} = Dimensions.get('window');
 const STATUS_H = 0; // status bar is not translucent — layout starts below it
@@ -204,6 +205,12 @@ const OnboardingScreen = ({navigation}: any) => {
   const [active, setActive] = useState(0);
   const ref = useRef<FlatList>(null);
   const slide = SLIDES[active];
+  // On iOS the root View renders edge-to-edge behind the status bar/notch
+  // (unlike Android non-translucent mode, which reserves the space
+  // automatically) — that's exactly what we want for the full-bleed
+  // gradient, but the logo needs to be pushed down by the safe area inset
+  // so it doesn't sit under the clock/signal icons.
+  const insets = useSafeAreaInsets();
 
   const goNext = () => {
     if (active < SLIDES.length - 1) {
@@ -216,20 +223,20 @@ const OnboardingScreen = ({navigation}: any) => {
 
   return (
     <View style={s.root}>
-      {/* White status bar with dark icons — matches Figma */}
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#FFFFFF"
-        translucent={false}
-      />
+      {/* Light icons — the status bar always sits over the colored/dark
+          diamond gradient on this screen, not white, so dark-content icons
+          were unreadable (seen as near-invisible time/signal/battery on the
+          purple background). backgroundColor/translucent are Android-only;
+          barStyle is what actually matters on iOS. */}
+      <StatusBar barStyle="light-content" backgroundColor="#192546" translucent={false} />
 
       {/* ── TOP COLORED SECTION ── */}
       <View style={s.topSection}>
         {/* Full-bleed diamond gradient background */}
         <DiamondBG />
 
-        {/* IPM Logo — positioned below status bar */}
-        <View style={s.logoWrap}>
+        {/* IPM Logo — positioned below status bar/notch */}
+        <View style={[s.logoWrap, {top: LOGO_TOP + insets.top}]}>
           <Image
             source={require('../assets/images/ipmlogowhite2.png')}
             style={s.logo}

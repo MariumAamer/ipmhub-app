@@ -1,6 +1,10 @@
 /* eslint-disable prettier/prettier */
-import React from 'react';
-import {NavigationContainer} from '@react-navigation/native';
+import React, {useEffect, useState} from 'react';
+import {Linking} from 'react-native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import * as Keychain from 'react-native-keychain';
 
@@ -52,15 +56,74 @@ import HelpSupportScreen from '../screens/HelpSupportScreen';
 import NewDiscussionScreen from '../screens/NewDiscussionScreen';
 import OptionPickerScreen from '../screens/OptionPickerScreen';
 import LikedByScreen from '../screens/LikedByScreen';
-import NotificationsScreen from '../screens/NotificationsScreen';
 
 
 
 const Stack = createNativeStackNavigator();
 
-const AppNavigator = () => (
-  <NavigationContainer>
-    <Stack.Navigator screenOptions={{headerShown: false}}>
+// ─── Global deep-link handling ─────────────────────────────────────────────
+// Previously, deep links (like the account activation email link) had NO
+// app-wide handling at all — only ForgotPasswordScreen had a screen-local
+// Linking listener, which only works if that screen already happens to be
+// mounted. A cold app start (app fully closed, user taps a link in email)
+// had nowhere to route to, regardless of whether Android correctly handed
+// the URL to the app or not.
+//
+// navigationRef lets us imperatively navigate from outside of any specific
+// screen component, once the navigator itself has mounted (onReady below) —
+// needed because Linking.getInitialURL() can resolve before React
+// Navigation is ready to accept a .navigate() call.
+export const navigationRef = createNavigationContainerRef();
+
+const handleDeepLink = (url: string | null) => {
+  if (!url || !navigationRef.isReady()) return;
+
+  // Account activation: https://hub.instituteprojectmanagement.com/activated/?key=...
+  // SignInScreen already supports route.params.verified (shows the
+  // "✓ Account verified!" banner) — it just never had anything wiring a
+  // real link to it before now.
+  if (url.includes('/activated')) {
+    navigationRef.navigate('SignIn' as never, {verified: true} as never);
+    return;
+  }
+
+  // Password reset: ipmhub://reset-password?key=...&login=...
+  // ForgotPasswordScreen already parses key/login itself via its own
+  // Linking listener, but that only works if the screen is already
+  // mounted. On a cold start (app closed, user taps the "create new
+  // password" email link) there was previously nowhere to route to at
+  // all, so the link just opened in Safari/Chrome and stayed there.
+  // We still navigate with the raw key/login params here so
+  // ForgotPasswordScreen can jump straight to the changePassword stage
+  // even before its own listener has a chance to run.
+  if (url.includes('reset-password')) {
+    const query = url.split('?')[1] || '';
+    const params = new URLSearchParams(query);
+    const key = params.get('key');
+    const login = params.get('login');
+    if (key && login) {
+      navigationRef.navigate('ForgotPassword' as never, {key, login} as never);
+    } else {
+      navigationRef.navigate('ForgotPassword' as never);
+    }
+  }
+};
+
+const AppNavigator = () => {
+  const [isNavReady, setIsNavReady] = useState(false);
+
+  useEffect(() => {
+    if (!isNavReady) return;
+    Linking.getInitialURL().then(handleDeepLink);
+    const sub = Linking.addEventListener('url', ({url}) => handleDeepLink(url));
+    return () => sub.remove();
+  }, [isNavReady]);
+
+  return (
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => setIsNavReady(true)}>
+      <Stack.Navigator screenOptions={{headerShown: false}}>
       <Stack.Screen name="Splash"           component={SplashScreen} />
       <Stack.Screen name="Onboarding"       component={OnboardingScreen} />
       <Stack.Screen name="SignIn"           component={SignInScreen} />
@@ -109,10 +172,10 @@ const AppNavigator = () => (
 <Stack.Screen name="NewDiscussion" component={NewDiscussionScreen} />
 <Stack.Screen name="OptionPicker" component={OptionPickerScreen} />
 <Stack.Screen name="LikedBy" component={LikedByScreen} />
-<Stack.Screen name="Notifications" component={NotificationsScreen} />
 
 </Stack.Navigator>
-  </NavigationContainer>
-);
+    </NavigationContainer>
+  );
+};
 
 export default AppNavigator;
