@@ -30,12 +30,10 @@ import Svg, {Path, G} from 'react-native-svg';
 // iosClientId is REQUIRED on iOS even when not using Firebase — without it
 // GoogleSignin has no way to determine the client ID and throws
 // "failed to determine clientID" (the DEBUG banner seen on the iOS Sign Up
-// screen). This is a SEPARATE OAuth client from webClientId above — it must
-// be the iOS-type client ID from Google Cloud Console > Credentials, not the
-// Web-type one. TODO(Marium/Robby): swap in the real iOS client ID here —
-// currently a placeholder so this doesn't silently ship broken.
+// screen). This is a SEPARATE OAuth client from webClientId above — Robby
+// created this one 2026-08-13 (iOS-type client, Google Cloud Console).
 const GOOGLE_IOS_CLIENT_ID =
-  'REPLACE_WITH_IOS_OAUTH_CLIENT_ID.apps.googleusercontent.com';
+  '497284409682-fvbkukc745v8nciu7dufrb9tg1rqlb67.apps.googleusercontent.com';
 
 GoogleSignin.configure({
   webClientId:

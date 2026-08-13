@@ -26,9 +26,15 @@ import {loginUser, socialLogin, getPostAuthRoute} from '../api/authApi';
 // the Google Cloud console, unlike Android-type clients which are verified
 // by SHA-1 fingerprint instead). The client SECRET never goes in the app —
 // GoogleSignin only ever needs the Client ID below.
+// iosClientId is REQUIRED on iOS even when not using Firebase — without it
+// GoogleSignin throws "failed to determine clientID". Separate OAuth client
+// from webClientId above — Robby created this one 2026-08-13 (iOS-type
+// client, Google Cloud Console). Kept in sync with SignUpScreen.tsx.
 GoogleSignin.configure({
   webClientId:
     '497284409682-sn3tjrcn0ihusc7b38i4b474n08s3ave.apps.googleusercontent.com',
+  iosClientId:
+    '497284409682-fvbkukc745v8nciu7dufrb9tg1rqlb67.apps.googleusercontent.com',
 });
 
 // ─── LinkedIn OAuth ─────────────────────────────────────────────────────────
