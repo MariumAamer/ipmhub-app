@@ -7,6 +7,7 @@ import {
 import Svg, {Path, Rect, G, Defs, ClipPath} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import BackButton from '../components/BackButton';
 import {apiRequest, BASE_URL, stripHtml} from '../api/apiClient';
 import {
   EventItem, EventRegistrationPayload, getRegisteredEventIds,
@@ -39,11 +40,6 @@ interface SpeakerDetail {
 
 // "03/07/2026" → "03 Jul 2026"
 
-const BackIcon = () => (
-  <Svg width={8} height={14} viewBox="0 0 8 14" fill="none">
-    <Path d="M7 1L1 7L7 13" stroke="#192546" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/>
-  </Svg>
-);
 const DateSvg = () => (
   <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
     <Path d="M1.33398 12.6663C1.33398 13.7997 2.20065 14.6663 3.33398 14.6663H12.6673C13.8007 14.6663 14.6673 13.7997 14.6673 12.6663V7.33301H1.33398V12.6663ZM12.6673 2.66634H11.334V1.99967C11.334 1.59967 11.0673 1.33301 10.6673 1.33301C10.2673 1.33301 10.0007 1.59967 10.0007 1.99967V2.66634H6.00065V1.99967C6.00065 1.59967 5.73398 1.33301 5.33398 1.33301C4.93398 1.33301 4.66732 1.59967 4.66732 1.99967V2.66634H3.33398C2.20065 2.66634 1.33398 3.53301 1.33398 4.66634V5.99967H14.6673V4.66634C14.6673 3.53301 13.8007 2.66634 12.6673 2.66634Z" fill="#0C4D91"/>
@@ -142,8 +138,14 @@ const EventDetailScreen = ({navigation, route}: Props) => {
   const aboutWebinar: string = event.aboutWebinar ?? '';
   const dateLabel    = formatFullDate(speakerDetail?.formatted_date ?? rawEvent?.event_date_formatted ?? event.dateLabel ?? '');
   const timeLabel    = speakerDetail?.formatted_time ?? '';
-  const speakerName  = speakerDetail?.speaker  ?? event.speakerName  ?? '';
-  const speakerTitle = speakerDetail?.job_title ?? event.speakerTitle ?? '';
+  // speakerDetail comes from the raw custom/v1/event-speakers/{zohoId}
+  // endpoint (hit directly via apiRequest above, NOT through eventsApi.ts),
+  // so unlike speakerBio/aboutWebinar it was never run through stripHtml —
+  // an ampersand or apostrophe in a speaker's name/job title (e.g. "R&D
+  // Lead") rendered as literal "&#038;"/"&#8217;" on the overlay card, the
+  // bio heading, and the Speaker meta row below.
+  const speakerName  = stripHtml(speakerDetail?.speaker  ?? event.speakerName  ?? '');
+  const speakerTitle = stripHtml(speakerDetail?.job_title ?? event.speakerTitle ?? '');
   const cardImage    = speakerDetail?.image_url ?? event.detailsImage ?? event.image ?? null;
 
   const BIO_LIMIT  = 280;
@@ -195,10 +197,7 @@ const EventDetailScreen = ({navigation, route}: Props) => {
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)}/>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}
-          hitSlop={{top:8,bottom:8,left:8,right:8}}>
-          <View style={s.backCircle}><BackIcon/></View>
-        </TouchableOpacity>
+        <BackButton style={s.backBtn} onPress={() => navigation.goBack()} />
 
         {/* Event Details */}
         <View style={s.section}>
@@ -299,8 +298,7 @@ const cs = StyleSheet.create({
 const s = StyleSheet.create({
   container:   {flex:1, backgroundColor:'#FFFFFF'},
   scroll:      {paddingBottom:40},
-  backBtn:     {paddingHorizontal:16, paddingTop:16, paddingBottom:4},
-  backCircle:  {width:32, height:32, borderRadius:8, borderWidth:1, borderColor:'#E8E9F1', alignItems:'center', justifyContent:'center'},
+  backBtn:     {marginHorizontal:16, marginTop:16, marginBottom:4, alignSelf:'flex-start'},
   section:     {paddingHorizontal:16, paddingVertical:20, borderBottomWidth:1, borderBottomColor:'#F0F0F0'},
   sectionTitle:{fontFamily:'Runda', fontSize:18, fontWeight:'700', color:'#192546', letterSpacing:0.09, marginBottom:16},
   descPara:    {fontFamily:'Runda', fontSize:14, fontWeight:'400', color:'#192546', lineHeight:22},

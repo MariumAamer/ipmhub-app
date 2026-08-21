@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  SafeAreaView,
   StatusBar,
   Image,
   ScrollView,
@@ -15,6 +14,11 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+// Was importing SafeAreaView from 'react-native' — that core component is
+// iOS-only (a no-op on Android), so the close (X) button and Post button
+// sat under the Android status bar. Swapped to the real cross-platform
+// SafeAreaView, which measures the actual device inset on both platforms.
+import {SafeAreaView} from 'react-native-safe-area-context';
 import {launchImageLibrary} from 'react-native-image-picker';
 import * as Keychain from 'react-native-keychain';
 import Svg, {Path, Circle} from 'react-native-svg';
@@ -105,7 +109,7 @@ const CameraIconSmall = () => (
 const CameraBoxIcon = () => (
   <Svg width={25} height={25} viewBox="0 0 25 25" fill="none">
     <Path d="M5 8.58079C5 6.91102 6.24818 5.66284 7.78789 5.66284H12.2743C11.8822 6.25429 11.658 6.9493 11.5645 7.6927L11.5769 12.1763C11.5802 12.5617 11.7238 12.9275 11.9787 13.2086L12.086 13.3155C12.367 13.5703 12.7325 13.7139 13.1136 13.7173C13.2349 13.718 13.3557 13.7044 13.4734 13.6772L13.4804 13.9223C13.5643 14.7837 13.8941 15.5456 14.4998 16.1513C15.2391 16.8905 16.106 17.1727 16.9878 17.1672V17.1679C17.8369 17.1631 18.6092 16.8255 19.3377 16.1524V17.2127C19.3377 18.7524 18.0895 20.0006 16.5498 20.0006H7.78789C6.24818 20.0006 5 18.7524 5 17.2127V8.45073V8.58079Z" fill="#8F9098" />
-    <Path d="M13.6797 5.84768C13.1688 6.30933 12.8615 6.97898 12.7529 7.84157L12.7744 12.1698C12.7752 12.263 12.8127 12.3522 12.8786 12.4182C12.9445 12.4841 13.0337 12.5216 13.127 12.5224C13.2182 12.5228 13.303 12.4836 13.3739 12.4212L13.4493 12.1742L13.4251 7.89272C13.5371 7.22935 13.7746 6.71182 14.1531 6.37049C14.6646 5.90888 15.2173 5.7188 15.8499 5.70165C16.4694 5.68487 17.1048 5.9082 17.634 6.43732C18.042 6.84538 18.2741 7.30781 18.3391 7.83332L18.4296 13.9198C18.3924 14.2739 18.2477 14.5791 17.9953 14.8122C17.6384 15.1406 17.3082 15.271 16.9709 15.2729C16.5475 15.2757 16.1803 15.155 15.8397 14.8144C15.5688 14.5434 15.4135 14.2023 15.3714 13.7768L15.3161 8.39986C15.3065 8.09105 15.349 7.89065 15.4225 7.79069C15.5487 7.63414 15.7156 7.55527 15.9011 7.55527C16.0839 7.56027 16.2236 7.6314 16.3521 7.78849C16.433 7.88732 16.4801 8.0093 16.4926 8.16444L16.5518 13.1129C16.5532 13.206 16.5911 13.2949 16.6574 13.3604C16.7237 13.4258 16.8131 13.4627 16.9063 13.463C17.0 13.463 17.0852 13.4233 17.1524 13.3604L17.2269 13.2468C17.244 13.2043 17.2524 13.1589 17.2517 13.1131L17.1917 8.14024C17.1664 7.82223 17.0668 7.56346 16.892 7.34928C16.6353 7.03545 16.303 6.86614 15.9121 6.85508C15.5046 6.84872 15.1369 6.98213 14.8571 7.37101C14.6758 7.61807 14.6019 7.9635 14.6162 8.40618L14.672 13.8062C14.732 14.4217 14.9576 14.9163 15.3475 15.3061C15.8376 15.7962 16.3863 15.9764 16.9835 15.9725C17.4941 15.9696 17.9894 15.7746 18.4728 15.3298C18.853 14.9788 19.0725 14.5156 19.1279 13.9569L19.0363 7.79344C18.9495 7.07045 18.6438 6.46318 18.1254 5.94476C17.4499 5.26931 16.6254 4.97904 15.8221 5.00117C15.0342 5.02296 14.3238 5.26653 13.6797 5.84768Z" fill="#8F9098" />
+    <Path d="M13.6797 5.84768C13.1688 6.30933 12.8615 6.97898 12.7529 7.84157L12.7744 12.1698C12.7752 12.263 12.8127 12.3522 12.8786 12.4182C12.9445 12.4841 13.0337 12.5216 13.127 12.5224C13.2182 12.5228 13.303 12.4836 13.3739 12.4212L13.4493 12.1742L13.4251 7.89272C13.5371 7.22935 13.7746 6.71182 14.1531 6.37049C14.6646 5.90888 15.2173 5.7188 15.8499 5.70165C16.4694 5.68487 17.1048 5.9082 17.634 6.43732C18.042 6.84538 18.2741 7.30781 18.3391 7.83332L18.4296 13.9198C18.3924 14.2739 18.2477 14.5791 17.9953 14.8122C17.6384 15.1406 17.3082 15.271 16.9709 15.2729C16.5475 15.2757 16.1803 15.155 15.8397 14.8144C15.5688 14.5434 15.4135 14.2023 15.3714 13.7768L15.3161 8.39986C15.3065 8.09105 15.349 7.89065 15.4225 7.79069C15.5487 7.63414 15.7156 7.55527 15.9011 7.55527C16.0839 7.56027 16.2236 7.6314 16.3521 7.78849C16.433 7.88732 16.4801 8.0093 16.4926 8.16444L16.5518 13.1129C16.5532 13.206 16.5911 13.2949 16.6574 13.3604C16.7237 13.4258 16.8131 13.4627 16.9063 13.463C17.0006 13.463 17.0852 13.4233 17.1524 13.3604L17.2269 13.2468C17.244 13.2043 17.2524 13.1589 17.2517 13.1131L17.1917 8.14024C17.1664 7.82223 17.0668 7.56346 16.892 7.34928C16.6353 7.03545 16.303 6.86614 15.9121 6.85508C15.5046 6.84872 15.1369 6.98213 14.8571 7.37101C14.6758 7.61807 14.6019 7.9635 14.6162 8.40618L14.672 13.8062C14.732 14.4217 14.9576 14.9163 15.3475 15.3061C15.8376 15.7962 16.3863 15.9764 16.9835 15.9725C17.4941 15.9696 17.9894 15.7746 18.4728 15.3298C18.853 14.9788 19.0725 14.5156 19.1279 13.9569L19.0363 7.79344C18.9495 7.07045 18.6438 6.46318 18.1254 5.94476C17.4499 5.26931 16.6254 4.97904 15.8221 5.00117C15.0342 5.02296 14.3238 5.26653 13.6797 5.84768Z" fill="#8F9098" />
   </Svg>
 );
 
@@ -130,6 +134,12 @@ const AddPhotosIcon = () => (
   </Svg>
 );
 
+interface PickedImage {
+  uri: string;
+  type: string;
+  fileName: string;
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 const CreatePostScreen = ({navigation, route}: any) => {
   const editMode = route?.params?.editMode ?? false;
@@ -138,7 +148,7 @@ const CreatePostScreen = ({navigation, route}: any) => {
   const postType = route?.params?.type || 'post';
 
   const [content, setContent] = useState(editMode ? initialContent : '');
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<PickedImage[]>([]);
   const [posting, setPosting] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [profile, setProfile] = useState<any>(null);
@@ -156,9 +166,6 @@ const CreatePostScreen = ({navigation, route}: any) => {
       const token = await getToken();
       const userId = await getUserId();
       if (!token || !userId) return;
-      // xprofile=1 is required — without it BuddyBoss omits xprofile
-      // groups/fields entirely, so full name + job title resolve to blank
-      // and silently fall back to username.
       const res = await fetch(
         `${BASE}/buddyboss/v1/members/${userId}?xprofile=1`,
         {headers: {Authorization: `Bearer ${token}`}},
@@ -174,20 +181,37 @@ const CreatePostScreen = ({navigation, route}: any) => {
     launchImageLibrary(
       {mediaType: 'photo', selectionLimit: 4, quality: 0.8},
       res => {
+        if (res.errorCode) {
+          Alert.alert(
+            'Could not open photos',
+            res.errorMessage ||
+              'Please allow access to your photos in Android Settings and try again.',
+          );
+          return;
+        }
         if (res.assets) {
-          const uris = res.assets.map(a => a.uri).filter(Boolean) as string[];
-          setImages(prev => [...prev, ...uris].slice(0, 4));
+          const picked: PickedImage[] = res.assets
+            .filter(a => !!a.uri)
+            .map(a => ({
+              uri: a.uri as string,
+              type: a.type || 'image/jpeg',
+              fileName:
+                a.fileName ||
+                `photo_${Date.now()}.${(a.type || 'image/jpeg').split('/')[1] || 'jpg'}`,
+            }));
+          setImages(prev => [...prev, ...picked].slice(0, 4));
         }
       },
     );
   };
 
-  const uploadImages = async (token: string): Promise<number[]> => {
+  const uploadImages = async (token: string): Promise<{ids: number[]; failed: number}> => {
     const ids: number[] = [];
-    for (const uri of images) {
+    let failed = 0;
+    for (const img of images) {
       try {
         const formData = new FormData();
-        formData.append('file', {uri, type: 'image/jpeg', name: 'photo.jpg'} as any);
+        formData.append('file', {uri: img.uri, type: img.type, name: img.fileName} as any);
         formData.append('upload_privacy', 'public');
         const res = await fetch(`${BASE}/buddyboss/v1/media`, {
           method: 'POST',
@@ -196,11 +220,23 @@ const CreatePostScreen = ({navigation, route}: any) => {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data?.id) ids.push(data.id);
+          if (data?.id) {
+            ids.push(data.id);
+          } else {
+            failed++;
+            console.log('uploadImages: no media id in response', img.fileName, data);
+          }
+        } else {
+          failed++;
+          const body = await res.text().catch(() => '');
+          console.log(`uploadImages: upload failed for ${img.fileName} (${res.status})`, body);
         }
-      } catch {}
+      } catch (err: any) {
+        failed++;
+        console.log(`uploadImages: exception uploading ${img.fileName}`, err?.message || err);
+      }
     }
-    return ids;
+    return {ids, failed};
   };
 
   const handlePost = async () => {
@@ -214,7 +250,6 @@ const CreatePostScreen = ({navigation, route}: any) => {
       if (!token) throw new Error('Not logged in');
 
       if (editMode && editPostId) {
-        // Update existing post
         const ok = await updateActivity(editPostId, content.trim());
         if (ok) {
           navigation.goBack();
@@ -224,7 +259,25 @@ const CreatePostScreen = ({navigation, route}: any) => {
         return;
       }
 
-      const mediaIds = await uploadImages(token);
+      const {ids: mediaIds, failed} = await uploadImages(token);
+      if (failed > 0) {
+        const proceed = await new Promise<boolean>(resolve => {
+          Alert.alert(
+            'Photo upload problem',
+            failed === images.length
+              ? "Your photo(s) couldn't be uploaded. Post without them anyway?"
+              : `${failed} of ${images.length} photo(s) couldn't be uploaded. Post with just the rest?`,
+            [
+              {text: 'Cancel', style: 'cancel', onPress: () => resolve(false)},
+              {text: 'Post Anyway', onPress: () => resolve(true)},
+            ],
+          );
+        });
+        if (!proceed) {
+          setPosting(false);
+          return;
+        }
+      }
       const body: any = {
         content: content.trim(),
         type: 'activity_update',
@@ -266,7 +319,7 @@ const CreatePostScreen = ({navigation, route}: any) => {
       if (!token) throw new Error('Not logged in');
 
       const scheduledISO = buildScheduledISO(date, time, meridiem);
-      const mediaIds = await uploadImages(token);
+      const {ids: mediaIds} = await uploadImages(token);
 
       const body: any = {
         content: content.trim(),
@@ -427,9 +480,9 @@ const CreatePostScreen = ({navigation, route}: any) => {
             </TouchableOpacity>
           ) : (
             <View style={s.imagesGrid}>
-              {images.map((uri, i) => (
+              {images.map((img, i) => (
                 <View key={i} style={s.imageThumb}>
-                  <Image source={{uri}} style={s.imageThumbImg} />
+                  <Image source={{uri: img.uri}} style={s.imageThumbImg} />
                   <TouchableOpacity
                     style={s.removeImageBtn}
                     onPress={() => setImages(prev => prev.filter((_, idx) => idx !== i))}>
@@ -481,7 +534,6 @@ const s = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#FFFFFF'},
   flex: {flex: 1},
 
-  // Header — X on left, schedule+post on right
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -501,7 +553,6 @@ const s = StyleSheet.create({
   closeIcon: {fontSize: 18, color: '#8F9098'},
   headerRight: {flexDirection: 'row', alignItems: 'center', gap: 10},
 
-  // Clock + chevron schedule button
   scheduleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -510,7 +561,6 @@ const s = StyleSheet.create({
     paddingVertical: 6,
   },
 
-  // Post button — Figma: dark blue rounded
   postBtn: {
     backgroundColor: '#0C4D91',
     borderRadius: 50,
@@ -525,7 +575,6 @@ const s = StyleSheet.create({
 
   scrollView: {flex: 1},
 
-  // User row
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -547,7 +596,6 @@ const s = StyleSheet.create({
   userName: {fontSize: 15, fontWeight: '700', color: '#192546', marginBottom: 2, fontFamily: 'Runda'},
   userTitle: {fontSize: 12, color: '#8F9098', fontFamily: 'Runda'},
 
-  // Text input — Figma: border radius 5, gray bg, gray border
   textInputWrap: {
     marginHorizontal: 16,
     borderRadius: 5,
@@ -573,7 +621,6 @@ const s = StyleSheet.create({
     marginTop: 8,
   },
 
-  // Add Photos
   addPhotosArea: {
     marginHorizontal: 16,
     marginTop: 20,
@@ -624,7 +671,6 @@ const s = StyleSheet.create({
   },
   addMoreIcon: {fontSize: 28, color: '#1A3A6B'},
 
-  // Toolbar — Figma SVG icons
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',

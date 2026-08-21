@@ -15,6 +15,7 @@ import {
   Linking,
 } from 'react-native';
 import Svg, {Path} from 'react-native-svg';
+import BackButton from '../components/BackButton';
 import {forgotPassword, resetPassword} from '../api/authApi';
 
 // ─── Success tick icon — exact Figma SVG ──────────────────────────────────
@@ -163,20 +164,7 @@ const ForgotPasswordScreen = ({navigation, route}: any) => {
 
         {/* Back button — only on the initial request stage */}
         {stage === 'request' && (
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backBtn}
-            hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-            <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-              <Path
-                d="M12.5 15.8333L6.66667 10L12.5 4.16667"
-                stroke="#192546"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </TouchableOpacity>
+          <BackButton style={styles.backBtn} onPress={() => navigation.goBack()} />
         )}
 
         {/* Logo */}

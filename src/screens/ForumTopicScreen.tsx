@@ -10,6 +10,7 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  Platform,
   RefreshControl,
   ActivityIndicator,
   Modal,
@@ -25,7 +26,6 @@ import {
   ForumReply,
 } from '../api/forumsApi';
 import {
-  BackIcon,
   ReportIcon,
   ReplyIcon,
   LikeIcon,
@@ -33,6 +33,7 @@ import {
   LatestConversationIcon,
   LinkedInIcon,
 } from '../components/forumsIcons';
+import BackButton from '../components/BackButton';
 import ShareLinkedInModal from '../components/ShareLinkedInModal';
 
 // NOTE: no "like a reply" endpoint exists yet in forumsApi.ts — the Like
@@ -117,9 +118,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
-            <BackIcon size={28} />
-          </TouchableOpacity>
+          <BackButton style={styles.backBtn} onPress={() => navigation?.goBack()} size={28} />
         </View>
         <View style={styles.loadingBox}>
           <Text style={styles.emptyText}>{"This discussion couldn't be found."}</Text>
@@ -134,9 +133,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
 
       {/* ── Header: back + Report Forum ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
-          <BackIcon size={28} />
-        </TouchableOpacity>
+        <BackButton style={styles.backBtn} onPress={() => navigation?.goBack()} size={28} />
         <TouchableOpacity style={styles.reportBtn} onPress={() => setReportVisible(true)}>
           <ReportIcon size={21} />
           <Text style={styles.reportText}>{'Report Forum'}</Text>
@@ -324,14 +321,21 @@ const styles = StyleSheet.create({
   loadingBox: {flex: 1, alignItems: 'center', justifyContent: 'center'},
   emptyText: {color: '#8F9098', fontFamily: 'Runda', fontSize: 14},
 
-  // Figma: header frame — padding 10 16, row, gap 10, self-stretch, #FFF bg
+  // Figma: header frame — padding 10 16, row, gap 10, self-stretch, #FFF bg.
+  // Same Android status-bar overlap fix as AppHeader.tsx/AccountSettingsScreen —
+  // the core `react-native` SafeAreaView this screen wraps is an iOS-only
+  // no-op, so on Android this header rendered flush at y=0 and got clipped
+  // by the status bar (clock/battery/wifi), which is what made the back
+  // button look squashed/hidden behind the clock instead of sitting in its
+  // own row like on iOS.
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingBottom: 10,
     backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 10,
   },
   backBtn: {},
   reportBtn: {flexDirection: 'row', alignItems: 'center', gap: 10, height: 36},

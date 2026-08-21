@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect, useRef, useCallback} from 'react';
+import React, {useState, useEffect, useRef, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -15,12 +15,14 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import Svg, {Path, Circle, G, Mask, Rect, Defs, ClipPath} from 'react-native-svg';
+import Svg, {Path, Circle, G, Mask, Rect} from 'react-native-svg';
 import {launchImageLibrary} from 'react-native-image-picker';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import BackButton from '../components/BackButton';
 import {
   getThreadDetail,
   sendMessage,
@@ -31,28 +33,12 @@ import {
   groupMessagesByDate,
   formatMessageTime,
   stripHtml,
+  searchGifs,
+  GiphyGif,
+  isGifUrl,
 } from '../api/dmApi';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Defs>
-      <ClipPath id="clip0">
-        <Rect width="28" height="27.9996" fill="white" />
-      </ClipPath>
-    </Defs>
-    <G clipPath="url(#clip0)">
-      <Rect x="0.7" y="0.7" width="26.6" height="26.5996" rx="6.3" stroke="#8F9098" strokeWidth="1.4" />
-      <Path
-        d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-        fill="#8F9098"
-        stroke="#8F9098"
-        strokeWidth="0.7"
-      />
-    </G>
-  </Svg>
-);
 
 const DotsIcon = () => (
   <Svg width={5} height={21} viewBox="0 0 5 21" fill="none">
@@ -115,11 +101,103 @@ const RemoveIcon = () => (
   </Svg>
 );
 
-const EMOJI_LIST = [
-  '😀', '😂', '😍', '🥰', '😎', '🤔', '😢', '😡',
-  '👍', '👎', '🙏', '👏', '💪', '🔥', '🎉', '❤️',
-  '✅', '❌', '⭐', '💡', '📌', '🚀', '👀', '😴',
-  '😅', '🙌', '💯', '🤝', '📸', '🎥', '📎', '😊',
+// Expanded from a flat 32-emoji list to a categorized set covering the
+// common ranges people actually reach for (per Marium — "it only shows
+// selected emojis"), while staying plain unicode characters so nothing
+// extra needs to be bundled or downloaded. Grouped into simple categories
+// with small headers rather than one giant undifferentiated grid, since
+// there are now a few hundred rather than 32.
+const EMOJI_CATEGORIES: {label: string; emojis: string[]}[] = [
+  {
+    label: 'Smileys & Emotion',
+    emojis: [
+      '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊',
+      '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪',
+      '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏',
+      '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕',
+      '🤢', '🤮', '🥵', '🥶', '🥴', '😵', '🤯', '🥳', '😎', '🤓', '🧐', '😕',
+      '😟', '🙁', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥',
+      '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡',
+      '😠', '🤬', '😈', '👿', '💀', '☠️', '💩',
+    ],
+  },
+  {
+    label: 'Gestures & People',
+    emojis: [
+      '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙',
+      '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜',
+      '👏', '🙌', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦵', '🦶',
+      '👂', '👃', '🧠', '👀', '👁️', '👅', '👄', '💋', '🩸',
+    ],
+  },
+  {
+    label: 'Animals & Nature',
+    emojis: [
+      '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮',
+      '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐔', '🐧', '🐦', '🐤', '🦆', '🦉',
+      '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐢', '🐍',
+      '🦎', '🦖', '🐙', '🦀', '🐬', '🐳', '🐘', '🦒', '🐫', '🐄', '🐑', '🐓',
+      '🦃', '🐇', '🐿️', '🦔', '🌵', '🌲', '🌳', '🌴', '🌱', '🌿', '🍀', '🌸',
+      '🌼', '🌻', '🌞', '🌝', '🌚', '🌕', '⭐', '🌟', '✨', '⚡', '🔥', '💧',
+      '🌈', '☀️', '☁️', '⛈️', '❄️',
+    ],
+  },
+  {
+    label: 'Food & Drink',
+    emojis: [
+      '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒',
+      '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️',
+      '🌽', '🥕', '🧄', '🧅', '🥔', '🍠', '🥐', '🍞', '🥖', '🥨', '🧀', '🥚',
+      '🍳', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🌭', '🍔', '🍟', '🍕', '🥪',
+      '🌮', '🌯', '🥙', '🧆', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍜', '🍝',
+      '🍣', '🍤', '🍙', '🍚', '🍛', '🍲', '🍥', '🥟', '🥠', '🍢', '🍡', '🍧',
+      '🍨', '🍦', '🥧', '🍰', '🎂', '🧁', '🍮', '🍭', '🍬', '🍫', '🍩', '🍪',
+      '☕', '🍵', '🧃', '🥤', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧊',
+    ],
+  },
+  {
+    label: 'Activities & Objects',
+    emojis: [
+      '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🏓', '🏸', '🥅', '🏒',
+      '🏑', '🥍', '🏏', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿',
+      '⛷️', '🏂', '🏋️', '🤼', '🤸', '⛹️', '🤺', '🤾', '🏌️', '🏇', '🧘', '🏄',
+      '🏊', '🤽', '🚣', '🧗', '🚴', '🚵', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️',
+      '🏵️', '🎗️', '🎫', '🎟️', '🎪', '🤹', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧',
+      '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '🧩', '♟️',
+      '🎯', '🎳', '🎮', '🎰', '🧸', '🪀', '🪁', '🎈', '🎉', '🎊', '🎁', '🏮',
+      '🧧',
+    ],
+  },
+  {
+    label: 'Travel & Places',
+    emojis: [
+      '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚',
+      '🚛', '🚜', '🛵', '🏍️', '🚲', '🛴', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡',
+      '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇',
+      '🚊', '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵',
+      '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '🗺️', '🧭', '🏔️', '⛰️', '🌋', '🗻',
+      '🏕️', '🏖️', '🏜️', '🏝️', '🏞️', '🏟️', '🏛️', '🏗️', '🧱', '🏘️', '🏚️', '🏠',
+      '🏡', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '🏭',
+      '💒', '🗼', '🗽', '⛪', '🕌', '🛕', '🕍', '⛩️', '🕋', '⛲', '⛺', '🌁',
+      '🌃', '🏙️', '🌄', '🌅', '🌆', '🌇', '🌉',
+    ],
+  },
+  {
+    label: 'Symbols',
+    emojis: [
+      '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕',
+      '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️',
+      '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌',
+      '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️',
+      '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️',
+      '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌',
+      '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱',
+      '🔞', '📵', '🚭', '❗', '❓', '❕', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️',
+      '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎',
+      '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🈳', '🈂️', '🛂',
+      '🛃', '🛄', '🛅',
+    ],
+  },
 ];
 
 // The backend stores emoji as HTML numeric/named character entities
@@ -167,15 +245,26 @@ const DeleteMsgIcon = () => (
 
 const DMConversationScreen = ({route, navigation}: any) => {
   const {
-    threadId,
     recipientName,
     recipientAvatar,
     recipientUserId,
     currentUserId,
   } = route.params;
 
+  // Kept as state rather than read straight off route.params: sending a
+  // message can come back with a *different* thread id than the one this
+  // screen opened with (BuddyBoss creates a fresh thread if the original
+  // one was hidden/deleted on the server side). If we kept reloading with
+  // the original id after that, the message would post successfully but
+  // never show up here — it'd just look like it vanished on send.
+  const [threadId, setThreadId] = useState<number>(route.params.threadId);
   const [thread, setThread] = useState<DMThreadDetail | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  // Raw messages, not the grouped display list — kept separate so a newly
+  // sent message can be appended locally and show up instantly, instead of
+  // waiting on a full re-fetch of the thread (which is what made sent
+  // messages take a few seconds to appear).
+  const [rawMessages, setRawMessages] = useState<DMMessage[]>([]);
+  const messages = useMemo(() => groupMessagesByDate(rawMessages), [rawMessages]);
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -187,8 +276,12 @@ const DMConversationScreen = ({route, navigation}: any) => {
   >([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifResults, setGifResults] = useState<GiphyGif[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [textSelection, setTextSelection] = useState({start: 0, end: 0});
+  const [loadError, setLoadError] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -196,13 +289,38 @@ const DMConversationScreen = ({route, navigation}: any) => {
     markThreadRead(threadId).catch(() => {});
   }, []);
 
-  const loadThread = async () => {
+  // Loads/searches Giphy whenever the picker is open and the query changes.
+  // Empty query pulls trending GIFs so the panel isn't blank on open.
+  useEffect(() => {
+    if (!showGifPicker) return;
+    let cancelled = false;
+    setGifLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await searchGifs(gifQuery);
+        if (!cancelled) setGifResults(data);
+      } catch {
+        if (!cancelled) setGifResults([]);
+      } finally {
+        if (!cancelled) setGifLoading(false);
+      }
+    }, gifQuery.trim() ? 350 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showGifPicker, gifQuery]);
+
+  const loadThread = async (idOverride?: number) => {
+    const id = idOverride ?? threadId;
+    setLoadError(false);
     try {
-      const data = await getThreadDetail(threadId);
+      const data = await getThreadDetail(id);
       setThread(data);
-      setMessages(groupMessagesByDate(data.messages));
+      setRawMessages(data?.messages ?? []);
     } catch (e) {
       console.log('Thread load error:', e);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -219,7 +337,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
     if (attachments.length) {
       Alert.alert(
         'Attachments not sent',
-        'Photo/video/file sending isn\u2019t connected to the server yet — only your text will be sent for now.',
+        'Photo/video/file sending isn’t connected to the server yet — only your text will be sent for now.',
       );
     }
 
@@ -232,14 +350,65 @@ const DMConversationScreen = ({route, navigation}: any) => {
     setMessageText('');
     setSending(true);
     try {
-      await sendMessage(threadId, [recipientUserId], text);
+      const res = await sendMessage(threadId, [recipientUserId], text);
+      // The server can hand back a different thread id than the one we sent
+      // (see note by the threadId state above).
+      const newThreadId = res?.id;
+      if (newThreadId && newThreadId !== threadId) {
+        setThreadId(newThreadId);
+      }
       setAttachments([]);
-      await loadThread();
-      setTimeout(() => flatListRef.current?.scrollToEnd({animated: true}), 100);
+      // The send response already includes the full message object (with
+      // sender_data, id, date_sent, etc.) — show it immediately instead of
+      // waiting on a second GET request to reload the whole thread. That
+      // second round trip was what made a sent message take a few seconds
+      // to appear.
+      const sentMsg: DMMessage | undefined = res?.messages?.[0];
+      if (sentMsg) {
+        setRawMessages(prev =>
+          prev.some(m => m.id === sentMsg.id) ? prev : [...prev, sentMsg],
+        );
+        setTimeout(() => flatListRef.current?.scrollToEnd({animated: true}), 50);
+      }
+      // Reconcile with the server in the background (doesn't block the UI) —
+      // covers cases like the sent message needing server-side fields we
+      // don't have locally, or another message having arrived meanwhile.
+      loadThread(newThreadId ?? threadId).catch(() => {});
     } catch (e) {
       console.log('Send error:', e);
       Alert.alert('Error', 'Could not send message.');
       setMessageText(text);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Sends a picked GIF immediately as its own message (rather than inserting
+  // it into the text box) — matches how GIFs behave in most chat apps. The
+  // GIF's direct image URL is sent as the message text; renderItem below
+  // detects GIF-URL-only messages and displays them as an image instead of
+  // a plain text link.
+  const handleSendGif = async (gif: GiphyGif) => {
+    if (!gif.url || sending) return;
+    setShowGifPicker(false);
+    setSending(true);
+    try {
+      const res = await sendMessage(threadId, [recipientUserId], gif.url);
+      const newThreadId = res?.id;
+      if (newThreadId && newThreadId !== threadId) {
+        setThreadId(newThreadId);
+      }
+      const sentMsg: DMMessage | undefined = res?.messages?.[0];
+      if (sentMsg) {
+        setRawMessages(prev =>
+          prev.some(m => m.id === sentMsg.id) ? prev : [...prev, sentMsg],
+        );
+        setTimeout(() => flatListRef.current?.scrollToEnd({animated: true}), 50);
+      }
+      loadThread(newThreadId ?? threadId).catch(() => {});
+    } catch (e) {
+      console.log('GIF send error:', e);
+      Alert.alert('Error', 'Could not send GIF.');
     } finally {
       setSending(false);
     }
@@ -359,14 +528,22 @@ const DMConversationScreen = ({route, navigation}: any) => {
     const isMe = msg.sender_id === currentUserId;
     const time = formatMessageTime(msg.date_sent);
     const text = decodeHtmlEntities(
-      msg.message.raw
+      msg.message?.raw
         ? stripHtml(msg.message.raw)
-        : stripHtml(msg.message.rendered),
+        : stripHtml(msg.message?.rendered ?? ''),
     );
     const isSelected = selectedMsgIds.includes(msg.id);
     const hasImage = msg.bp_media_ids?.length;
     const hasVideo = msg.bp_videos?.length;
     const hasDoc = msg.bp_documents?.length;
+    const textIsGif = !!text && isGifUrl(text);
+    // sender_data can come back null/undefined from the API — e.g. a message
+    // from a user whose account was later deleted or deactivated. Reading
+    // .user_avatars/.sender_name off it unconditionally used to throw inside
+    // this renderItem, which is what made the whole conversation screen
+    // freeze or crash on load for threads containing such a message.
+    const senderName = msg.sender_data?.sender_name ?? 'Deleted user';
+    const senderAvatar = msg.sender_data?.user_avatars?.thumb;
 
     return (
       <TouchableOpacity
@@ -374,15 +551,25 @@ const DMConversationScreen = ({route, navigation}: any) => {
         onPress={() => deleteMode && toggleSelectMessage(msg.id)}
         style={c.msgRow}>
         <View style={c.avatarWrap}>
-          <Image source={{uri: msg.sender_data.user_avatars.thumb}} style={c.msgAvatar} />
+          {senderAvatar ? (
+            <Image source={{uri: senderAvatar}} style={c.msgAvatar} />
+          ) : (
+            <View style={[c.msgAvatar, c.msgAvatarFallback]} />
+          )}
           <View style={c.onlineBadge}><OnlineDot /></View>
         </View>
         <View style={c.msgBubble}>
           <View style={c.msgMetaRow}>
-            <Text style={c.msgSenderName}>{msg.sender_data.sender_name}</Text>
+            <Text style={c.msgSenderName}>{senderName}</Text>
             <Text style={c.msgMetaTime}>{` · ${time}`}</Text>
           </View>
-          {!!text && <Text style={c.msgText}>{text}</Text>}
+          {!!text && (
+            textIsGif ? (
+              <Image source={{uri: text}} style={c.msgGifImage} resizeMode="cover" />
+            ) : (
+              <Text style={c.msgText}>{text}</Text>
+            )
+          )}
           {hasImage && (
             <Image
               source={{uri: msg.bp_media_ids![0].attachment_data.full}}
@@ -424,9 +611,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
 
       {/* Person header - always visible */}
       <View style={c.personHeader}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={c.backBtn}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton style={c.backBtn} onPress={() => navigation.goBack()} />
         <View style={c.personInfo}>
           <Image source={{uri: recipientAvatar}} style={c.headerAvatar} />
           <View>
@@ -465,6 +650,13 @@ const DMConversationScreen = ({route, navigation}: any) => {
       {/* Messages */}
       {loading ? (
         <ActivityIndicator color="#192546" style={{marginTop: 40}} />
+      ) : loadError ? (
+        <View style={c.errorWrap}>
+          <Text style={c.errorText}>{'Could not load this conversation.'}</Text>
+          <TouchableOpacity style={c.retryBtn} onPress={loadThread}>
+            <Text style={c.retryBtnText}>{'Retry'}</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           ref={flatListRef}
@@ -530,7 +722,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
               <TouchableOpacity onPress={handlePickPhoto}><CameraIcon /></TouchableOpacity>
               <TouchableOpacity onPress={handlePickVideo}><VideoIcon /></TouchableOpacity>
               <TouchableOpacity onPress={handlePickFile}><AttachIcon /></TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowGifPicker(true)}><GifIcon /></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setGifQuery(''); setShowGifPicker(true); }}><GifIcon /></TouchableOpacity>
               <TouchableOpacity onPress={() => setShowEmojiPicker(prev => !prev)}><EmojiIcon /></TouchableOpacity>
             </View>
             <TouchableOpacity
@@ -558,16 +750,27 @@ const DMConversationScreen = ({route, navigation}: any) => {
                 <Text style={c.optionsClose}>{'✕'}</Text>
               </TouchableOpacity>
             </View>
-            <View style={c.emojiGrid}>
-              {EMOJI_LIST.map(emoji => (
-                <TouchableOpacity
-                  key={emoji}
-                  style={c.emojiCell}
-                  onPress={() => insertEmoji(emoji)}>
-                  <Text style={c.emojiText}>{emoji}</Text>
-                </TouchableOpacity>
+            {/* Categorized, scrollable — was a single flat 32-emoji grid
+                before, which read as "only a few selected emojis". Now
+                covers a few hundred common emoji across simple categories,
+                capped to a fixed height so it doesn't take over the screen. */}
+            <ScrollView style={c.emojiScrollArea} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              {EMOJI_CATEGORIES.map(category => (
+                <View key={category.label}>
+                  <Text style={c.emojiCategoryLabel}>{category.label}</Text>
+                  <View style={c.emojiGrid}>
+                    {category.emojis.map((emoji, idx) => (
+                      <TouchableOpacity
+                        key={`${category.label}-${idx}`}
+                        style={c.emojiCell}
+                        onPress={() => insertEmoji(emoji)}>
+                        <Text style={c.emojiText}>{emoji}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               ))}
-            </View>
+            </ScrollView>
           </View>
         )}
       </KeyboardAvoidingView>
@@ -613,7 +816,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
         </TouchableOpacity>
       </Modal>
 
-      {/* GIF Picker Modal */}
+      {/* GIF Picker Modal — search Giphy directly and tap a result to send it. */}
       <Modal
         visible={showGifPicker}
         transparent
@@ -632,12 +835,36 @@ const DMConversationScreen = ({route, navigation}: any) => {
                 <Text style={c.optionsClose}>{'✕'}</Text>
               </TouchableOpacity>
             </View>
-            <View style={c.gifPlaceholder}>
-              <GifIcon />
-              <Text style={c.gifPlaceholderText}>
-                {'GIF search isn\u2019t connected yet — this needs a Giphy API key wired up before it can show results.'}
-              </Text>
+            <View style={c.gifSearchWrap}>
+              <TextInput
+                style={c.gifSearchInput}
+                placeholder="Search GIPHY"
+                placeholderTextColor="#8F9098"
+                value={gifQuery}
+                onChangeText={setGifQuery}
+                autoCorrect={false}
+              />
             </View>
+            {gifLoading ? (
+              <ActivityIndicator color="#192546" style={{marginVertical: 24}} />
+            ) : (
+              <FlatList
+                data={gifResults}
+                keyExtractor={g => g.id}
+                numColumns={3}
+                contentContainerStyle={c.gifGrid}
+                style={c.gifListArea}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({item}) => (
+                  <TouchableOpacity style={c.gifCell} onPress={() => handleSendGif(item)}>
+                    <Image source={{uri: item.previewUrl}} style={c.gifThumb} resizeMode="cover" />
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={c.gifEmptyText}>{'No GIFs found'}</Text>
+                }
+              />
+            )}
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -736,6 +963,19 @@ const c = StyleSheet.create({
     gap: 24,
   },
 
+  errorWrap: {alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 12},
+  errorText: {fontFamily: 'Runda', fontSize: 14, color: '#8F9098'},
+  retryBtn: {
+    height: 36,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#0C4D91',
+  },
+  retryBtnText: {color: '#0C4D91', fontFamily: 'Runda', fontSize: 14, fontWeight: '500'},
+
   dateSeparatorWrap: {alignItems: 'center', marginVertical: 8},
   datePill: {
     paddingVertical: 4,
@@ -757,6 +997,7 @@ const c = StyleSheet.create({
   msgRowMe: {},
   avatarWrap: {position: 'relative', width: 40, height: 40},
   msgAvatar: {width: 40, height: 40, borderRadius: 20},
+  msgAvatarFallback: {backgroundColor: '#E8E9F1'},
   onlineBadge: {position: 'absolute', bottom: 0, right: 0},
 
   msgBubble: {flex: 1},
@@ -800,6 +1041,17 @@ const c = StyleSheet.create({
   },
 
   msgImage: {width: 200, height: 150, borderRadius: 8, marginTop: 6},
+
+  // GIF messages — square-ish preview, distinct from photo attachments
+  // mostly in that it comes straight from a GIF URL rather than an uploaded
+  // attachment object.
+  msgGifImage: {
+    width: 180,
+    height: 180,
+    borderRadius: 8,
+    marginTop: 4,
+    backgroundColor: '#E8E9F1',
+  },
 
   docPreview: {
     backgroundColor: '#F8F9FE',
@@ -949,12 +1201,27 @@ const c = StyleSheet.create({
     fontWeight: '700',
     color: '#192546',
   },
+  // Capped height so a few hundred emoji don't push the compose box and
+  // send button off screen — scrolls internally instead.
+  emojiScrollArea: {
+    maxHeight: 260,
+  },
+  emojiCategoryLabel: {
+    fontFamily: 'Runda',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8F9098',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+  },
   emojiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 12,
     paddingTop: 8,
-    paddingBottom: 12,
+    paddingBottom: 4,
   },
   emojiCell: {
     width: '12.5%',
@@ -966,20 +1233,49 @@ const c = StyleSheet.create({
     fontSize: 22,
   },
 
-  // GIF picker placeholder
-  gifPlaceholder: {
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingBottom: 32,
-    gap: 12,
+  // GIF picker — search box + result grid
+  gifSearchWrap: {
+    paddingHorizontal: 24,
+    paddingBottom: 12,
   },
-  gifPlaceholderText: {
+  gifSearchInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#E8E9F1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontFamily: 'Runda',
+    fontSize: 14,
+    color: '#192546',
+    backgroundColor: '#F9FAFB',
+  },
+  gifListArea: {
+    maxHeight: 340,
+  },
+  gifGrid: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+  },
+  gifCell: {
+    flex: 1 / 3,
+    aspectRatio: 1,
+    margin: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#E8E9F1',
+  },
+  gifThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  gifEmptyText: {
     fontFamily: 'Runda',
     fontSize: 13,
     color: '#8F9098',
     textAlign: 'center',
-    lineHeight: 18,
+    paddingVertical: 24,
   },
+
   composeActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',

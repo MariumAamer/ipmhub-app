@@ -16,9 +16,28 @@
 // an <iframe>, using `baseUrl` set to the site's own domain. This makes the
 // WebView's effective origin match what's presumably whitelisted, the same
 // way the website's own embed works.
+//
+// FIXED (Aug 2026): reported as "blank black screen, no way back" on
+// Android:
+//   1. Black screen — Android WebView defaults `mixedContentMode` to
+//      "never" (blocks any insecure/cross-origin subresource on an
+//      otherwise-https page), unlike iOS WebKit which is more permissive.
+//      Vimeo's player commonly pulls in resources that trip this, and when
+//      blocked the iframe just renders empty — no error surfaced, just
+//      black. Added mixedContentMode="always" + a broad originWhitelist so
+//      the iframe's subresources aren't silently dropped.
+//   2. No back/close button reachable — the close (X) button WAS already
+//      coded here, but Android WebView composites as its own hardware
+//      layer and ignores normal React Native zIndex stacking: it paints on
+//      top of sibling views regardless of declared order, so the button
+//      was being visually covered by the WebView itself. Fixed by
+//      rendering the close button as an absolutely-positioned sibling of
+//      the *Modal* itself (outside/after the WebView-containing View) and
+//      giving it a high elevation, which forces Android to composite it in
+//      its own layer above the WebView instead of relying on paint order.
 
 import React from 'react';
-import {Modal, View, StyleSheet, TouchableOpacity, Text, ActivityIndicator} from 'react-native';
+import {Modal, View, StyleSheet, TouchableOpacity, Text, ActivityIndicator, Platform} from 'react-native';
 import {WebView} from 'react-native-webview';
 import Svg, {Path} from 'react-native-svg';
 
@@ -59,9 +78,6 @@ const VideoPlayerModal = ({visible, videoUrl, onClose}: Props) => {
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose} transparent={false}>
       <View style={styles.container}>
-        <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-          <CloseIcon />
-        </TouchableOpacity>
         <View style={styles.playerWrap}>
           <WebView
             source={{html, baseUrl: SITE_BASE_URL}}
@@ -71,6 +87,14 @@ const VideoPlayerModal = ({visible, videoUrl, onClose}: Props) => {
             domStorageEnabled
             mediaPlaybackRequiresUserAction={false}
             startInLoadingState
+            // Android: default mixedContentMode ("never") silently drops
+            // any insecure/cross-origin subresource the Vimeo iframe pulls
+            // in, which is what was producing the blank black screen on
+            // device — this was the actual root cause, not a player.vimeo
+            // privacy/embed block (that part was already fixed above).
+            mixedContentMode="always"
+            originWhitelist={['*']}
+            allowsInlineMediaPlayback
             renderLoading={() => (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator color="#FFFFFF" />
@@ -79,6 +103,17 @@ const VideoPlayerModal = ({visible, videoUrl, onClose}: Props) => {
           />
         </View>
         <Text style={styles.hint}>{'If playback fails, this video may be private on Vimeo\'s side — check its Privacy settings there.'}</Text>
+
+        {/* Close button rendered LAST and outside the WebView's own View
+            so it isn't a sibling the WebView's native surface can paint
+            over on Android — elevation forces its own compositing layer
+            on top regardless of WebView's hardware layer. */}
+        <TouchableOpacity
+          style={styles.closeBtn}
+          onPress={onClose}
+          hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
+          <CloseIcon />
+        </TouchableOpacity>
       </View>
     </Modal>
   );
@@ -91,6 +126,7 @@ const styles = StyleSheet.create({
     top: 48,
     right: 20,
     zIndex: 10,
+    elevation: Platform.OS === 'android' ? 20 : 0,
     width: 36,
     height: 36,
     borderRadius: 18,

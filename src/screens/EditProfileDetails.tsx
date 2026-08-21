@@ -10,9 +10,10 @@
  */
 import React, {useState, useEffect} from 'react';
 import {
-  SafeAreaView, ScrollView, View, Text,
-  StyleSheet, StatusBar, Alert,
+  SafeAreaView, View, Text,
+  StyleSheet, StatusBar, Alert, Platform,
 } from 'react-native';
+import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import {
@@ -100,7 +101,13 @@ const EditProfileDetails = ({navigation}: any) => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
-      <ScrollView contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView
+        contentContainerStyle={st.content}
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid
+        extraScrollHeight={Platform.OS === 'ios' ? 20 : 0}
+        keyboardOpeningTime={0}
+        keyboardShouldPersistTaps="handled">
         <BackBtn onPress={() => navigation?.goBack()} />
         <PageHeader
           title="Profile"
@@ -130,7 +137,7 @@ const EditProfileDetails = ({navigation}: any) => {
 
         <SaveBtn onPress={handleSave} loading={loading} />
         <View style={{height: 40}} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
     </SafeAreaView>

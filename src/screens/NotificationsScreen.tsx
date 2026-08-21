@@ -17,6 +17,11 @@ import {
 } from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
+// Drives the side drawer opened by AppHeader's chevron — this screen was
+// passing `onDrawerOpen={() => {}}` (an explicit no-op) and never rendered
+// ProfileDrawer at all, so the chevron (>>) tap did nothing here (reported:
+// "the >> in app header doesn't work on store and notification").
+import ProfileDrawer from '../components/ProfileDrawer';
 import {
   getNotifications,
   markNotificationRead,
@@ -74,9 +79,6 @@ const cbStyles = StyleSheet.create({
 });
 
 // ─── Bulk-bar action icons ────────────────────────────────────────────────────
-// NOTE: the Figma spec's "delete svg" export is byte-identical to its "tick
-// svg" (a copy/paste slip in the design file, not an intentional shared
-// glyph) — using a real trash icon here instead of duplicating the tick.
 const TrashIcon = ({size = 13, color = GREY}: {size?: number; color?: string}) => (
   <Svg width={size} height={size} viewBox="0 0 13 13" fill="none">
     <Path
@@ -153,15 +155,6 @@ const getTypeInfo = (
   const cn = (componentName || '').toLowerCase();
   const ca = (componentAction || '').toLowerCase();
   if (cn.includes('forum')) return {label: 'Forums', isForums: true};
-  // CONFIRMED via Postman: component "cp_first_feed_post", action
-  // "cp_first_feed_post_complete" — self-directed engagement/gamification
-  // notifications ("Your post is live on the feed", presumably also the
-  // "You've contributed to X forum discussions" one, given the shared "cp_"
-  // prefix — likely a Community Points-style plugin). No distinct badge
-  // color/icon confirmed in Figma yet, so this reuses the grey Activity
-  // badge with a more accurate "Community" label rather than the bare
-  // "Activity" fallback. Worth a real design pass once more cp_ actions
-  // turn up.
   if (cn.startsWith('cp_')) return {label: 'Community', isForums: false};
   if (ca.includes('mention')) return {label: 'Mentions', isForums: false};
   if (ca.includes('follow')) return {label: 'Activity', isForums: false};
@@ -274,6 +267,8 @@ const NotificationsScreen = ({navigation}: any) => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [sortModalVisible, setSortModalVisible] = useState(false);
+  // Drives the ProfileDrawer opened by AppHeader's chevron below.
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     pageRef.current = 1;
@@ -350,15 +345,6 @@ const NotificationsScreen = ({navigation}: any) => {
   };
 
   // ── Tap a notification to open it ───────────────────────────────────────────
-  // Marks it read (optimistic) and routes based on what's confirmed from
-  // Postman:
-  //  - "new_forum_topic" notifications: item_id IS the topic id, so this
-  //    goes straight to ForumTopicScreen.
-  //  - Everything else (e.g. bbp_new_reply, where item_id is a reply id,
-  //    not a topic id — and link_url came back empty in the sample data):
-  //    falls back to opening link_url in the browser if present, otherwise
-  //    just marks it read with nowhere confirmed to send them. Flag for
-  //    Robby if replies should carry a topic_id or a working link_url.
   const handleRowPress = (item: AppNotification) => {
     if (item.isNew) {
       setItems(prev => prev.map(n => (n.id === item.id ? {...n, isNew: false} : n)));
@@ -395,7 +381,7 @@ const NotificationsScreen = ({navigation}: any) => {
     const ids = Array.from(selectedIds);
     Alert.alert(
       'Delete notifications',
-      `Delete ${ids.length} notification${ids.length > 1 ? 's' : ''}? This can\u2019t be undone.`,
+      `Delete ${ids.length} notification${ids.length > 1 ? 's' : ''}? This can’t be undone.`,
       [
         {text: 'Cancel', style: 'cancel'},
         {
@@ -416,7 +402,8 @@ const NotificationsScreen = ({navigation}: any) => {
   return (
     <SafeAreaView style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <AppHeader navigation={navigation} onDrawerOpen={() => {}} />
+      <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
+      <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
 
       <View style={s.titleWrap}>
         <Text style={s.pageTitle}>Notifications</Text>
@@ -471,7 +458,7 @@ const NotificationsScreen = ({navigation}: any) => {
             {tab === 'unread' ? 'No unread notifications' : 'No read notifications'}
           </Text>
           <Text style={s.emptySubtitle}>
-            {tab === 'unread' ? "You're all caught up." : 'Notifications you\u2019ve read will show up here.'}
+            {tab === 'unread' ? "You're all caught up." : 'Notifications you’ve read will show up here.'}
           </Text>
         </View>
       ) : (
@@ -590,10 +577,6 @@ const s = StyleSheet.create({
   },
   avatarFallback: {alignItems: 'center', justifyContent: 'center', backgroundColor: DARK_BLUE},
   avatarInitial: {color: '#FFFFFF', fontFamily: 'Runda-Bold', fontSize: 14},
-  // Forums/Activity badge overlaid on the avatar's corner, per Figma —
-  // replaces the earlier inline icon-next-to-label treatment. The white
-  // border keeps it legible against whatever the avatar image looks like
-  // underneath.
   typeBadgeCorner: {
     position: 'absolute',
     right: -2,

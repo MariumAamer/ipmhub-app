@@ -9,6 +9,10 @@ import {
   Dimensions,
   Image,
 } from 'react-native';
+// Real per-device top inset — replaces the old `StatusBar.currentHeight || 0`
+// guess, which is always 0 on iOS (masking the bug there entirely) and only
+// ever covered the status bar height on Android, not notches/cutouts.
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 
 const {width, height} = Dimensions.get('window');
@@ -18,12 +22,15 @@ const LOGO_LEFT = (-20 / 390) * width;
 const LOGO_BOTTOM = (-87 / 844) * height;
 
 const WelcomeScreen = ({navigation}: any) => {
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={false} />
 
-      {/* White status bar backing */}
-      <View style={styles.topWhite} />
+      {/* White status bar backing — real device inset now, not the old
+          Android-only StatusBar.currentHeight guess. */}
+      <View style={[styles.topWhite, {height: insets.top}]} />
 
       <LinearGradient
         colors={['#005AB4', '#E257E4']}
@@ -63,7 +70,8 @@ const WelcomeScreen = ({navigation}: any) => {
 
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: '#FFFFFF'},
-  topWhite: {height: StatusBar.currentHeight || 0, backgroundColor: '#FFFFFF'},
+  // height is set inline above using the real safe-area top inset.
+  topWhite: {backgroundColor: '#FFFFFF'},
   bottomWhite: {height: 24, backgroundColor: '#FFFFFF'},
   gradient: {flex: 1},
 

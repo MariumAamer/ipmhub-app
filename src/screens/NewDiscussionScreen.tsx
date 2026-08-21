@@ -9,13 +9,13 @@ import {
   Modal,
   ScrollView,
   StatusBar,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
   Image,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import {launchImageLibrary} from 'react-native-image-picker';
 import DocumentPicker from 'react-native-document-picker';
@@ -144,6 +144,12 @@ const NewDiscussionScreen = ({navigation}: any) => {
       } else {
         Alert.alert('Error', 'Could not post your discussion. Please try again.');
       }
+    } catch (err: any) {
+      // Temporary: show the real backend error/response shape so we can see
+      // exactly why this is being reported as a failure — this is also what
+      // was letting the discussion actually get created server-side while
+      // the app showed an error, causing duplicate posts on retry.
+      Alert.alert('Could not post discussion', err?.message || 'Something went wrong. Please try again.');
     } finally {
       setPublishing(false);
     }

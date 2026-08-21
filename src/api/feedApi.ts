@@ -21,6 +21,35 @@ const authHeaders = async (): Promise<Record<string, string>> => {
   return headers;
 };
 
+// ─── fetch with a hard timeout ────────────────────────────────────────────────
+// React Native's fetch has no default timeout. If a request never gets a
+// response — dropped connection, server-side hang, a proxy silently sitting
+// on the socket — the awaiting call just hangs forever: it never resolves
+// AND never rejects, so any try/catch around it never runs and any loading
+// spinner tied to it never clears. This is what was happening on Introductions
+// comment posting: "Post Comment" spun forever with no error alert, because
+// the request itself was stuck, not failing. Used for the comment-posting
+// path (postActivityComment / getActivityComments) since that's the flow
+// that was reported hanging; safe to apply more broadly later.
+const fetchWithTimeout = async (
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 15000,
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {...options, signal: controller.signal});
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms: ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 // ─── Strip HTML ───────────────────────────────────────────────────────────────
 // WordPress/BuddyBoss content is rendered with HTML entities encoded (e.g. a
 // straight/curly apostrophe becomes &#039; or &#8217;). Only &nbsp;/&amp; were
@@ -32,22 +61,22 @@ const HTML_ENTITIES: Record<string, string> = {
   '&amp;': '&',
   '&quot;': '"',
   '&#034;': '"',
-  '&#8220;': '\u201C',
-  '&#8221;': '\u201D',
-  '&ldquo;': '\u201C',
-  '&rdquo;': '\u201D',
+  '&#8220;': '“',
+  '&#8221;': '”',
+  '&ldquo;': '“',
+  '&rdquo;': '”',
   '&#039;': "'",
-  '&#8217;': '\u2019',
-  '&#8216;': '\u2018',
+  '&#8217;': '’',
+  '&#8216;': '‘',
   '&apos;': "'",
-  '&rsquo;': '\u2019',
-  '&lsquo;': '\u2018',
-  '&#8211;': '\u2013',
-  '&#8212;': '\u2014',
-  '&ndash;': '\u2013',
-  '&mdash;': '\u2014',
-  '&hellip;': '\u2026',
-  '&#8230;': '\u2026',
+  '&rsquo;': '’',
+  '&lsquo;': '‘',
+  '&#8211;': '–',
+  '&#8212;': '—',
+  '&ndash;': '–',
+  '&mdash;': '—',
+  '&hellip;': '…',
+  '&#8230;': '…',
   '&lt;': '<',
   '&gt;': '>',
 };
@@ -75,6 +104,29 @@ export const stripHtml = (html: string): string => {
   // Collapse 3+ line breaks down to a max of one blank line between paras
   text = text.replace(/\n{3,}/g, '\n\n');
   return text.trim();
+};
+
+// ─── Decode entities only (no tag-stripping/paragraph reflow) ───────────────
+// Names, job titles, and other short plain-text fields never contain HTML
+// tags, but they DO come back HTML-entity-encoded just like post content
+// (e.g. a member named "R&D" or a job title with a curly apostrophe). These
+// fields were being rendered completely raw across this file — author.name,
+// author.title, likedBy[].name/.title, mapMember's name/title — so any
+// entity in them showed up as literal "&amp;"/"&#8217;" text on Feed,
+// Introductions, and LikedBy screens. Reuses the same entity table as
+// stripHtml, just without the tag/paragraph handling that field never needs.
+const decodeEntities = (text: string): string => {
+  let out = text || '';
+  Object.entries(HTML_ENTITIES).forEach(([entity, char]) => {
+    out = out.split(entity).join(char);
+  });
+  out = out.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+    String.fromCodePoint(parseInt(hex, 16)),
+  );
+  out = out.replace(/&#(\d+);/g, (_, dec) =>
+    String.fromCodePoint(parseInt(dec, 10)),
+  );
+  return out.trim();
 };
 
 // ─── Format date ──────────────────────────────────────────────────────────────
@@ -188,9 +240,9 @@ export interface FeedPost {
   liked: boolean;
   canLike: boolean;
   canComment: boolean;
-  // Confirmed via Postman 2026-07-31: liked_by is present on BOTH the
-  // single-activity endpoint AND the list endpoint getFeed() actually uses —
-  // no extra per-post fetch needed to show who liked a Feed post.
+  // liked_by comes embedded on the single-activity endpoint. The LIST
+  // endpoint getFeed() uses does not always embed it — see
+  // getActivityLikers() below, which LikedByScreen falls back to.
   likedBy: LikedByUser[];
   time: string;
   rawDate: string;
@@ -206,6 +258,49 @@ export interface Member {
   following: boolean;
 }
 
+// ─── Extract a forum activity's real title out of its rendered markup ───────
+// Confirmed via a real Postman response against /buddyboss/v1/activity,
+// 2026-08-19: bbp_topic_create / bbp_reply_create items have NO
+// bp_topic_title or secondary_content field at all — both are simply absent
+// from the payload, not just empty. So the previous approach (read the title
+// from one of those fields, then strip it back out of content if it
+// duplicated) was chasing a field that doesn't exist; the real duplication
+// is baked into content.rendered itself. BuddyBoss's own markup for these
+// activities looks like:
+//   <p class="activity-discussion-title-wrap"><a href="...">TITLE</a></p>
+//   <div class="bb-content-inr-wrap">
+//     <p class="activity-discussion-title-wrap forms-title-feed"><a href="...">TITLE</a></p>
+//     <div class="bb-content-inr-wrap forms-para-feed"><p>REAL BODY</p></div>
+//   </div>
+// — the title wrapped TWICE (once for a compact view, once above the full
+// body), each hidden/shown by BuddyBoss's own web CSS depending on context.
+// This app has no such CSS, so naively stripping all tags with stripHtml()
+// concatenated both title copies AND the real body into one string — title,
+// title again, then the body — which is exactly the double-title bug Feed
+// was showing. Pulling the title out of the first title-wrap anchor here
+// gives the clean, single copy.
+const extractForumTitle = (html: string): string => {
+  const match = html.match(
+    /<p[^>]*class\s*=\s*"[^"]*activity-discussion-title-wrap[^"]*"[^>]*>\s*<a[^>]*>([\s\S]*?)<\/a>/i,
+  );
+  return match ? stripHtml(match[1]).trim() : '';
+};
+
+// ─── Map liked_by payload → LikedByUser[] ─────────────────────────────────────
+// Shared shape mapping used by mapActivity, getActivityComments,
+// getIntroductions, AND getActivityLikers below — all of these read a
+// liked_by array off different endpoints but expect it in the same shape.
+const mapLikedBy = (list: any[]): LikedByUser[] =>
+  (list || []).map((u: any) => ({
+    id: u.user_id,
+    name: decodeEntities(u.full_name || 'Member'),
+    avatar:
+      u.avatar ||
+      `https://www.gravatar.com/avatar/${u.user_id || 0}?s=96&d=identicon`,
+    title: decodeEntities(u.job_title || u.position || ''),
+    profileUrl: u.profile_url || '',
+  }));
+
 // ─── Map activity item → FeedPost ────────────────────────────────────────────
 const mapActivity = (item: any): FeedPost => {
   // BuddyBoss's content_stripped field is addslashes()-escaped plain text —
@@ -214,14 +309,10 @@ const mapActivity = (item: any): FeedPost => {
   // first, which is why apostrophes were showing up as "\'" in the app even
   // after HTML-entity decoding was fixed. content.rendered's entities (the
   // same &#8217; etc. covered by stripHtml) don't have this problem, so it's
-  // now the primary source; content_stripped is only a last-resort fallback
-  // with its backslash-escapes removed.
+  // the primary source for regular posts; content_stripped is only a
+  // last-resort fallback there, with its backslash-escapes removed.
   const renderedHtml =
     typeof item.content === 'string' ? item.content : item.content?.rendered;
-  const content = renderedHtml
-    ? stripHtml(renderedHtml)
-    : (item.content_stripped || '').replace(/\\(['"])/g, '$1');
-  const isLong = content.length > 180;
 
   let type: FeedPost['type'] = 'post';
   if (
@@ -231,6 +322,28 @@ const mapActivity = (item: any): FeedPost => {
   ) {
     type = 'forum';
   }
+
+  let title: string;
+  let content: string;
+
+  if (type === 'forum') {
+    // For forum activities, content_stripped is ALREADY just the clean body
+    // text with no title duplication (confirmed on the live payload above)
+    // — it's the rendered HTML that duplicates the title, not this field —
+    // so it's used directly here instead of parsing the body back out of
+    // the markup. The title still has to come from the markup since there's
+    // no dedicated title field on this endpoint.
+    title = renderedHtml ? extractForumTitle(renderedHtml) : '';
+    content = (item.content_stripped || '').replace(/\\(['"])/g, '$1');
+    if (!content && renderedHtml) content = stripHtml(renderedHtml);
+  } else {
+    content = renderedHtml
+      ? stripHtml(renderedHtml)
+      : (item.content_stripped || '').replace(/\\(['"])/g, '$1');
+    title = '';
+  }
+
+  const isLong = content.length > 180;
 
   // For bbp_topic_create the activity's primary_item_id IS the topic id.
   // For bbp_reply_create the topic id is the secondary_item_id instead
@@ -260,7 +373,7 @@ const mapActivity = (item: any): FeedPost => {
 
   const linkPreview = item.bp_link_preview?.title
     ? {
-        title: item.bp_link_preview.title,
+        title: decodeEntities(item.bp_link_preview.title),
         url: item.bp_link_preview.url || '',
         image:
           item.bp_link_preview.images?.[0] || item.bp_link_preview.image || '',
@@ -272,7 +385,7 @@ const mapActivity = (item: any): FeedPost => {
     type,
     author: {
       id: item.user_id || 0,
-      name: item.name || 'IPM Member',
+      name: decodeEntities(item.name || 'IPM Member'),
       username: item.user_login || '',
       avatar:
         item.user_avatar?.thumb ||
@@ -282,14 +395,14 @@ const mapActivity = (item: any): FeedPost => {
       flag: '',
       country: '',
     },
-    title: stripHtml(item.bp_topic_title || item.secondary_content || ''),
+    title: decodeEntities(title),
     content: isLong ? content.slice(0, 180) : content,
     fullContent: content,
     truncated: isLong,
     image: mediaImage,
     imageAspectRatio,
     linkPreview,
-    forumTags: item.forum_tags?.map((t: any) => t.name) || null,
+    forumTags: item.forum_tags?.map((t: any) => decodeEntities(t.name)) || null,
     topicId,
     forumMeta:
       type === 'forum'
@@ -304,15 +417,7 @@ const mapActivity = (item: any): FeedPost => {
     liked: item.favorited ?? false,
     canLike: item.can_favorite ?? false,
     canComment: item.can_comment ?? false,
-    likedBy: (item.liked_by || []).map((u: any) => ({
-      id: u.user_id,
-      name: u.full_name || 'Member',
-      avatar:
-        u.avatar ||
-        `https://www.gravatar.com/avatar/${u.user_id || 0}?s=96&d=identicon`,
-      title: u.job_title || u.position || '',
-      profileUrl: u.profile_url || '',
-    })),
+    likedBy: mapLikedBy(item.liked_by),
     time: formatDate(item.date),
     rawDate: item.date,
     isMuted: false,
@@ -328,7 +433,7 @@ export const resolveFullName = (item: any, fallback = 'IPM Member'): string => {
   const firstName = groups?.['1']?.value?.raw?.trim() || '';
   const lastName = groups?.['2']?.value?.raw?.trim() || '';
   const xprofileName = [firstName, lastName].filter(Boolean).join(' ');
-  return xprofileName || item?.name || fallback;
+  return decodeEntities(xprofileName || item?.name || fallback);
 };
 
 // ─── Map member → Member ──────────────────────────────────────────────────────
@@ -341,8 +446,9 @@ const mapMember = (item: any): Member => ({
     item.avatar_urls?.full ||
     item.user_avatar?.thumb ||
     `https://www.gravatar.com/avatar/${item.id}?s=96&d=identicon`,
-  title:
+  title: decodeEntities(
     item.xprofile?.groups?.['1']?.fields?.['1097']?.value?.raw || 'IPM Member',
+  ),
   // Confirmed via Postman 2026-07-31: is_following is the real one-way follow
   // status field. friendship_status ('is_friend'/'not_friends') is a
   // completely separate bidirectional Connections feature — a member can
@@ -402,6 +508,73 @@ export const toggleLike = async (
   if (!res.ok) {
     throw new Error(`Failed to ${currentlyLiked ? 'unlike' : 'like'} post ${postId}`);
   }
+};
+
+// ─── GET who liked a specific activity/comment ────────────────────────────────
+// Root cause, confirmed by pulling a real activity's payload and route table
+// directly from the site 2026-08-20: `liked_by` doesn't exist ANYWHERE on
+// /buddyboss/v1/activity/{id} — that field was never actually present, on
+// this install, on either the list or single-item endpoint (the two earlier
+// attempts at this fix were both chasing a field that doesn't exist here).
+// What IS on the single-activity response is `favorite_count` /
+// `favorited` (the tap-to-like count/state this app displays) alongside
+// `reacted_names` / `reacted_counts` / `reacted_id` — those last three come
+// from BuddyBoss's separate Reactions subsystem. Turns out this site's
+// "like" button is wired, server-side, to award a single Reaction (id
+// 55548) at the same time it flips favorite_count — confirmed by comparing
+// a live activity item: favorite_count: 4 lined up exactly with
+// reacted_counts: [{id: 55548, count: 4}]. The one place BuddyBoss DOES
+// expose a real per-user list for this is the reactions REST resource:
+//   GET /buddyboss/v1/user-reactions?item_id={id}&item_type=activity
+// which returns one row per liker with a real user_id — confirmed against
+// the same live item (4 rows, matching the 4 favorite_count exactly).
+// Comments are their own item_type ('activity_comment') in this same
+// resource, so a comment id is queried the same way with that item_type.
+const fetchReactors = async (
+  itemId: number,
+  itemType: 'activity' | 'activity_comment',
+): Promise<number[]> => {
+  const headers = await authHeaders();
+  try {
+    const res = await fetch(
+      `${BASE}/buddyboss/v1/user-reactions?item_id=${itemId}&item_type=${itemType}&per_page=100`,
+      {headers},
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.map((r: any) => Number(r.user_id)).filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+export const getActivityLikers = async (activityId: number): Promise<LikedByUser[]> => {
+  // Try as a top-level post first, then as a comment — the caller doesn't
+  // always know which kind of id it's holding (FeedScreen/IntrosScreen pass
+  // both post ids and comment ids through the same LikedByScreen route).
+  let ids = await fetchReactors(activityId, 'activity');
+  if (ids.length === 0) {
+    ids = await fetchReactors(activityId, 'activity_comment');
+  }
+  if (ids.length === 0) return [];
+
+  const members = await getMembersBatch(ids);
+  return ids.map(id => {
+    const m = members.get(id);
+    return {
+      id,
+      name: m ? resolveFullName(m, 'Member') : 'Member',
+      avatar:
+        m?.avatar_urls?.thumb ||
+        m?.avatar_urls?.full ||
+        `https://www.gravatar.com/avatar/${id}?s=96&d=identicon`,
+      title: decodeEntities(
+        m?.xprofile?.groups?.['1']?.fields?.['1097']?.value?.raw || '',
+      ),
+      profileUrl: '',
+    };
+  });
 };
 
 // ─── Delete activity post ─────────────────────────────────────────────────────
@@ -618,19 +791,11 @@ export const getIntroductions = async (page = 1): Promise<IntroPost[]> => {
       canLike: true,
       comments: commentCount,
       canComment: true,
-      likedBy: (item.liked_by || []).map((u: any) => ({
-        id: u.user_id,
-        name: u.full_name || 'Member',
-        avatar:
-          u.avatar ||
-          `https://www.gravatar.com/avatar/${u.user_id || 0}?s=96&d=identicon`,
-        title: u.job_title || u.position || '',
-        profileUrl: u.profile_url || '',
-      })),
+      likedBy: mapLikedBy(item.liked_by),
       embeddedComments: (item.comments || []).map((c: any) => ({
         id: c.id,
         author: {
-          name: c.author?.full_name || 'Member',
+          name: decodeEntities(c.author?.full_name || 'Member'),
           avatar:
             c.author?.avatar ||
             `https://www.gravatar.com/avatar/${c.author?.user_id || 0}?s=48&d=identicon`,
@@ -640,12 +805,12 @@ export const getIntroductions = async (page = 1): Promise<IntroPost[]> => {
       })),
       author: {
         id: item.author?.user_id ?? 0,
-        name: item.author?.full_name || 'Member',
+        name: decodeEntities(item.author?.full_name || 'Member'),
         username: item.author?.profile_url?.split('/').filter(Boolean).pop() || '',
         avatar:
           item.author?.avatar ||
           `https://www.gravatar.com/avatar/${item.author?.user_id || item.id}?s=96&d=identicon`,
-        title: item.author?.job_title || item.author?.position || '',
+        title: decodeEntities(item.author?.job_title || item.author?.position || ''),
         flag: '',
         country: '',
       },
@@ -669,7 +834,7 @@ export const getIntroComments = async (postId: number): Promise<any[]> => {
   return data.map((c: any) => ({
     id: c.id,
     author: {
-      name: c.author_name || 'Member',
+      name: decodeEntities(c.author_name || 'Member'),
       avatar:
         c.author_avatar_urls?.['48'] ||
         c.author_avatar_urls?.['96'] ||
@@ -690,6 +855,10 @@ export const postIntroComment = async (
     headers,
     body: JSON.stringify({post: postId, content}),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`postIntroComment failed (${res.status}): ${body}`);
+  }
   return res.json();
 };
 
@@ -701,7 +870,7 @@ export const getActivityComments = async (
   activityId: number,
 ): Promise<any[]> => {
   const headers = await authHeaders();
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${BASE}/buddyboss/v1/activity/${activityId}/comment`,
     {headers},
   );
@@ -714,7 +883,7 @@ export const getActivityComments = async (
   return list.map((c: any) => ({
     id: c.id,
     author: {
-      name: c.name || c.user_fullname || 'Member',
+      name: decodeEntities(c.name || c.user_fullname || 'Member'),
       avatar:
         c.user_avatar?.thumb ||
         `https://www.gravatar.com/avatar/${c.user_id}?s=40&d=identicon`,
@@ -733,24 +902,27 @@ export const getActivityComments = async (
     // both work unchanged by passing the comment's own id.
     likes: c.favorite_count ?? c.like_count ?? 0,
     liked: c.favorited ?? c.liked_by_me ?? false,
-    likedBy: (c.liked_by || []).map((u: any) => ({
-      id: u.user_id,
-      name: u.full_name || 'Member',
-      avatar:
-        u.avatar ||
-        `https://www.gravatar.com/avatar/${u.user_id || 0}?s=96&d=identicon`,
-      title: u.job_title || u.position || '',
-      profileUrl: u.profile_url || '',
-    })),
+    likedBy: mapLikedBy(c.liked_by),
   }));
 };
 
+// Confirmed via Postman 2026-07-19: POST /buddyboss/v1/activity/{id}/comment
+// returns HTTP 200/201 on success, but like the follow/favorite endpoints
+// elsewhere in this file, fetch() does not throw on a 4xx/5xx response — it
+// just resolves with an error body (e.g. {"code":"rest_forbidden",...}).
+// Without checking res.ok, a failed comment post (expired token, closed
+// thread, validation error) looked identical to success from the caller's
+// side: IntrosScreen's handleSubmit() would clear the input and reload
+// comments as if it worked, so the comment silently never appeared. This is
+// the exact bug class already fixed for toggleLike/followMember/
+// unfollowMember above — postActivityComment was the one mutation in this
+// file that had been missed.
 export const postActivityComment = async (
   activityId: number,
   content: string,
 ): Promise<any> => {
   const headers = await authHeaders();
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${BASE}/buddyboss/v1/activity/${activityId}/comment`,
     {
       method: 'POST',
@@ -758,7 +930,24 @@ export const postActivityComment = async (
       body: JSON.stringify({content}),
     },
   );
-  return res.json();
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Failed to post comment on activity ${activityId} (${res.status}): ${body}`);
+  }
+  const json = await res.json().catch(() => null);
+  // Confirmed via a real device response, 2026-08-18: a successful POST
+  // here returns {created: true, comments: [{...the new comment, with its
+  // own id...}]} — the new comment is nested inside a `comments` array, NOT
+  // a bare object with a top-level `id` like GET returns. The first version
+  // of this check looked for json.id/json.comment_id directly, which never
+  // matches this shape — so it was flagging every successful post as a
+  // failure (the comment really was being created the whole time; only the
+  // client-side validation was wrong).
+  const created = Array.isArray(json?.comments) ? json.comments[0] : json;
+  if (!json || (json.created !== true && !created?.id)) {
+    throw new Error(`Comment endpoint returned no comment id: ${JSON.stringify(json)}`);
+  }
+  return created;
 };
 
 // NOTE: this endpoint has NOT been Postman-confirmed — it was already in the

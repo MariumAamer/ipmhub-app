@@ -10,20 +10,8 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
-import Svg, {Path} from 'react-native-svg';
+import BackButton from '../components/BackButton';
 import {DMThreadDetail, DMRecipient} from '../api/dmApi';
-
-const BackIcon = () => (
-  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M15 18l-6-6 6-6"
-      stroke="#192546"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
 
 const DMMembersScreen = ({route, navigation}: any) => {
   const {thread, currentUserId}: {thread: DMThreadDetail; currentUserId: number} =
@@ -66,9 +54,7 @@ const DMMembersScreen = ({route, navigation}: any) => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={m.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={m.backBtn}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton style={m.backBtn} onPress={() => navigation.goBack()} />
         <Text style={m.headerTitle}>{'Members'}</Text>
       </View>
 

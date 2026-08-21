@@ -8,13 +8,13 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
   Image,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import {launchImageLibrary} from 'react-native-image-picker';
 import DocumentPicker from 'react-native-document-picker';
@@ -93,7 +93,19 @@ const ReplyToDiscussionScreen = ({navigation, route}: any) => {
         : await postReply(topicId, message.trim(), {mediaIds, videoIds, documentIds});
       if (ok) {
         navigation?.goBack();
+      } else {
+        // Previously failed silently — the request could 404/error and the
+        // screen would just sit there with the spinner gone and nothing
+        // posted, with no indication anything went wrong.
+        Alert.alert(
+          'Could not post reply',
+          'Something went wrong publishing your reply. Please try again.',
+        );
       }
+    } catch (err: any) {
+      // Temporary: show the real backend error so we can see exactly what's
+      // being rejected, instead of a generic message that hides the cause.
+      Alert.alert('Could not post reply', err?.message || 'Something went wrong publishing your reply.');
     } finally {
       setSubmitting(false);
     }

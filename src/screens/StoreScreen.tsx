@@ -13,10 +13,16 @@ import {
   Platform,
   Linking,
 } from 'react-native';
-import Svg, { Path, Mask, Rect, G, ClipPath, Defs } from 'react-native-svg';
+import Svg, { Path, Mask, Rect, G } from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import * as Keychain from 'react-native-keychain';
 import AppHeader from '../components/AppHeader';
+import BackButton from '../components/BackButton';
+// Drives the side drawer opened by AppHeader's chevron — this screen never
+// rendered ProfileDrawer at all and never passed onDrawerOpen to AppHeader,
+// so the chevron (>>) tap was a no-op here (reported: "the >> in app header
+// doesn't work on store and notification").
+import ProfileDrawer from '../components/ProfileDrawer';
 
 // ─── Token ───────────────────────────────────────────────────────────────────
 
@@ -41,19 +47,49 @@ async function apiFetch(url: string, token: string) {
   return res.json();
 }
 
+// ─── Decode HTML entities ─────────────────────────────────────────────────────
+// These store endpoints (store-courses / store/certifications /
+// pm-softwares) return raw WordPress post titles + descriptions, which come
+// through HTML-entity-encoded (e.g. "Project Leadership &#038; Management
+// Diploma") — same as every other WP-backed screen in this app. Nothing
+// here previously decoded them, so an ampersand in a title/description
+// rendered as literal "&#038;" on the Store screen (All/Courses/
+// Certifications/PM Software tabs). Decode before display — same pattern
+// used in feedApi.ts / resourcesApi.ts / mentorsApi.ts / coursesApi.ts.
+const decodeEntities = (text?: string | null): string =>
+  (text || '')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .trim();
+
+const decodeStoreItems = (res: { items?: StoreItem[]; filters?: any; pagination?: any }) => ({
+  ...res,
+  items: Array.isArray(res.items)
+    ? res.items.map(it => ({ ...it, title: decodeEntities(it.title), description: decodeEntities(it.description) }))
+    : [],
+});
+
 // Confirmed via Postman: the real courses endpoint is "store-courses"
 // (hyphenated, no "/courses" suffix) — the old "store/courses" path was
 // wrong and always returned the same fixed 4-item slice. This endpoint
 // returns all matching items in a single response, so there's no
 // separate page param.
 const fetchCourses = (token: string, category: CategorySlug = 'all', sort: SortValue = 'popular', _page = 1) =>
-  apiFetch(`${BASE}/custom/v1/store-courses?category=${category}&sort=${sort}`, token);
+  apiFetch(`${BASE}/custom/v1/store-courses?category=${category}&sort=${sort}`, token).then(decodeStoreItems);
 
 const fetchCertifications = (token: string, category: CategorySlug = 'all', sort: SortValue = 'popular', page = 1) =>
-  apiFetch(`${BASE}/custom/v1/store/certifications?category=${category}&sort=${sort}&page=${page}`, token);
+  apiFetch(`${BASE}/custom/v1/store/certifications?category=${category}&sort=${sort}&page=${page}`, token).then(decodeStoreItems);
 
 const fetchSoftwares = (token: string) =>
-  apiFetch(`${BASE}/custom/v1/pm-softwares/pm-softwares?category=all`, token);
+  apiFetch(`${BASE}/custom/v1/pm-softwares/pm-softwares?category=all`, token).then(decodeStoreItems);
 
 async function fetchAllStore(token: string) {
   const [courses, certifications, softwares] = await Promise.all([
@@ -122,19 +158,6 @@ const ArrowIcon = () => (
 const CallIcon = () => (
   <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
     <Path d="M0 14C0 21.7198 6.28017 28 14 28C21.7198 28 28 21.7198 28 14C28 6.28017 21.7198 0 14 0C6.28017 0 0 6.28017 0 14ZM5.83333 10.3717C5.83333 9.408 6.181 8.442 6.916 7.70817L6.94517 7.679C7.9645 6.65967 9.61717 6.65967 10.6365 7.679L11.0271 8.06959C11.8307 8.87321 11.8307 10.1761 11.0271 10.9797C10.4442 11.5626 10.2502 12.4461 10.639 13.173C11.6481 15.0596 13.0591 16.4468 14.8348 17.382C15.5581 17.7629 16.4313 17.5619 17.0093 16.9838C17.819 16.1742 19.1317 16.1742 19.9413 16.9838L20.321 17.3635C21.3403 18.3828 21.3403 20.0355 20.321 21.0548L20.2918 21.084C19.558 21.819 18.592 22.1667 17.6283 22.1667C12.6817 22.1667 5.83333 15.6987 5.83333 10.3717Z" fill="#0C4D91" />
-  </Svg>
-);
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Defs>
-      <ClipPath id="clip0"><Rect width={28} height={27.9996} fill="white" /></ClipPath>
-    </Defs>
-    <G clipPath="url(#clip0)">
-      <Rect x={0.7} y={0.7} width={26.6} height={26.5996} rx={6.3} stroke="#8F9098" strokeWidth={1.4} />
-      <Path d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-        fill="#8F9098" stroke="#8F9098" strokeWidth={0.7} />
-    </G>
   </Svg>
 );
 
@@ -360,9 +383,7 @@ function SoftwareCard({ item }: { item: StoreItem }) {
 function StickyHeader({ title, onBack }: { title: string; onBack?: () => void }) {
   return (
     <View style={styles.stickyHeader}>
-      <TouchableOpacity onPress={onBack} activeOpacity={0.7}>
-        <BackIcon />
-      </TouchableOpacity>
+      <BackButton onPress={onBack} />
       <Text style={styles.stickyTitle}>{title}</Text>
     </View>
   );
@@ -591,6 +612,10 @@ export default function StoreScreen({ navigation }: any) {
   const [certsData, setCertsData] = useState<StoreResponse>({ items: [], pagination: null });
   const [swData, setSwData] = useState<StoreResponse>({ items: [], pagination: null });
   const [allLoading, setAllLoading] = useState(true);
+  // Wires up the AppHeader chevron to actually open the side drawer — this
+  // screen previously rendered <AppHeader navigation={navigation} /> with
+  // no onDrawerOpen prop at all, so tapping the chevron did nothing.
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => { getSavedToken().then(t => setToken(t)); }, []);
 
@@ -609,7 +634,8 @@ export default function StoreScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <AppHeader navigation={navigation} />
+      <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
+      <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
 
       {/* Main tab bar */}
       <View style={styles.mainTabBar}>
@@ -796,8 +822,6 @@ const styles = StyleSheet.create({
   },
 
   // ── Shared left gradient frame (cert + software) ──
-  // LinearGradient fills the full 145×218 column — no padding here
-  // Image is positioned/sized via certImg / swImg styles
   leftFrame: {
     width: IMG_W,
     height: CARD_H,
@@ -808,14 +832,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     overflow: 'hidden',
   },
-  // Cert badge — large, cover fills the frame nicely
-  // backgroundColor blends white PNG bg with gradient midpoint
   certImg: {
     width: IMG_W,
     height: IMG_W,
     backgroundColor: '#C8ECFF',
   },
-  // Software logo — same size, contain keeps logo proportions
   swImg: {
     width: IMG_W,
     height: IMG_W,
@@ -832,13 +853,10 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 5,
   },
 
-  // Spacer between description and buttons — pushes buttons to bottom
   cardSpacer: { flex: 1, minHeight: 4 },
 
-  // ── Blue line spacing ──
   blueLineWrap: { marginTop: 6, marginBottom: 8 },
 
-  // ── Card text ──
   cardTitle: {
     fontFamily: 'Runda', fontSize: 14, fontWeight: '700',
     color: '#192546', lineHeight: 20,

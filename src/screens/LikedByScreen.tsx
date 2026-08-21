@@ -8,30 +8,23 @@ import {
   Image,
   TouchableOpacity,
   StatusBar,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import Svg, {Path, Rect} from 'react-native-svg';
+// Was importing SafeAreaView from 'react-native' — that core component is
+// iOS-only (a no-op on Android), which is why the back button/title sat
+// under the status bar clock/battery icons on Android but looked fine on
+// iOS. Swapped to the real cross-platform SafeAreaView.
+import {SafeAreaView} from 'react-native-safe-area-context';
+import BackButton from '../components/BackButton';
 import {
   getMembersBatch,
   toggleFollow,
+  getActivityLikers,
   LikedByUser,
 } from '../api/feedApi';
 import {getUserIdFromToken} from '../api/profileApi';
 import {getThreadList} from '../api/dmApi';
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Rect x={0.7} y={0.7} width={26.6} height={26.5996} rx={6.3} stroke="#8F9098" strokeWidth={1.4} />
-    <Path
-      d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-      fill="#8F9098"
-      stroke="#8F9098"
-      strokeWidth={0.7}
-    />
-  </Svg>
-);
 
 interface Row extends LikedByUser {
   following: boolean;
@@ -39,13 +32,20 @@ interface Row extends LikedByUser {
 }
 
 export default function LikedByScreen({navigation, route}: any) {
-  const likedBy: LikedByUser[] = route?.params?.likedBy || [];
+  const initialLikedBy: LikedByUser[] = route?.params?.likedBy || [];
   const title: string = route?.params?.title || 'Liked by';
-  const likesCount: number = route?.params?.likesCount ?? likedBy.length;
+  const likesCount: number = route?.params?.likesCount ?? initialLikedBy.length;
+  // The activity/comment id this like list belongs to — needed as a
+  // fallback fetch below when the list endpoint didn't embed liked_by.
+  const postId: number | null = route?.params?.postId ?? null;
+
   const [rows, setRows] = useState<Row[]>(
-    likedBy.map(u => ({...u, following: false, loading: false})),
+    initialLikedBy.map(u => ({...u, following: false, loading: false})),
   );
   const [resolvingFollow, setResolvingFollow] = useState(true);
+  const [loadingLikers, setLoadingLikers] = useState(
+    initialLikedBy.length === 0 && likesCount > 0 && !!postId,
+  );
   const [myUserId, setMyUserId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -58,14 +58,36 @@ export default function LikedByScreen({navigation, route}: any) {
       const uid = await getUserIdFromToken();
       setMyUserId(uid);
     } catch {}
+
+    // The feed/comments LIST endpoints don't reliably embed liked_by (only
+    // the single-activity endpoint does) — that's the bug behind "the like
+    // count shows but who liked it doesn't." If we weren't handed a
+    // populated list but there ARE likes and we know the post id, fetch the
+    // real likers for this specific post/comment before anything else.
+    let likedBy = initialLikedBy;
+    if (likedBy.length === 0 && likesCount > 0 && postId) {
+      try {
+        likedBy = await getActivityLikers(postId);
+        setRows(likedBy.map(u => ({...u, following: false, loading: false})));
+      } catch {
+        // Fall back to the empty-state message rather than blocking the screen.
+      } finally {
+        setLoadingLikers(false);
+      }
+    } else {
+      setLoadingLikers(false);
+    }
+
+    if (likedBy.length === 0) {
+      setResolvingFollow(false);
+      return;
+    }
+
     try {
       const members = await getMembersBatch(likedBy.map(u => u.id));
       setRows(prev =>
         prev.map(r => {
           const m = members.get(Number(r.id));
-          // Confirmed 2026-07-31: is_following is the real one-way follow
-          // field — friendship_status is the separate bidirectional
-          // Connections feature and was giving false "not following" results.
           return {
             ...r,
             following: m?.is_following ?? false,
@@ -73,8 +95,6 @@ export default function LikedByScreen({navigation, route}: any) {
         }),
       );
     } catch {
-      // Batch lookup failing shouldn't block the list — just falls back to
-      // showing "Follow" for everyone rather than an error state.
     } finally {
       setResolvingFollow(false);
     }
@@ -84,20 +104,13 @@ export default function LikedByScreen({navigation, route}: any) {
     let threadId: number | null = null;
     try {
       const threads = await getThreadList(1);
-      // Match on "is this person a participant", coercing both sides to
-      // Number — WP REST isn't always consistent about returning IDs as
-      // numbers vs strings, and a strict === would silently miss an
-      // existing thread if either side came back as a string.
       const existing = threads.find(t =>
         Object.values(t.recipients || {}).some(
           (r: any) => Number(r.user_id) === Number(item.id),
         ),
       );
       threadId = existing?.id ?? null;
-    } catch {
-      // Lookup failing shouldn't block messaging — falls through to
-      // starting a fresh conversation instead.
-    }
+    } catch {}
     navigation?.navigate('DMConversation', {
       threadId,
       recipientName: item.name,
@@ -136,12 +149,7 @@ export default function LikedByScreen({navigation, route}: any) {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation?.goBack()}
-          hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton style={styles.backBtn} onPress={() => navigation?.goBack()} />
         <Text style={styles.headerTitle}>{title}</Text>
         <View style={styles.backBtn} />
       </View>
@@ -183,13 +191,17 @@ export default function LikedByScreen({navigation, route}: any) {
           </View>
         )}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>
-              {likesCount > 0
-                ? "This post has likes, but who liked it isn't available for this post type yet."
-                : 'No likes yet.'}
-            </Text>
-          </View>
+          loadingLikers ? (
+            <ActivityIndicator size="small" color="#0C4D91" style={{marginTop: 24}} />
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>
+                {likesCount > 0
+                  ? "This post has likes, but who liked it isn't available for this post type yet."
+                  : 'No likes yet.'}
+              </Text>
+            </View>
+          )
         }
       />
     </SafeAreaView>
@@ -219,7 +231,6 @@ const styles = StyleSheet.create({
     color: '#0C4D91',
     fontFamily: 'Runda',
   },
-
   listContent: {paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24},
   row: {
     flexDirection: 'row',
@@ -231,7 +242,6 @@ const styles = StyleSheet.create({
   info: {flex: 1},
   name: {fontSize: 15, fontWeight: '700', color: '#192546', fontFamily: 'Runda'},
   title: {fontSize: 12, color: '#8F9098', marginTop: 2, fontFamily: 'Runda'},
-
   actionBtn: {
     minWidth: 92,
     height: 34,
@@ -244,7 +254,6 @@ const styles = StyleSheet.create({
   followText: {color: '#FFFFFF', fontSize: 13, fontWeight: '700', fontFamily: 'Runda'},
   messageBtn: {backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#0C4D91'},
   messageText: {color: '#0C4D91', fontSize: 13, fontWeight: '700', fontFamily: 'Runda'},
-
   emptyState: {alignItems: 'center', paddingTop: 60},
   emptyText: {fontSize: 14, color: '#8F9098', fontFamily: 'Runda'},
 });

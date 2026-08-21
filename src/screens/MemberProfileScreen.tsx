@@ -228,8 +228,46 @@ const Skeleton = ({w, h, r = 6}: {w: any; h: number; r?: number}) => (
   <View style={{width: w, height: h, borderRadius: r, backgroundColor: '#EFEFEF', marginBottom: 6}} />
 );
 
+// Full HTML-entity decode — this member-profile screen pulls text from
+// several different WP/BuddyBoss-backed endpoints (raw xProfile fields,
+// /wp/v2/posts titles, forum topic titles, the /custom/v1/member-profile
+// consolidated endpoint's course/certification titles and basic.*
+// fields), all of which come back HTML-entity-encoded the same way as
+// every other WP source in this app. This previously only handled
+// &amp;/&#8217;/&nbsp; — missing the very common numeric "&#038;" (WP's
+// own encoding for "&"), &quot;/&#039;, and any other numeric entity —
+// so any of those fields containing an ampersand or curly quote rendered
+// the raw entity code instead of the real character. Matches the entity
+// set already used elsewhere in this project (apiClient.ts/feedApi.ts).
+const decodeEntities = (text: string): string =>
+  (text || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#034;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&rsquo;/g, '’')
+    .replace(/&lsquo;/g, '‘')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&ldquo;/g, '“')
+    .replace(/&rdquo;/g, '”')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&mdash;/g, '—')
+    .replace(/&hellip;/g, '…')
+    .replace(/&#8230;/g, '…')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+
 const stripHtml = (html: string) =>
-  (html || '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&#8217;/g, "'").replace(/&nbsp;/g, ' ').trim();
+  decodeEntities((html || '').replace(/<[^>]*>/g, '')).trim();
 
 /** Convert country name to flag emoji */
 const countryToFlag = (country: string): string => {
@@ -532,7 +570,7 @@ const ActivityTab = ({userId, displayName, navigation, profileData}: {userId: nu
           {resources.map((r: any) => {
             const img  = r?._embedded?.['wp:featuredmedia']?.[0]?.source_url;
             const date = new Date(r.date).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
-            const tag  = r?._embedded?.['wp:term']?.[0]?.[0]?.name || 'Articles';
+            const tag  = decodeEntities(r?._embedded?.['wp:term']?.[0]?.[0]?.name || 'Articles');
             return (
               <View key={r.id} style={s.resourceCard}>
                 {img
@@ -640,38 +678,45 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
   // the backend rather than a fixed number of guessed field-ID slots.
   // This is what fixes accounts where web-added specialities/experience
   // weren't showing in the app.
-  const specialities: string[] = profileData?.specialities || [];
+  const specialities: string[] = (profileData?.specialities || []).map(decodeEntities);
 
-  const projects: any[] = profileData?.projects || [];
+  const projects: any[] = (profileData?.projects || []).map((p: any) => ({
+    ...p,
+    name: decodeEntities(p.name || ''),
+    role: decodeEntities(p.role || ''),
+    organisation: decodeEntities(p.organisation || ''),
+    description: decodeEntities(p.description || ''),
+    specialities: (p.specialities || []).map(decodeEntities),
+  }));
   const hasProjects = projects.length > 0;
 
   const experienceEntries = (profileData?.experience || []).map((e: any) => ({
-    title: e.job_title || '',
-    company: e.company || '',
+    title: decodeEntities(e.job_title || ''),
+    company: decodeEntities(e.company || ''),
     dateRange: [
       [e.start_month, e.start_year].filter(Boolean).join(' '),
       e.currently_working ? 'Present' : [e.end_month, e.end_year].filter(Boolean).join(' '),
-    ].filter(Boolean).join(' \u2013 '),
-    description: e.description || '',
+    ].filter(Boolean).join(' – '),
+    description: decodeEntities(e.description || ''),
   }));
   const hasExperience = experienceEntries.length > 0;
 
   const educationEntries = (profileData?.education || []).map((ed: any) => ({
-    title: ed.institution_name || '',
-    subtitle: [ed.degree, ed.field_of_study].filter(Boolean).join(', '),
+    title: decodeEntities(ed.institution_name || ''),
+    subtitle: decodeEntities([ed.degree, ed.field_of_study].filter(Boolean).join(', ')),
     dateRange: [
       [ed.start_month, ed.start_year].filter(Boolean).join(' '),
       ed.currently_studying ? 'Present' : [ed.end_month, ed.end_year].filter(Boolean).join(' '),
-    ].filter(Boolean).join(' \u2013 '),
-    description: ed.description || '',
+    ].filter(Boolean).join(' – '),
+    description: decodeEntities(ed.description || ''),
   }));
   const hasEducation = educationEntries.length > 0;
 
   // Credential — not part of the new endpoint yet, still reads confirmed
-  // field IDs (group 7, first entry) from xProfile directly.
-  const credName     = map['field_1193'] || searchXField(map, 'certificate name');
-  const credOrg      = map['field_1198'] || searchXField(map, 'organisation name');
-  const credLocation = map['field_1203'] || searchXField(map, 'location');
+  // field IDs (group 7), first entry) from xProfile directly.
+  const credName     = decodeEntities(map['field_1193'] || searchXField(map, 'certificate name'));
+  const credOrg      = decodeEntities(map['field_1198'] || searchXField(map, 'organisation name'));
+  const credLocation = decodeEntities(map['field_1203'] || searchXField(map, 'location'));
   const hasCredential = !!credName;
 
   return (
@@ -693,7 +738,7 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
           <View style={s.infoCardRow}>
             <View style={s.infoCardTextWrap}>
               <Text style={s.infoCardTitle}>{'Specialities'}</Text>
-              <Text style={s.infoCardDesc}>{isOwn ? 'You haven\u2019t added any project details yet.' : `${displayName || 'This member'} hasn\u2019t added any project details yet.`}</Text>
+              <Text style={s.infoCardDesc}>{isOwn ? 'You haven’t added any project details yet.' : `${displayName || 'This member'} hasn’t added any project details yet.`}</Text>
             </View>
             {isOwn && (
               <TouchableOpacity onPress={() => navigation?.navigate('EditSpecialities')}>
@@ -719,7 +764,7 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
                 <Image source={{uri: p.image_url}} style={s.projectThumb} />
               ) : (
                 <View style={s.projectThumb}>
-                  <Text style={{fontSize:26}}>{'\ud83c\udfd7\ufe0f'}</Text>
+                  <Text style={{fontSize:26}}>{'🏗️'}</Text>
                 </View>
               )}
               <View style={{flex:1}}>
@@ -744,7 +789,7 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
             <View style={s.infoCardIconWrap}><EmptyProjectsIcon /></View>
             <View style={s.infoCardTextWrap}>
               <Text style={s.infoCardTitle}>{'Projects'}</Text>
-              <Text style={s.infoCardDesc}>{isOwn ? 'You haven\u2019t added any project details yet.' : `${displayName || 'This member'} hasn\u2019t added any project details yet.`}</Text>
+              <Text style={s.infoCardDesc}>{isOwn ? 'You haven’t added any project details yet.' : `${displayName || 'This member'} hasn’t added any project details yet.`}</Text>
             </View>
             {isOwn && (
               <TouchableOpacity onPress={() => navigation?.navigate('EditProjects')}>
@@ -778,7 +823,7 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
             <View style={s.infoCardIconWrap}><EmptyExperienceIcon /></View>
             <View style={s.infoCardTextWrap}>
               <Text style={s.infoCardTitle}>{'Experience'}</Text>
-              <Text style={s.infoCardDesc}>{isOwn ? 'You haven\u2019t added your professional experience yet.' : `${displayName || 'This member'} hasn\u2019t added their professional experience yet.`}</Text>
+              <Text style={s.infoCardDesc}>{isOwn ? 'You haven’t added your professional experience yet.' : `${displayName || 'This member'} hasn’t added their professional experience yet.`}</Text>
             </View>
             {isOwn && (
               <TouchableOpacity onPress={() => navigation?.navigate('EditExperience')}>
@@ -813,7 +858,7 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
             <View style={s.infoCardIconWrap}><EmptyEducationIcon /></View>
             <View style={s.infoCardTextWrap}>
               <Text style={s.infoCardTitle}>{'Education'}</Text>
-              <Text style={s.infoCardDesc}>{isOwn ? 'You haven\u2019t added your education details yet.' : `${displayName || 'This member'} hasn\u2019t added their education details yet.`}</Text>
+              <Text style={s.infoCardDesc}>{isOwn ? 'You haven’t added your education details yet.' : `${displayName || 'This member'} hasn’t added their education details yet.`}</Text>
             </View>
             {isOwn && (
               <TouchableOpacity onPress={() => navigation?.navigate('EditEducation')}>
@@ -832,7 +877,7 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
           <Text style={s.sectionTitle}>{'Credential'}</Text>
           <TimelineEntry
             title={credName}
-            subtitle={[credOrg, credLocation].filter(Boolean).join(' \u00b7 ')}
+            subtitle={[credOrg, credLocation].filter(Boolean).join(' · ')}
             isLast
           />
         </>
@@ -842,7 +887,7 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
             <View style={s.infoCardIconWrap}><EmptyCredentialIcon /></View>
             <View style={s.infoCardTextWrap}>
               <Text style={s.infoCardTitle}>{'Credential'}</Text>
-              <Text style={s.infoCardDesc}>{isOwn ? 'You haven\u2019t added your Credential details yet.' : `${displayName || 'This member'} hasn\u2019t added their Credential details yet.`}</Text>
+              <Text style={s.infoCardDesc}>{isOwn ? 'You haven’t added your Credential details yet.' : `${displayName || 'This member'} hasn’t added their Credential details yet.`}</Text>
             </View>
             {isOwn && (
               <TouchableOpacity onPress={() => navigation?.navigate('EditCredential')}>
@@ -1000,7 +1045,7 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
           : list.length === 0
           ? <Text style={s.connEmptyText}>
               {isOwn
-                ? (subTab === 'followers' ? 'You don\u2019t have any followers yet.' : 'You aren\u2019t following anyone yet.')
+                ? (subTab === 'followers' ? 'You don’t have any followers yet.' : 'You aren’t following anyone yet.')
                 : (subTab === 'followers' ? `${displayName || 'This member'} doesn't have any followers yet.` : `${displayName || 'This member'} isn't following anyone yet.`)
               }
             </Text>
@@ -1031,7 +1076,7 @@ const CoursesTab = ({userId, isOwn, displayName, navigation, profileData}: {user
       </View>
 
       {courses.length === 0 ? (
-        <Text style={s.emptyCardDesc}>{isOwn ? 'You don\u2019t have any Courses yet.' : `${displayName || 'This member'} doesn't have any Courses yet.`}</Text>
+        <Text style={s.emptyCardDesc}>{isOwn ? 'You don’t have any Courses yet.' : `${displayName || 'This member'} doesn't have any Courses yet.`}</Text>
       ) : (
         courses.map((c) => (
           <View key={c.id} style={s.courseCardShadowWrap}>
@@ -1061,11 +1106,11 @@ const CoursesTab = ({userId, isOwn, displayName, navigation, profileData}: {user
                 {c.delivery ? (
                   <View style={s.courseMetaRow}>
                     <FormatDeliveryIcon />
-                    <Text style={s.courseMetaTextV2}>{c.delivery}</Text>
+                    <Text style={s.courseMetaTextV2}>{stripHtml(c.delivery)}</Text>
                   </View>
                 ) : null}
                 <View style={s.courseStatusBtnRow}>
-                  {c.status ? <Text style={s.courseStatusV2}>{c.status}</Text> : null}
+                  {c.status ? <Text style={s.courseStatusV2}>{stripHtml(c.status)}</Text> : null}
                   <TouchableOpacity
                     style={s.courseContinueBtn}
                     onPress={() => {
@@ -1091,7 +1136,7 @@ const CoursesTab = ({userId, isOwn, displayName, navigation, profileData}: {user
         <Text style={s.sectionTitle}>{'Certifications'}</Text>
       </View>
       {certifications.length === 0 ? (
-        <Text style={s.emptyCardDesc}>{isOwn ? 'You don\u2019t have any Certifications yet.' : `${displayName || 'This member'} doesn't have any Certifications yet.`}</Text>
+        <Text style={s.emptyCardDesc}>{isOwn ? 'You don’t have any Certifications yet.' : `${displayName || 'This member'} doesn't have any Certifications yet.`}</Text>
       ) : (
         certifications.map((cert, i) => (
           <View key={cert.certificate_id || i} style={s.courseCardShadowWrap}>
@@ -1108,7 +1153,7 @@ const CoursesTab = ({userId, isOwn, displayName, navigation, profileData}: {user
                   </View>
                 ) : null}
                 <View style={s.courseStatusBtnRow}>
-                  {cert.status_label ? <Text style={s.courseStatusV2}>{cert.status_label}</Text> : null}
+                  {cert.status_label ? <Text style={s.courseStatusV2}>{stripHtml(cert.status_label)}</Text> : null}
                   {cert.certificate_url ? (
                     <TouchableOpacity
                       style={s.courseContinueBtn}
@@ -1210,17 +1255,10 @@ const formatIconFor = (title: string) => {
 // Simple decode — the raw /custom/v1/mentors/{id} response isn't run
 // through mentorsApi.ts's mapper (that's only for the list endpoint), so
 // entity-encoded names ("Leadership &amp; Team Management") need the same
-// handling here.
-const decodeMentorEntities = (str: string): string =>
-  (str || '')
-    .replace(/&amp;/g, '&')
-    .replace(/&#038;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#8217;/g, '\u2019')
-    .replace(/&#8216;/g, '\u2018')
-    .replace(/&#8211;/g, '\u2013')
-    .replace(/&#8212;/g, '\u2014')
-    .replace(/&nbsp;/g, ' ');
+// handling here. Delegates to the same decodeEntities used everywhere
+// else in this file (was previously its own narrower copy that missed
+// &#038;/&quot;/&#039; and every other numeric entity).
+const decodeMentorEntities = (str: string): string => decodeEntities(str || '');
 
 // ─── Mentorship Tab ───────────────────────────────────────────────────────────
 // Built from the confirmed GET /custom/v1/mentors/{mentor_id} endpoint —
@@ -1261,7 +1299,7 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
     <View style={s.emptyTab}>
       <Text style={s.emptyCardTitle}>{'Mentorship details unavailable'}</Text>
       <Text style={s.emptyCardDesc}>
-        {'This profile was opened without a mentor reference, so the mentorship details can\u2019t be loaded yet.'}
+        {'This profile was opened without a mentor reference, so the mentorship details can’t be loaded yet.'}
       </Text>
     </View>
   );
@@ -1285,19 +1323,19 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
             {overview.response_time ? (
               <View style={s.mtPill}>
                 <ClockIcon />
-                <Text style={s.mtPillText}>{`Responds in ${overview.response_time}`}</Text>
+                <Text style={s.mtPillText}>{`Responds in ${decodeMentorEntities(overview.response_time)}`}</Text>
               </View>
             ) : null}
             {overview.session_duration ? (
               <View style={s.mtPill}>
                 <SessionDurationIcon />
-                <Text style={s.mtPillText}>{overview.session_duration}</Text>
+                <Text style={s.mtPillText}>{decodeMentorEntities(overview.session_duration)}</Text>
               </View>
             ) : null}
             {overview.languages?.length > 0 ? (
               <View style={s.mtPill}>
                 <WebIcon />
-                <Text style={s.mtPillText}>{overview.languages.join('/')}</Text>
+                <Text style={s.mtPillText}>{decodeMentorEntities(overview.languages.join('/'))}</Text>
               </View>
             ) : null}
           </View>
@@ -1311,8 +1349,8 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
             <View style={s.mtBulletRow}>
               <BulletDot />
               <Text style={s.mtBodyM}>
-                {'Session frequency  \u2022  '}
-                <Text style={s.mtBodyMBold}>{availability.session_frequency}</Text>
+                {'Session frequency  •  '}
+                <Text style={s.mtBodyMBold}>{decodeMentorEntities(availability.session_frequency)}</Text>
               </Text>
             </View>
           ) : null}
@@ -1320,8 +1358,8 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
             <View style={s.mtBulletRow}>
               <BulletDot />
               <Text style={s.mtBodyM}>
-                {'Capacity  \u2022  '}
-                <Text style={s.mtBodyMBold}>{availability.capacity_label}</Text>
+                {'Capacity  •  '}
+                <Text style={s.mtBodyMBold}>{decodeMentorEntities(availability.capacity_label)}</Text>
               </Text>
             </View>
           ) : null}
@@ -1329,7 +1367,7 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
             style={s.mtRequestCallBtn}
             onPress={() => {
               if (mentor.request_call_url) { Linking.openURL(mentor.request_call_url); }
-              else { Alert.alert('Not Available Yet', 'This mentor hasn\u2019t set up call requests yet.'); }
+              else { Alert.alert('Not Available Yet', 'This mentor hasn’t set up call requests yet.'); }
             }}>
             <CallIcon />
             <Text style={s.mtRequestCallBtnText}>{'Request a Call'}</Text>
@@ -1468,17 +1506,24 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
   // Prefer the new consolidated endpoint's clean basic.* fields — falls
   // back to the old xProfile-guessing path only if profileData hasn't
   // loaded yet (e.g. brief loading window, or the new endpoint failed).
-  const displayName = basic?.full_name
-    || (xmap['first name'] && xmap['last name'] ? `${xmap['first name']} ${xmap['last name']}`.trim() : '')
-    || profile?.name || profile?.user_login || '';
+  // Both sources come from WP/BuddyBoss and can carry HTML-entity-encoded
+  // text (e.g. a headline like "R&D Lead" comes back as "R&amp;D Lead") —
+  // decode here before display, same as every other WP-backed field in
+  // this app. Previously these 4 fields (name/headline/country/bio) were
+  // rendered completely raw with no decoding at all.
+  const displayName = decodeEntities(
+    basic?.full_name
+      || (xmap['first name'] && xmap['last name'] ? `${xmap['first name']} ${xmap['last name']}`.trim() : '')
+      || profile?.name || profile?.user_login || '',
+  );
 
   const avatarUrl   = basic?.avatar_url || profile?.avatar_urls?.full || profile?.avatar_urls?.thumb || '';
   const coverUrl    = profile?.cover_url || '';
-  const designation = basic?.headline || xmap['job title'] || xmap['field_1097'] || searchXField(xmap, 'position', 'title');
-  const country      = basic?.country || xmap['country'] || xmap['field_1099'] || searchXField(xmap, 'country');
-  const city        = xmap['city'] || searchXField(xmap, 'city', 'location');
+  const designation = decodeEntities(basic?.headline || xmap['job title'] || xmap['field_1097'] || searchXField(xmap, 'position', 'title'));
+  const country      = decodeEntities(basic?.country || xmap['country'] || xmap['field_1099'] || searchXField(xmap, 'country'));
+  const city        = decodeEntities(xmap['city'] || searchXField(xmap, 'city', 'location'));
   const locationStr = [city, country].filter(Boolean).join(', ');
-  const bio         = basic?.about || xmap['field_1100'] || searchXField(xmap, 'about me');
+  const bio         = decodeEntities(basic?.about || xmap['field_1100'] || searchXField(xmap, 'about me'));
   const linkedInUrl = basic?.linkedin || xmap['field_1098'] || xmap['linkedin url'] || xmap['linkedin']
     || searchXField(xmap, 'linkedin');
   const flagEmoji   = basic?.country_flag
@@ -1577,7 +1622,7 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
             <TouchableOpacity style={s.badgesRow} onPress={() => navigation?.navigate('Badges')}>
               <Text style={s.badgesText}>
                 {isOwn ? 'My Badges' : 'View Badges'}
-                {isOwn && typeof pduTotal === 'number' ? <Text style={s.badgesDot}>{`  \u00b7  ${pduTotal} PDUs`}</Text> : null}
+                {isOwn && typeof pduTotal === 'number' ? <Text style={s.badgesDot}>{`  ·  ${pduTotal} PDUs`}</Text> : null}
               </Text>
             </TouchableOpacity>
 

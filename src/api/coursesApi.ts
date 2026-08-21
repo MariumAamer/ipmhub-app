@@ -29,6 +29,28 @@ async function apiFetch(path: string): Promise<any> {
   return res.json();
 }
 
+// ─── Decode HTML entities ───────────────────────────────────────────────────
+// Course/certification titles and descriptions come through these WP/
+// LearnDash REST endpoints HTML-entity-encoded (e.g. "Project Leadership
+// &#038; Management Diploma") since they're raw post titles — same as the
+// WP data handled in feedApi.ts/resourcesApi.ts/mentorsApi.ts. Previously
+// nothing here decoded them, so an ampersand in a course title rendered as
+// literal "&#038;" text on the Store, My Courses, and Search All Courses
+// screens. Decode the common numeric + named entities before returning.
+const decodeEntities = (text?: string | null): string =>
+  (text || '')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .trim();
+
 // ─── Shared shapes ─────────────────────────────────────────────────────────
 
 export interface CourseTab {
@@ -133,7 +155,9 @@ export const getUpcomingCourses = async (
       tab: json?.tab ?? tab,
       format: json?.format ?? tab,
       active_tab: json?.active_tab ?? tab,
-      courses: Array.isArray(json?.courses) ? json.courses : [],
+      courses: Array.isArray(json?.courses)
+        ? json.courses.map((c: UpcomingCourse) => ({...c, title: decodeEntities(c.title)}))
+        : [],
       pagination: json?.pagination ?? empty.pagination,
       pricing: json?.pricing ?? empty.pricing,
       tabs: Array.isArray(json?.tabs) ? json.tabs : [],
@@ -271,7 +295,17 @@ export const searchCourses = async (
   });
   try {
     const json = await apiFetch(`/custom/v1/courses/search?${qs.toString()}`);
-    return {...emptySearchResponse(page, per_page), ...json};
+    const merged = {...emptySearchResponse(page, per_page), ...json};
+    return {
+      ...merged,
+      courses: Array.isArray(merged.courses)
+        ? merged.courses.map((c: SearchCourse) => ({
+            ...c,
+            title: decodeEntities(c.title),
+            description: decodeEntities(c.description),
+          }))
+        : [],
+    };
   } catch (err) {
     console.error('[coursesApi] searchCourses', err);
     return emptySearchResponse(page, per_page);
@@ -404,7 +438,9 @@ export const getMyCourses = async (userId: number): Promise<MyCoursesResponse> =
       user_id: json?.user_id ?? userId,
       section: json?.section ?? 'ld-inprogress',
       count: json?.count ?? 0,
-      courses: Array.isArray(json?.courses) ? json.courses : [],
+      courses: Array.isArray(json?.courses)
+        ? json.courses.map((c: EnrolledCourse) => ({...c, title: decodeEntities(c.title)}))
+        : [],
     };
   } catch (err) {
     console.error('[coursesApi] getMyCourses', err);
@@ -429,7 +465,9 @@ export const getCompletedCourses = async (userId: number): Promise<MyCoursesResp
       user_id: json?.user_id ?? userId,
       section: json?.section ?? 'wk_completed',
       count: json?.count ?? 0,
-      courses: Array.isArray(json?.courses) ? json.courses : [],
+      courses: Array.isArray(json?.courses)
+        ? json.courses.map((c: EnrolledCourse) => ({...c, title: decodeEntities(c.title)}))
+        : [],
     };
   } catch (err) {
     console.error('[coursesApi] getCompletedCourses', err);
@@ -614,11 +652,37 @@ export interface CourseActivityResponse {
   };
 }
 
+// CONFIRMED live crash (Aug 2026): some courses include "activity"-type
+// lessons (a leaf module with direct content, no lesson->topic/quiz
+// substructure at all — e.g. a standalone LearnDash assignment surfaced
+// as a top-level lesson) whose backend response omits `topics`/`quizzes`
+// entirely (or sends null) instead of an empty array, since there's
+// nothing to nest. Every consumer of getCourseActivity — ModuleRow's
+// `hasChildren = lesson.topics.length > 0 || ...` in
+// CourseDetailScreen.tsx, and the lesson lookups in StepContentScreen.tsx
+// and QuizScreen.tsx (`[...lesson.topics, ...lesson.quizzes]`,
+// `l.quizzes.some(...)`) — assumed these were always real arrays and
+// crashed the instant one of these lessons was rendered or searched
+// through. Normalizing here, once, at the source, means every screen
+// downstream can keep assuming real arrays safely.
+const normalizeLesson = (lesson: CourseLesson): CourseLesson => ({
+  ...lesson,
+  topics: Array.isArray(lesson.topics) ? lesson.topics : [],
+  quizzes: Array.isArray(lesson.quizzes) ? lesson.quizzes : [],
+});
+
 /** GET custom/v1/ld-courses/{courseId}/activity?user_id={userId} — CONFIRMED */
 export const getCourseActivity = async (courseId: number, userId: number): Promise<CourseActivityResponse | null> => {
   try {
     const json = await apiFetch(`/custom/v1/ld-courses/${courseId}/activity?user_id=${userId}`);
-    return json ?? null;
+    if (!json) return null;
+    return {
+      ...json,
+      course: {
+        ...json.course,
+        lessons: Array.isArray(json.course?.lessons) ? json.course.lessons.map(normalizeLesson) : [],
+      },
+    };
   } catch (err) {
     // A 404 here is EXPECTED when opening a course the user isn't
     // enrolled in yet (e.g. tapping a recommendation card) — there's
@@ -1091,7 +1155,7 @@ export interface GradedAnswerOption {
 // A WordPress-style {raw, rendered} pair — CONFIRMED (Aug 2026) real
 // submit response shape for explanation/tip. This is the SAME pattern
 // that crashed StepContentScreen's course.title render earlier this
-// session ("Objects are not valid as a React child") — always render
+// session ("Objects are not valid as a React child"). always render
 // `.rendered` (or `.raw`), NEVER the object itself.
 export interface RichTextField {
   raw: string;
@@ -1334,7 +1398,17 @@ export const getRecommendedCourses = async (
 ): Promise<RecommendedCoursesResponse | null> => {
   try {
     const json = await apiFetch(`/custom/v1/my-courses/recommended?user_id=${userId}`);
-    return json ?? null;
+    if (!json) return null;
+    return {
+      ...json,
+      courses: Array.isArray(json.courses)
+        ? json.courses.map((c: RecommendedCourseAPI) => ({
+            ...c,
+            title: decodeEntities(c.title),
+            description: decodeEntities(c.description),
+          }))
+        : [],
+    };
   } catch (err) {
     console.error('[coursesApi] getRecommendedCourses', err);
     return null;

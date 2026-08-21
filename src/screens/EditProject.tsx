@@ -13,9 +13,10 @@
  */
 import React, {useState, useEffect} from 'react';
 import {
-  SafeAreaView, ScrollView, View, Text, StyleSheet,
-  StatusBar, Alert, TouchableOpacity,
+  SafeAreaView, View, Text, StyleSheet,
+  StatusBar, Alert, TouchableOpacity, Platform,
 } from 'react-native';
+import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import {
@@ -139,7 +140,13 @@ const EditProjects = ({navigation}: any) => {
     <SafeAreaView style={st.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
-      <ScrollView contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView
+        contentContainerStyle={st.content}
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid
+        extraScrollHeight={Platform.OS === 'ios' ? 20 : 0}
+        keyboardOpeningTime={0}
+        keyboardShouldPersistTaps="handled">
         <BackBtn onPress={() => navigation?.goBack()} />
         <PageHeader
           title="Projects"
@@ -239,7 +246,7 @@ const EditProjects = ({navigation}: any) => {
         {entries.length < 5 && <AddMoreBtn onPress={() => setEntries(p => [...p, newEntry()])} />}
         <SaveBtn onPress={handleSave} loading={loading} />
         <View style={{height: 40}} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
       <ProfileDrawer
         visible={drawerOpen}
         onClose={() => setDrawerOpen(false)}

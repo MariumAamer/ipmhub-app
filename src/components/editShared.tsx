@@ -35,15 +35,20 @@
  *   page titles); Runda-Normal for weight:400 body text. Make sure
  *   Runda-Medium is linked in react-native.config.js the same way
  *   Runda-Bold/Runda-Normal already are.
+ * - BackBtn now delegates to the single shared BackButton component
+ *   (components/BackButton.tsx) instead of drawing its own chevron, so
+ *   every Edit* screen/OptionPicker that imports BackBtn from here picks
+ *   up the canonical Figma-exact icon automatically.
  */
 import React, {useState} from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, Image, ActivityIndicator,
+  StyleSheet, Image, ActivityIndicator, ScrollView,
 } from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {apiRequest} from '../api/apiClient';
+import BackButton from './BackButton';
 
 // ─── Country flags (must be before components) ───────────────────────────────
 export const COUNTRY_FLAGS: Record<string, string> = {
@@ -85,15 +90,10 @@ const C = {
 };
 
 // ─── Back button ──────────────────────────────────────────────────────────────
+// Delegates to the single shared BackButton component so this screen family
+// stays visually consistent with every other back control in the app.
 export const BackBtn = ({onPress}: {onPress: () => void}) => (
-  <TouchableOpacity
-    style={sh.backBtn}
-    onPress={onPress}
-    hitSlop={{top:8, bottom:8, left:8, right:8}}>
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M15 18L9 12L15 6" stroke={C.navy} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  </TouchableOpacity>
+  <BackButton onPress={onPress} style={sh.backBtn} />
 );
 
 // ─── Page header — H2 + description ──────────────────────────────────────────
@@ -164,17 +164,28 @@ export const Dropdown = ({
         {!value && <Chevron />}
       </TouchableOpacity>
       {open && (
+        // CONFIRMED bug fix: this used to be a plain View with
+        // maxHeight:220 + overflow:'hidden' on inlineOptionBox — that
+        // clips anything past 220px, but a plain View has nothing to
+        // scroll, so everything past ~5 rows (220 / 41px row height) was
+        // simply unreachable (e.g. Month stopped at May, Year showed only
+        // the first few years). Now a real ScrollView, so the full
+        // MONTHS/YEARS/etc. list is reachable while keeping the same
+        // visible height. nestedScrollEnabled matters here since this
+        // list sits inside the screen's own outer ScrollView.
         <View style={sh.inlineOptionBox}>
-          {options.map(opt => (
-            <TouchableOpacity
-              key={opt}
-              style={sh.inlineOptionRow}
-              onPress={() => { onSelect(opt); setOpen(false); }}>
-              <Text style={[sh.inlineOptionText, opt === value && {color: C.blueDark, fontFamily: 'Runda-Bold'}]}>
-                {opt}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
+            {options.map(opt => (
+              <TouchableOpacity
+                key={opt}
+                style={sh.inlineOptionRow}
+                onPress={() => { onSelect(opt); setOpen(false); }}>
+                <Text style={[sh.inlineOptionText, opt === value && {color: C.blueDark, fontFamily: 'Runda-Bold'}]}>
+                  {opt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       )}
     </View>

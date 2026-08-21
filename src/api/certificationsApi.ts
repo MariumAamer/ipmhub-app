@@ -16,6 +16,52 @@ const authHeaders = async (): Promise<Record<string, string>> => {
   return token ? {Authorization: `Bearer ${token}`} : {};
 };
 
+// ─── Decode HTML entities ───────────────────────────────────────────────────
+// None of these 3 endpoints decoded entities at all — every title/name/
+// description field is a raw WP string (e.g. "Project Leadership &#038;
+// Management Diploma"), so an ampersand anywhere on the Certifications
+// screen (My Certifications / Certifications Overview / IPM Certifications
+// tabs) rendered as literal "&#038;" text. Same root cause already fixed in
+// feedApi.ts/resourcesApi.ts/mentorsApi.ts/coursesApi.ts for this project.
+const decodeEntities = (text?: string | null): string =>
+  (text || '')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .trim();
+
+// These responses are deeply nested (hero/highlight/qualifications/items[]/
+// diplomas/certificates/etc), and new fields have been added over time as
+// endpoints got confirmed — rather than hand-listing every text field (and
+// inevitably missing one, the same way title/description were missed
+// entirely), walk the whole response and decode every string value. This
+// is safe: entity-decoding a string with no entities in it is a no-op, and
+// it also fixes "&amp;" showing up inside URLs (same class of bug already
+// handled specially in resourcesApi.ts's extractAttr).
+const deepDecodeEntities = <T,>(value: T): T => {
+  if (typeof value === 'string') {
+    return decodeEntities(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(v => deepDecodeEntities(v)) as unknown as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: any = {};
+    for (const key of Object.keys(value as any)) {
+      out[key] = deepDecodeEntities((value as any)[key]);
+    }
+    return out;
+  }
+  return value;
+};
+
 // ─── Shared link/button shape used across all 3 endpoints ──────────────────
 export interface CertLink {
   title: string;
@@ -104,7 +150,8 @@ export const getMyCertifications = async (): Promise<MyCertificationsResponse | 
       {headers},
     );
     if (!res.ok) return null;
-    return await res.json();
+    const json = await res.json();
+    return json ? deepDecodeEntities(json) : null;
   } catch (err) {
     console.log('getMyCertifications error:', err);
     return null;
@@ -181,7 +228,8 @@ export const getCertificationsOverview =
       });
       if (!res.ok) return null;
       const json = await res.json();
-      return json?.data ?? null;
+      const data = json?.data ?? null;
+      return data ? deepDecodeEntities(data) : null;
     } catch (err) {
       console.log('getCertificationsOverview error:', err);
       return null;
@@ -256,7 +304,8 @@ export const getCertificationsIpm =
       });
       if (!res.ok) return null;
       const json = await res.json();
-      return json?.data ?? null;
+      const data = json?.data ?? null;
+      return data ? deepDecodeEntities(data) : null;
     } catch (err) {
       console.log('getCertificationsIpm error:', err);
       return null;
@@ -270,6 +319,9 @@ export const getCertificationsIpm =
 // (react-native-render-html or similar). Until we add one, this strips tags
 // down to plain text so nothing crashes/renders literal "<li>" on screen —
 // it LOSES the bullet/heading formatting Figma shows. Flagged as a known gap.
+// Runs AFTER deepDecodeEntities has already resolved entities server-side of
+// this call (getMyCertifications/getCertificationsOverview/getCertificationsIpm
+// all decode before returning), so this only ever has to worry about tags.
 //
 // NOTE: the course-detail screens (CourseDetailScreen.tsx) now use a more
 // capable purpose-built parser instead of this simple stripper —

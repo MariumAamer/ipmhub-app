@@ -38,6 +38,7 @@ import {
   StatusBar,
 } from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
+import BackButton from '../components/BackButton';
 import {
   getQuiz,
   getCourseActivity,
@@ -51,22 +52,6 @@ import {
 import {getUserIdFromToken} from '../api/profileApi';
 
 // ─── Icons ──────────────────────────────────────────────────────────────
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Path
-      d="M0.7 7C0.7 3.5206 3.5206 0.7 7 0.7H21C24.4794 0.7 27.3 3.5206 27.3 7V21C27.3 24.4794 24.4794 27.3 21 27.3H7C3.5206 27.3 0.7 24.4794 0.7 21V7Z"
-      stroke="#8F9098"
-      strokeWidth={1.4}
-    />
-    <Path
-      d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-      fill="#8F9098"
-      stroke="#8F9098"
-      strokeWidth={0.7}
-    />
-  </Svg>
-);
 
 const ExpandIcon = () => (
   <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
@@ -244,6 +229,59 @@ const RestartIcon = () => (
   </Svg>
 );
 
+// ─── Decode HTML entities ───────────────────────────────────────────────
+// WordPress/BuddyBoss content on this endpoint (question text, answer
+// option text, explanation/tip HTML, and titles) is HTML-entity-encoded
+// the same way every other WP-backed field in this app is (e.g.
+// "&#038;" for "&", "&#8217;" for a curly apostrophe). safeTitleText()
+// previously only replaced the single &#8211; en-dash entity, and
+// stripHtmlTags()/answer.answer rendering did no entity decoding at
+// all — so any ampersand/apostrophe/quote in a quiz question, answer
+// option, explanation, or tip showed up as literal entity text. Widened
+// to the full entity set already used elsewhere in this project
+// (coursesApi.ts/feedApi.ts/etc), including a generic numeric-entity
+// fallback for anything not explicitly listed.
+const decodeEntities = (text: string): string =>
+  (text || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#034;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&hellip;/g, '…')
+    .replace(/&#8230;/g, '…')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+
+// CONFIRMED live crash fix (Aug 2026), same class of bug already fixed
+// once in StepContentScreen.tsx: course/lesson/quiz `title` fields can
+// come back from the backend as either a plain string OR a WordPress
+// raw/rendered object ({raw, rendered}), inconsistently per course. This
+// screen previously rendered `courseTitle`/`quiz.title` directly into
+// <Text> and ran `.replace()` on `lesson?.title` for `lessonTitle` —
+// both of which threw/crashed ("Objects are not valid as a React child",
+// or a TypeError from .replace on a non-string) whenever a given course's
+// title data happened to be object-shaped. That's the most likely
+// explanation for crashes when opening quizzes in some courses/modules
+// but not others. Every title used on this screen now goes through
+// safeTitleText() first.
+const safeTitleText = (value: unknown): string => {
+  if (typeof value === 'string') return decodeEntities(value);
+  if (value && typeof value === 'object') {
+    const obj = value as {rendered?: unknown; raw?: unknown};
+    if (typeof obj.rendered === 'string') return decodeEntities(obj.rendered);
+    if (typeof obj.raw === 'string') return decodeEntities(obj.raw);
+  }
+  return '';
+};
+
 const QuizScreen = ({route, navigation}: any) => {
   const {courseId, stepId, courseTitle: routeCourseTitle, lessonTitle: routeLessonTitle} = route?.params || {};
   const [quizData, setQuizData] = useState<QuizResponse | null>(null);
@@ -333,17 +371,26 @@ const QuizScreen = ({route, navigation}: any) => {
   // for a quiz with a matching id — avoids needing lessonId passed via
   // route params at all, since the quiz's own id uniquely identifies it
   // within the course's curriculum.
+  // Defensive fallback (belt-and-suspenders): getCourseActivity() now
+  // normalizes topics/quizzes to real arrays for every lesson. Some
+  // courses' "activity"-type lessons (leaf modules with no lesson->topic/
+  // quiz substructure) previously came back from the backend with these
+  // keys missing entirely — and since this .find touches `.quizzes` on
+  // EVERY lesson while searching (not just the one being looked for),
+  // that crashed the instant any quiz was opened in a course that had
+  // even one such lesson anywhere in its curriculum. Guarding here too so
+  // this screen stays safe regardless of the data source.
   const lesson: CourseLesson | undefined = activity?.course.lessons.find((l) =>
-    l.quizzes.some((q) => q.id === stepId),
+    (l.quizzes ?? []).some((q) => q.id === stepId),
   );
-  const courseTitle = activity?.course.title || routeCourseTitle;
-  const lessonTitle = (lesson?.title || routeLessonTitle || '').replace(/&#8211;/g, '–');
-  const allSteps = lesson ? [...lesson.topics, ...lesson.quizzes] : [];
+  const courseTitle = safeTitleText(activity?.course.title) || decodeEntities(routeCourseTitle || '');
+  const lessonTitle = safeTitleText(lesson?.title) || decodeEntities(routeLessonTitle || '');
+  const allSteps = lesson ? [...(lesson.topics ?? []), ...(lesson.quizzes ?? [])] : [];
   const stepPos = allSteps.findIndex((s) => s.id === stepId);
   const prevSiblingStep = stepPos > 0 ? allSteps[stepPos - 1] : null;
   const nextSiblingStep =
     stepPos >= 0 && stepPos < allSteps.length - 1 ? allSteps[stepPos + 1] : null;
-  const isQuizStep = (step: {id: number} | null) => !!step && !!lesson?.quizzes.some((q) => q.id === step.id);
+  const isQuizStep = (step: {id: number} | null) => !!step && !!(lesson?.quizzes ?? []).some((q) => q.id === step.id);
 
   // CONFIRMED bug fix: routing now checks whether the target step is a
   // quiz or a topic and sends it to the correct screen — StepContentScreen
@@ -421,9 +468,7 @@ const QuizScreen = ({route, navigation}: any) => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation?.goBack?.()} />
         <TouchableOpacity>
           <ExpandIcon />
         </TouchableOpacity>
@@ -447,7 +492,7 @@ const QuizScreen = ({route, navigation}: any) => {
               <BreadcrumbArrow />
             </>
           ) : null}
-          <Text style={styles.breadcrumbTextActive}>{quiz.title}</Text>
+          <Text style={styles.breadcrumbTextActive}>{safeTitleText(quiz.title)}</Text>
         </View>
 
         {screenMode === 'landing' ? (
@@ -568,7 +613,7 @@ const QuizScreen = ({route, navigation}: any) => {
                 onPress={() => selectAnswer(idx)}
                 activeOpacity={0.8}>
                 {selected ? <RadioSelectedRed /> : <RadioUnselected />}
-                <Text style={styles.optionText}>{answer.answer}</Text>
+                <Text style={styles.optionText}>{decodeEntities(answer.answer)}</Text>
               </TouchableOpacity>
             );
           })}
@@ -700,7 +745,7 @@ const QuizScreen = ({route, navigation}: any) => {
                                   <CorrectOptionCircle />
                                   <Text style={styles.correctOptionLabel}>{'Correct Answer'}</Text>
                                 </View>
-                                <Text style={styles.optionReviewText}>{answer.answer}</Text>
+                                <Text style={styles.optionReviewText}>{decodeEntities(answer.answer)}</Text>
                               </View>
                             );
                           }
@@ -711,7 +756,7 @@ const QuizScreen = ({route, navigation}: any) => {
                                   <IncorrectOptionCircle />
                                   <Text style={styles.incorrectOptionLabel}>{'Incorrect Answer'}</Text>
                                 </View>
-                                <Text style={styles.optionReviewText}>{answer.answer}</Text>
+                                <Text style={styles.optionReviewText}>{decodeEntities(answer.answer)}</Text>
                               </View>
                             );
                           }
@@ -762,8 +807,10 @@ const QuizScreen = ({route, navigation}: any) => {
 
 // Strip any inline HTML in question text (confirmed: at least one question
 // type, cloze_answer, wraps its prompt in <p> tags — e.g. "<p>Fill in the
-// blanks.</p>")
-const stripHtmlTags = (s: string) => s.replace(/<[^>]+>/g, '').trim();
+// blanks.</p>"), then decode any HTML entities left behind (see
+// decodeEntities note above — this previously only stripped tags and left
+// "&#038;"/"&#8217;"/etc. as literal text in questions/explanations/tips).
+const stripHtmlTags = (s: string) => decodeEntities((typeof s === 'string' ? s : '').replace(/<[^>]+>/g, '')).trim();
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#FFFFFF'},
@@ -978,7 +1025,23 @@ export default QuizScreen;
       getQuizResults now takes an optional quiz_key (returned as
       submitResult.quiz.quiz_key from a fresh submit — CONFIRMED nested
       under `quiz`, not top-level) instead of user_id — omit it to get the
-      latest attempt. If wiring this for "revisit a completed quiz,"
+      latest attempt. If wiring this for "revisit a completed quiz," the
       omitting quiz_key is almost certainly the right call here, since
       there's no prior quiz_key to pass in that flow.
+
+   7. FIXED (Aug 2026): CONFIRMED live crash — course.title, lesson.title,
+      and quiz.title can each independently come back as either a plain
+      string or a WordPress {raw, rendered} object, inconsistently per
+      course/backend response. `courseTitle` and `quiz.title` used to be
+      rendered directly into <Text> with no extraction, and `lessonTitle`
+      called .replace() directly on `lesson?.title` assuming it was always
+      a string — all three threw whenever a course's title data happened
+      to be object-shaped, crashing this screen on open. Every title on
+      this screen now goes through the new safeTitleText() helper (same
+      pattern as StepContentScreen.tsx's existing fix). This — together
+      with the identical fix now applied in CourseDetailScreen.tsx's
+      Modules tab — is the most likely explanation for the reported
+      "crashes in different modules" behavior, since it only triggers on
+      whichever specific courses/lessons/quizzes happen to have
+      object-shaped title data from the backend.
 ──────────────────────────────────────────────────────────────────────── */

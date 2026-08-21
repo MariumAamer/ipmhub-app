@@ -9,13 +9,13 @@ import {
   Image,
   Animated,
   Dimensions,
-  StatusBar,
   TouchableWithoutFeedback,
   ActivityIndicator,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path} from 'react-native-svg';
 import * as Keychain from 'react-native-keychain';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.85;
@@ -217,6 +217,13 @@ interface ProfileDrawerProps {
 const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // Real per-device top/bottom insets — replaces the old
+  // `<View style={{height: StatusBar.currentHeight || 0}} />` spacer, which
+  // only ever covered the Android status bar and didn't exist for iOS or
+  // for the bottom gesture/nav bar. Without a bottom inset here, the last
+  // menu item ("Help & Support") could end up sitting behind the Android
+  // system nav bar and be unreliable to tap.
+  const insets = useSafeAreaInsets();
 
   const [profile, setProfile] = useState<any>(null);
   const [activeMembers, setActiveMembers] = useState<any[]>([]);
@@ -353,8 +360,9 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
 
       <Animated.View style={[styles.drawer, {transform: [{translateX}]}]}>
 
-        {/* Android status-bar spacer */}
-        <View style={{height: StatusBar.currentHeight || 0}} />
+        {/* Safe-area spacer — real device top inset, not the old
+            StatusBar.currentHeight guess (which was 0 on iOS). */}
+        <View style={{height: insets.top}} />
 
         {/* ── Header: 56px, << left / logo right ── */}
         <View style={styles.drawerHeader}>
@@ -515,7 +523,9 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
             </TouchableOpacity>
           ))}
 
-          <View style={{height: 40}} />
+          {/* Bottom safe-area padding so the last menu item never sits
+              behind the Android gesture bar / home indicator. */}
+          <View style={{height: 40 + insets.bottom}} />
         </ScrollView>
       </Animated.View>
     </View>

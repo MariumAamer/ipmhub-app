@@ -21,17 +21,7 @@ async function authFetch(path: string, options: RequestInit = {}) {
     },
   });
   if (res.status === 401) throw new Error('UNAUTHORIZED');
-  const json = await res.json();
-  // Previously any non-401 error status (e.g. 404/500) still fell through and
-  // got returned as if it were a valid payload. Callers (e.g. getThreadDetail)
-  // would then treat the error object as real data — `data.messages` would be
-  // undefined, and groupMessagesByDate(undefined) throws inside the render
-  // path with no useful message, which is one of the ways DMConversationScreen
-  // could get stuck/crash on load.
-  if (!res.ok) {
-    throw new Error(json?.message ?? `Request failed (${res.status})`);
-  }
-  return json;
+  return res.json();
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,7 +55,7 @@ export interface DMMessage {
   sender_data: {
     sender_name: string;
     user_avatars: { full: string; thumb: string };
-  } | null;
+  };
   bp_media_ids: any[] | null;
   bp_videos: any[] | null;
   bp_documents: any[] | null;
@@ -240,7 +230,7 @@ export function formatMessageTime(dateStr: string): string {
 
 /** Group messages by date for separator rendering */
 export function groupMessagesByDate(
-  messages: DMMessage[] | null | undefined,
+  messages: DMMessage[],
 ): Array<{ type: 'date'; label: string } | { type: 'message'; data: DMMessage }> {
   const result: Array<
     { type: 'date'; label: string } | { type: 'message'; data: DMMessage }
@@ -251,10 +241,7 @@ export function groupMessagesByDate(
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
-  // Defensive: the API can return a thread with no messages array (empty
-  // thread, or an error payload shaped differently than DMThreadDetail).
-  // Iterating undefined here used to throw and abort the whole load.
-  for (const msg of messages ?? []) {
+  for (const msg of messages) {
     const d = new Date(msg.date_sent);
     const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const diffDays = Math.round((today.getTime() - msgDay.getTime()) / (1000 * 60 * 60 * 24));
@@ -297,42 +284,7 @@ export async function getFullName(userId: number): Promise<string | null> {
   }
 }
 
-// ─── Decode HTML entities ───────────────────────────────────────────────────
-// BuddyBoss returns message.rendered (and thread excerpt.rendered) as HTML,
-// entity-encoded same as every other WP/BuddyBoss field in this app (e.g. a
-// message body containing "Q&A" comes back as "Q&amp;A"). stripHtml()
-// previously only stripped tags and left the encoded entities in place, so
-// they rendered as literal "&amp;"/"&#039;"/etc. on DMListScreen,
-// DMConversationScreen, and DMNewMessageScreen. Decode after stripping tags
-// — same entity set used elsewhere in this project (apiClient.ts/feedApi.ts).
-const decodeEntities = (text: string): string =>
-  (text || '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#034;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&#8217;/g, '’')
-    .replace(/&#8216;/g, '‘')
-    .replace(/&rsquo;/g, '’')
-    .replace(/&lsquo;/g, '‘')
-    .replace(/&#8220;/g, '“')
-    .replace(/&#8221;/g, '”')
-    .replace(/&ldquo;/g, '“')
-    .replace(/&rdquo;/g, '”')
-    .replace(/&#8211;/g, '–')
-    .replace(/&#8212;/g, '—')
-    .replace(/&ndash;/g, '–')
-    .replace(/&mdash;/g, '—')
-    .replace(/&hellip;/g, '…')
-    .replace(/&#8230;/g, '…')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
-
-/** Strip HTML tags from rendered message, then decode any HTML entities left behind */
+/** Strip HTML tags from rendered message */
 export function stripHtml(html: string): string {
-  return decodeEntities(html.replace(/<[^>]*>/g, '')).trim();
+  return html.replace(/<[^>]*>/g, '').trim();
 }

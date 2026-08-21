@@ -7,6 +7,21 @@ import {
 } from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import * as Keychain from 'react-native-keychain';
+// SafeAreaProvider is what actually measures the real per-device insets
+// (status bar height, notch/cutout, gesture nav bar / 3-button nav bar) and
+// feeds them to every useSafeAreaInsets()/SafeAreaView call in the app. It
+// was missing entirely — screens calling useSafeAreaInsets() (e.g.
+// OnboardingScreen) were silently getting back {top:0,bottom:0,left:0,right:0}
+// with no provider mounted, and every other screen instead hand-guessed the
+// top inset with `Platform.OS === 'android' ? StatusBar.currentHeight : ...`
+// (AppHeader, ProfileDrawer, WelcomeScreen, ForumTopicScreen, etc). That
+// guess only ever accounted for the status bar, never the bottom gesture/
+// nav bar, and isn't reliable across every Android status-bar/notch
+// configuration — hence content sitting under the clock/battery icons on
+// some phones, and tappable buttons hidden behind the Android back/
+// multitasking bar at the bottom on others. Mounting SafeAreaProvider once
+// here, at the true root, makes real device insets available everywhere.
+import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -56,6 +71,7 @@ import HelpSupportScreen from '../screens/HelpSupportScreen';
 import NewDiscussionScreen from '../screens/NewDiscussionScreen';
 import OptionPickerScreen from '../screens/OptionPickerScreen';
 import LikedByScreen from '../screens/LikedByScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 
 
 
@@ -120,61 +136,68 @@ const AppNavigator = () => {
   }, [isNavReady]);
 
   return (
-    <NavigationContainer
-      ref={navigationRef}
-      onReady={() => setIsNavReady(true)}>
-      <Stack.Navigator screenOptions={{headerShown: false}}>
-      <Stack.Screen name="Splash"           component={SplashScreen} />
-      <Stack.Screen name="Onboarding"       component={OnboardingScreen} />
-      <Stack.Screen name="SignIn"           component={SignInScreen} />
-      <Stack.Screen name="ForgotPassword"   component={ForgptPasswordScreen} />
-      <Stack.Screen name="SignUp"           component={SignUpScreen} />
-      <Stack.Screen name="VerifyEmail"      component={VerifyEmailScreen} />
-      <Stack.Screen name="Welcome"          component={WelcomeScreen} />
-      <Stack.Screen name="ProfileSetup"     component={ProfileSetupScreen} />
-      <Stack.Screen name="Congratulations"  component={CongratulationsScreen} />
-      <Stack.Screen name="MainApp"          component={BottomTabNavigator} />
-      <Stack.Screen name="CreatePost"       component={CreatePostScreen}       options={{presentation: 'modal'}} />
-      <Stack.Screen name="ScheduledPosts"   component={ScheduledPostsScreen}   options={{presentation: 'modal'}} />
-      <Stack.Screen name="ResourceDetail"   component={ResourceDetailScreen} />
-      <Stack.Screen name="MentorApplication" component={MentorApplicationScreen} />
-      <Stack.Screen name="ArticleSubmission" component={ArticleSubmissionScreen} />
-      <Stack.Screen name="Courses"          component={CoursesScreen} />
-      <Stack.Screen name="Settings"         component={AccountSettingsScreen}  options={{headerShown: false}} />
-      <Stack.Screen name="CourseDetail"     component={CourseDetailScreen} />
-      <Stack.Screen name="MemberProfile"    component={MemberProfileScreen} />
-      <Stack.Screen name="EditProfile"      component={EditProfileScreen} />
-      <Stack.Screen name="EditProfileDetails" component={EditProfileDetails} />
-      <Stack.Screen name="EditExperience"   component={EditExperience} />
-      <Stack.Screen name="EditEducation"    component={EditEducation} />
-      <Stack.Screen name="EditProjects"     component={EditProject} />
-      <Stack.Screen name="EditCredential"   component={EditCredential} />
-      <Stack.Screen name="EditSpecialities" component={EditSpecialities} />
-      <Stack.Screen name="ForumTopic"       component={ForumTopicScreen} />
-      <Stack.Screen name="ReplyToDiscussion" component={ReplyToDiscussionScreen} options={{presentation: 'modal'}} />
-      <Stack.Screen name="ShareLinkedIn"    component={ShareLinkedInScreen}    options={{presentation: 'modal'}} />
-      <Stack.Screen name="Certifications"   component={CertificationsScreen} />
-      <Stack.Screen name="LessonDetail"     component={LessonDetailScreen}     options={{headerShown: false}} />
-      <Stack.Screen name="Events"           component={EventsScreen}           options={{headerShown: false}} />
-      <Stack.Screen name="EventDetail"    component={EventDetailScreen}    options={{headerShown: false}} />
-      <Stack.Screen name="EventThankYou" component={EventThankYouScreen}  options={{headerShown: false}} />
-      <Stack.Screen name="DMList" component={DMListScreen} options={{headerShown: false}} />
-<Stack.Screen name="DMConversation" component={DMConversationScreen} options={{headerShown: false}} />
-<Stack.Screen name="DMNewMessage" component={DMNewMessageScreen} options={{headerShown: false}} />
-<Stack.Screen name="DMMembers" component={DMMembersScreen} options={{headerShown: false}} />
-<Stack.Screen name="Store" component={StoreScreen} options={{headerShown: false}} />
-<Stack.Screen name="Badges" component={BadgesScreen} />
-<Stack.Screen name="StepContent" component={StepContentScreen} />
-<Stack.Screen name="Quiz" component={QuizScreen} />
-<Stack.Screen name="Comments" component={CommentsScreen} />
-<Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
-<Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
-<Stack.Screen name="NewDiscussion" component={NewDiscussionScreen} />
-<Stack.Screen name="OptionPicker" component={OptionPickerScreen} />
-<Stack.Screen name="LikedBy" component={LikedByScreen} />
+    // SafeAreaProvider must sit above NavigationContainer (and everything
+    // else) so that every screen — regardless of how deep it is in the
+    // stack — can call useSafeAreaInsets()/SafeAreaView and get real,
+    // device-measured insets instead of zeros or a hand-guessed constant.
+    <SafeAreaProvider>
+      <NavigationContainer
+        ref={navigationRef}
+        onReady={() => setIsNavReady(true)}>
+        <Stack.Navigator screenOptions={{headerShown: false}}>
+        <Stack.Screen name="Splash"           component={SplashScreen} />
+        <Stack.Screen name="Onboarding"       component={OnboardingScreen} />
+        <Stack.Screen name="SignIn"           component={SignInScreen} />
+        <Stack.Screen name="ForgotPassword"   component={ForgptPasswordScreen} />
+        <Stack.Screen name="SignUp"           component={SignUpScreen} />
+        <Stack.Screen name="VerifyEmail"      component={VerifyEmailScreen} />
+        <Stack.Screen name="Welcome"          component={WelcomeScreen} />
+        <Stack.Screen name="ProfileSetup"     component={ProfileSetupScreen} />
+        <Stack.Screen name="Congratulations"  component={CongratulationsScreen} />
+        <Stack.Screen name="MainApp"          component={BottomTabNavigator} />
+        <Stack.Screen name="CreatePost"       component={CreatePostScreen}       options={{presentation: 'modal'}} />
+        <Stack.Screen name="ScheduledPosts"   component={ScheduledPostsScreen}   options={{presentation: 'modal'}} />
+        <Stack.Screen name="ResourceDetail"   component={ResourceDetailScreen} />
+        <Stack.Screen name="MentorApplication" component={MentorApplicationScreen} />
+        <Stack.Screen name="ArticleSubmission" component={ArticleSubmissionScreen} />
+        <Stack.Screen name="Courses"          component={CoursesScreen} />
+        <Stack.Screen name="Settings"         component={AccountSettingsScreen}  options={{headerShown: false}} />
+        <Stack.Screen name="CourseDetail"     component={CourseDetailScreen} />
+        <Stack.Screen name="MemberProfile"    component={MemberProfileScreen} />
+        <Stack.Screen name="EditProfile"      component={EditProfileScreen} />
+        <Stack.Screen name="EditProfileDetails" component={EditProfileDetails} />
+        <Stack.Screen name="EditExperience"   component={EditExperience} />
+        <Stack.Screen name="EditEducation"    component={EditEducation} />
+        <Stack.Screen name="EditProjects"     component={EditProject} />
+        <Stack.Screen name="EditCredential"   component={EditCredential} />
+        <Stack.Screen name="EditSpecialities" component={EditSpecialities} />
+        <Stack.Screen name="ForumTopic"       component={ForumTopicScreen} />
+        <Stack.Screen name="ReplyToDiscussion" component={ReplyToDiscussionScreen} options={{presentation: 'modal'}} />
+        <Stack.Screen name="ShareLinkedIn"    component={ShareLinkedInScreen}    options={{presentation: 'modal'}} />
+        <Stack.Screen name="Certifications"   component={CertificationsScreen} />
+        <Stack.Screen name="LessonDetail"     component={LessonDetailScreen}     options={{headerShown: false}} />
+        <Stack.Screen name="Events"           component={EventsScreen}           options={{headerShown: false}} />
+        <Stack.Screen name="EventDetail"    component={EventDetailScreen}    options={{headerShown: false}} />
+        <Stack.Screen name="EventThankYou" component={EventThankYouScreen}  options={{headerShown: false}} />
+        <Stack.Screen name="DMList" component={DMListScreen} options={{headerShown: false}} />
+  <Stack.Screen name="DMConversation" component={DMConversationScreen} options={{headerShown: false}} />
+  <Stack.Screen name="DMNewMessage" component={DMNewMessageScreen} options={{headerShown: false}} />
+  <Stack.Screen name="DMMembers" component={DMMembersScreen} options={{headerShown: false}} />
+  <Stack.Screen name="Store" component={StoreScreen} options={{headerShown: false}} />
+  <Stack.Screen name="Badges" component={BadgesScreen} />
+  <Stack.Screen name="StepContent" component={StepContentScreen} />
+  <Stack.Screen name="Quiz" component={QuizScreen} />
+  <Stack.Screen name="Comments" component={CommentsScreen} />
+  <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+  <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+  <Stack.Screen name="NewDiscussion" component={NewDiscussionScreen} />
+  <Stack.Screen name="OptionPicker" component={OptionPickerScreen} />
+  <Stack.Screen name="LikedBy" component={LikedByScreen} />
+  <Stack.Screen name="Notifications" component={NotificationsScreen} options={{headerShown: false}} />
 
-</Stack.Navigator>
-    </NavigationContainer>
+  </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 };
 

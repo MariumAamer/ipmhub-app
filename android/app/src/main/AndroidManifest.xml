@@ -4,6 +4,32 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!--
+      Required by react-native-image-picker's launchImageLibrary() for the
+      "Add Photos" flow in CreatePostScreen.tsx (and any other screen using
+      the shared pickImage() helper in editShared.tsx).
+
+      Without these declared here, the library's own runtime permission
+      request has nothing to ask the OS for — on a lot of real Android
+      devices/OEM builds this doesn't block the picker UI from opening or
+      even from returning a content:// URI, but it silently blocks the app
+      from actually reading that URI's bytes afterwards. That's what turns
+      into "pick a photo, tap Post, the post goes through with no image and
+      no error" — the exact symptom reported, and it lines up with
+      uploadImages() in CreatePostScreen.tsx previously swallowing that
+      failure in a bare catch{} instead of surfacing it.
+
+      READ_MEDIA_IMAGES covers Android 13+ (API 33+), where the granular
+      per-media-type permission replaced the old blanket storage permission.
+      READ_EXTERNAL_STORAGE is capped at maxSdkVersion 32 — on 13+ it's a
+      no-op (superseded by READ_MEDIA_IMAGES) and Google Play policy flags
+      apps that request broad storage access they don't need on new SDKs.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <queries>
         <package android:name="com.google.android.youtube" />
         <intent>

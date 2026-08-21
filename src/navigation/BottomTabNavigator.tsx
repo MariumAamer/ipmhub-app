@@ -1,8 +1,9 @@
 /* eslint-disable prettier/prettier */
 import React from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, Platform} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import Svg, {Path, G, Circle, Ellipse} from 'react-native-svg';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import FeedScreen from '../screens/FeedScreen';
 import ForumsScreen from '../screens/ForumsScreen';
@@ -85,39 +86,53 @@ const ICONS: Record<string, React.FC<{color: string}>> = {
 };
 
 // ─── Custom tab bar ───────────────────────────────────────────────────────────
-const CustomTabBar = ({state, descriptors, navigation}: any) => (
-  <View style={styles.tabBar}>
-    {state.routes.map((route: any, index: number) => {
-      const isFocused = state.index === index;
-      const IconComponent = ICONS[route.name];
-      const color = isFocused ? ACTIVE : INACTIVE;
+// Bottom safe-area inset was previously hardcoded per-platform
+// (`Platform.OS === 'ios' ? 20 : 8`), which only approximated the classic
+// iOS home-indicator height and a flat guess for Android. Neither number
+// reflects the real device: Android phones with 3-button navigation need
+// very little extra padding, but phones using Android's gesture nav bar (or
+// any device with a larger inset) need more — otherwise the tab bar's icons
+// sit right underneath, or partly behind, the system back/home/multitask
+// controls and become unreliable to tap. useSafeAreaInsets().bottom reports
+// the actual reserved system-UI height per device, on both platforms, so we
+// add it on top of the design's own breathing room instead of guessing.
+const CustomTabBar = ({state, descriptors, navigation}: any) => {
+  const insets = useSafeAreaInsets();
 
-      const onPress = () => {
-        const event = navigation.emit({
-          type: 'tabPress',
-          target: route.key,
-          canPreventDefault: true,
-        });
-        if (!isFocused && !event.defaultPrevented) {
-          navigation.navigate(route.name);
-        }
-      };
+  return (
+    <View style={[styles.tabBar, {paddingBottom: 8 + insets.bottom, height: 56 + insets.bottom}]}>
+      {state.routes.map((route: any, index: number) => {
+        const isFocused = state.index === index;
+        const IconComponent = ICONS[route.name];
+        const color = isFocused ? ACTIVE : INACTIVE;
 
-      return (
-        <TouchableOpacity
-          key={route.key}
-          style={styles.tabItem}
-          onPress={onPress}
-          activeOpacity={0.7}>
-          {IconComponent ? <IconComponent color={color} /> : null}
-          <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>
-            {route.name}
-          </Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-);
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
+        return (
+          <TouchableOpacity
+            key={route.key}
+            style={styles.tabItem}
+            onPress={onPress}
+            activeOpacity={0.7}>
+            {IconComponent ? <IconComponent color={color} /> : null}
+            <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>
+              {route.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
 
 // ─── Navigator ────────────────────────────────────────────────────────────────
 const BottomTabNavigator = () => (
@@ -139,9 +154,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#EBEBEB',
-    paddingBottom: Platform.OS === 'ios' ? 20 : 8,
+    // paddingBottom and height are set inline above using the real
+    // safe-area bottom inset (8 + insets.bottom / 56 + insets.bottom) —
+    // see CustomTabBar. 56 is the tap-target height above the inset.
     paddingTop: 8,
-    height: Platform.OS === 'ios' ? 80 : 64,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: {width: 0, height: -2},

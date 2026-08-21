@@ -9,9 +9,10 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
+import {View, Text, Image, TouchableOpacity, StyleSheet, Platform} from 'react-native';
 import Svg, {Path, Polygon} from 'react-native-svg';
 import * as Keychain from 'react-native-keychain';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {apiRequest} from '../api/apiClient';
 import {getUserIdFromToken} from '../api/profileApi';
 
@@ -104,6 +105,19 @@ const Logo = () => (
 const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<number | null>(null);
+  // Real per-device top inset (status bar height, notch/cutout, etc) from
+  // SafeAreaProvider (mounted once in AppNavigator) — replaces the old
+  // `Platform.OS === 'android' ? StatusBar.currentHeight : 0` guess, which
+  // only ever covered the status bar height and wasn't reliable across all
+  // Android status-bar/notch/display-cutout configurations.
+  // Every screen that renders AppHeader wraps it in its own SafeAreaView,
+  // which already applies the correct top inset on iOS (the core
+  // react-native SafeAreaView is a real safe-area component there, it's
+  // only a no-op on Android) — so this only needs to add extra top padding
+  // on Android, where the wrapping SafeAreaView does nothing. Applying the
+  // inset unconditionally on both platforms would double the top gap on
+  // iOS (screen's SafeAreaView inset + this component's own inset).
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     loadMyProfile();
@@ -141,7 +155,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
   };
 
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, {paddingTop: Platform.OS === 'android' ? insets.top + 10 : 10}]}>
       {/* Left — chevron (drawer) + logo (home), separate tap targets */}
       <View style={styles.logoRow}>
         <TouchableOpacity
@@ -199,6 +213,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingVertical: 10,
+    // paddingTop is set inline above using the real safe-area top inset —
+    // see the insets.top + 10 usage in the component. Keeping only the
+    // static paddingVertical (bottom) here.
     borderBottomWidth: 1,
     borderBottomColor: '#EBEBEB',
     elevation: 2,

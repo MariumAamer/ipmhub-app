@@ -13,10 +13,57 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop} from 'react-native-svg';
 import {getToken} from '../api/apiClient';
+import BackButton from '../components/BackButton';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
+
+// ─── Decode HTML entities ───────────────────────────────────────────────────
+// /custom/v1/my-badges never decoded entities at all — profile.full_name/
+// position and every badge/activity title, description, label, and
+// unlock_hint is a raw WP string (e.g. "Project Leadership &#038;
+// Management"), so any ampersand/apostrophe anywhere on this screen rendered
+// as literal entity text. Same root cause already fixed elsewhere in this
+// project (coursesApi.ts, certificationsApi.ts, etc). The response shape is
+// deeply nested and grows over time, so rather than hand-listing every text
+// field (and risking missing one), walk the whole response and decode every
+// string value found — a no-op for strings with no entities in them.
+const decodeEntities = (text?: string | null): string =>
+  (text || '')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&hellip;/g, '…')
+    .replace(/&#8230;/g, '…')
+    .trim();
+
+const deepDecodeEntities = <T,>(value: T): T => {
+  if (typeof value === 'string') {
+    return decodeEntities(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map(v => deepDecodeEntities(v)) as unknown as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: any = {};
+    for (const key of Object.keys(value as any)) {
+      out[key] = deepDecodeEntities((value as any)[key]);
+    }
+    return out;
+  }
+  return value;
+};
 
 // ─── API types (mirrors the live /custom/v1/my-badges response) ───────────────
 
@@ -114,7 +161,8 @@ const fetchMyBadges = async (): Promise<MyBadgesResponse | null> => {
       headers: {Authorization: `Bearer ${token}`},
     });
     if (!res.ok) return null;
-    return res.json();
+    const json = await res.json();
+    return json ? deepDecodeEntities(json) : null;
   } catch (e) {
     console.log('[BadgesScreen] fetchMyBadges error:', e);
     return null;
@@ -384,9 +432,7 @@ const BadgesScreen = ({navigation}: {navigation: any}) => {
     <View style={styles.root}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backChevron}>{'‹'}</Text>
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} />
         <Text style={styles.headerTitle}>Badges</Text>
         <View style={{width: 32}} />
       </View>
@@ -534,8 +580,6 @@ const styles = StyleSheet.create({
     paddingBottom: 12, backgroundColor: '#FFF',
     borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
-  backBtn: {width: 32, height: 32, justifyContent: 'center'},
-  backChevron: {fontSize: 28, color: '#192546', lineHeight: 32},
   headerTitle: {
     fontFamily: 'Runda', fontWeight: '700', fontSize: 18,
     color: '#192647', letterSpacing: 0.09,

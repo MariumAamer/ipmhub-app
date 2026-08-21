@@ -166,27 +166,9 @@ export const AttachmentIcon = ({color = '#192546', size = 20}: {color?: string; 
 );
 
 // ─── Back button (rounded square outline + chevron) — Single Discussion header ─
-export const BackIcon = ({size = 28}: {size?: number}) => {
-  const clipId = React.useRef(`clip_back_${Math.random().toString(36).slice(2)}`).current;
-  return (
-    <Svg width={size} height={size} viewBox="0 0 28 28" fill="none">
-      <G clipPath={`url(#${clipId})`}>
-        <Rect x="0.7" y="0.7" width="26.6" height="26.5996" rx="6.3" stroke="#8F9098" strokeWidth="1.4" />
-        <Path
-          d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-          fill="#8F9098"
-          stroke="#8F9098"
-          strokeWidth="0.7"
-        />
-      </G>
-      <Defs>
-        <ClipPath id={clipId}>
-          <Rect width="28" height="27.9996" fill="white" />
-        </ClipPath>
-      </Defs>
-    </Svg>
-  );
-};
+// Re-exported from the single shared BackButton component so this icon has
+// one source of truth across the app (see components/BackButton.tsx).
+export {BackIcon} from './BackButton';
 
 // ─── Report icon (stacked circle badge with "!") — used with "Report Forum" text ─
 export const ReportIcon = ({size = 21}: {size?: number}) => (

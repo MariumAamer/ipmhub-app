@@ -650,6 +650,11 @@ const CommentsPanel = ({
                           likedBy: c.likedBy || [],
                           likesCount: c.likes,
                           title: 'Liked by',
+                          // Needed as a fallback fetch by LikedByScreen when
+                          // c.likedBy comes back empty even though c.likes
+                          // is > 0 — the comment list endpoint doesn't
+                          // always embed liked_by.
+                          postId: typeof c.id === 'number' ? c.id : undefined,
                         })
                       }>
                       <Text style={styles.commentLikeCount}>
@@ -821,6 +826,9 @@ const PostCard = ({
                     likedBy: post.likedBy || [],
                     likesCount: post.likes,
                     title: 'Liked by',
+                    // Fallback fetch id for LikedByScreen — see comment on
+                    // the comment-likes navigate() call above; same fix.
+                    postId: post.id,
                   })
                 }
                 hitSlop={{top: 8, bottom: 8, left: 4, right: 8}}>
@@ -1686,8 +1694,8 @@ const ds = StyleSheet.create({
   deleteBtnText: {color: '#FFF', fontSize: 15, fontWeight: '700', fontFamily: 'Runda'},
   cancelBtn: {
     borderWidth: 1.5,
-    borderColor: '#C5C6CC', 
-    borderRadius: 50, 
+    borderColor: '#C5C6CC',
+    borderRadius: 50,
     paddingVertical: 13,
     alignItems: 'center',
   },

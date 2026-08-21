@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React from 'react';
+import React, {useRef} from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Modal,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
 import Svg, {Path, Circle, Defs, LinearGradient as SvgGrad, Stop} from 'react-native-svg';
 
@@ -90,22 +91,44 @@ interface FabMenuProps {
 }
 
 const FabMenu = ({visible, onClose, navigation}: FabMenuProps) => {
-  const handleWriteArticle = () => {
+  // On iOS, Modal's dismissal is an animated native transition. Calling
+  // navigation.navigate() in the same tick as the setState that unmounts
+  // the Modal races that transition — iOS's UIKit transition coordinator
+  // drops the navigate() while the modal is still mid-dismiss, so nothing
+  // happens. Android tears the modal down immediately so the same code
+  // works there by accident.
+  //
+  // Fix: stash the pending navigation action and fire it from Modal's
+  // onDismiss, which only fires (iOS-only) once the native dismiss
+  // animation has actually completed. Android doesn't reliably call
+  // onDismiss, so there we still navigate immediately.
+  const pendingActionRef = useRef<(() => void) | null>(null);
+
+  const runOrDefer = (action: () => void) => {
     onClose();
-    navigation?.navigate('ArticleSubmission');
+    if (Platform.OS === 'ios') {
+      pendingActionRef.current = action;
+    } else {
+      action();
+    }
+  };
+
+  const handleModalDismiss = () => {
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    action?.();
+  };
+
+  const handleWriteArticle = () => {
+    runOrDefer(() => navigation?.navigate('ArticleSubmission'));
   };
 
   const handleCreatePost = () => {
-    onClose();
-    navigation?.navigate('CreatePost');
+    runOrDefer(() => navigation?.navigate('CreatePost'));
   };
 
   const handleCreateDiscussion = () => {
-    onClose();
-    // TODO(confirm): 'NewDiscussion' is not yet registered as a
-    // <Stack.Screen> in AppNavigator.tsx — add it once the screen's
-    // import path is confirmed, or this will throw a navigation error.
-    navigation?.navigate('NewDiscussion');
+    runOrDefer(() => navigation?.navigate('NewDiscussion'));
   };
 
   if (!visible) return null;
@@ -115,6 +138,7 @@ const FabMenu = ({visible, onClose, navigation}: FabMenuProps) => {
       visible={visible}
       transparent
       animationType="fade"
+      onDismiss={handleModalDismiss}
       onRequestClose={onClose}>
       <TouchableOpacity
         style={fab.backdrop}

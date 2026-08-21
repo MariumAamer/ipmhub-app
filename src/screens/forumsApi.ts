@@ -531,32 +531,9 @@ export const createTopic = async (params: {
     headers,
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    // Same pattern as postReply — surface the real backend error instead of
-    // a generic failure, since the topic may actually be getting created
-    // server-side despite a non-OK response, or vice versa.
-    let detail = '';
-    try {
-      const errJson = await res.json();
-      detail = errJson?.message || JSON.stringify(errJson);
-    } catch {
-      try {
-        detail = await res.text();
-      } catch {
-        detail = '';
-      }
-    }
-    throw new Error(`createTopic failed (${res.status}): ${detail || 'no response body'}`);
-  }
+  if (!res.ok) return {ok: false};
   const data = await res.json();
-  if (!data?.id) {
-    // The request succeeded (2xx) but the response didn't have an "id"
-    // field where we expected it — rather than silently reporting failure
-    // (which is what caused topics to actually get created while the app
-    // showed an error, prompting duplicate retries), surface the actual
-    // response shape so we can see what field the id is really under.
-    throw new Error(`createTopic: 2xx response but no "id" field. Response: ${JSON.stringify(data)}`);
-  }
+  if (!data?.id) return {ok: false};
 
   // Follow-up call to explicitly assign tags via the dedicated endpoint,
   // in case topic_tags at creation doesn't take (matches the pattern we

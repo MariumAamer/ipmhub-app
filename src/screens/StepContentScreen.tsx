@@ -37,6 +37,7 @@ import {
   Alert,
 } from 'react-native';
 import Svg, {Path} from 'react-native-svg';
+import BackButton from '../components/BackButton';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import {
   getCourseActivity,
@@ -52,17 +53,6 @@ import {getUserIdFromToken} from '../api/profileApi';
 import {parseCourseOverviewHtml, ContentBlock} from '../utils/parseCourseOverviewHtml';
 
 // ─── Icons ──────────────────────────────────────────────────────────────
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Path
-      d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-      fill="#8F9098"
-      stroke="#8F9098"
-      strokeWidth={0.7}
-    />
-  </Svg>
-);
 
 const ExpandIcon = () => (
   <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
@@ -162,6 +152,36 @@ type SubTab = 'topic' | 'materials';
 // Best-effort: treat materials as HTML if it contains a tag, else plain text
 const looksLikeHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
 
+// ─── Decode HTML entities ───────────────────────────────────────────────
+// This step-content endpoint (titles, short_description, plain-text
+// materials, and step comments) is HTML-entity-encoded the same way every
+// other WP-backed field in this app is (e.g. "&#038;" for "&", "&#8217;"
+// for a curly apostrophe). safeTitleText() previously only replaced the
+// single &#8211; en-dash entity, and short_description/materials/comment
+// author/content had NO decoding at all — so any ampersand, apostrophe,
+// or quote in those fields rendered as literal entity text. Widened to
+// the full entity set already used elsewhere in this project
+// (coursesApi.ts/feedApi.ts/etc), including a generic numeric-entity
+// fallback for anything not explicitly listed.
+const decodeEntities = (text: string): string =>
+  (text || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#034;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&hellip;/g, '…')
+    .replace(/&#8230;/g, '…')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+
 // CONFIRMED live crash fix (Aug 2026): "Objects are not valid as a React
 // child (found: object with keys {raw, rendered})". getCourseActivity's
 // course.title came back as WordPress's standard raw/rendered post-title
@@ -171,11 +191,11 @@ const looksLikeHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
 // safely everywhere a title renders in this screen: handles a plain
 // string, the {rendered, raw} shape, or anything else without crashing.
 const safeTitleText = (value: unknown): string => {
-  if (typeof value === 'string') return value.replace(/&#8211;/g, '–');
+  if (typeof value === 'string') return decodeEntities(value);
   if (value && typeof value === 'object') {
     const obj = value as {rendered?: unknown; raw?: unknown};
-    if (typeof obj.rendered === 'string') return obj.rendered.replace(/&#8211;/g, '–');
-    if (typeof obj.raw === 'string') return obj.raw.replace(/&#8211;/g, '–');
+    if (typeof obj.rendered === 'string') return decodeEntities(obj.rendered);
+    if (typeof obj.raw === 'string') return decodeEntities(obj.raw);
   }
   return '';
 };
@@ -260,8 +280,8 @@ const StepContentScreen = ({route, navigation}: any) => {
         if (!prev) return prev;
         const lessons = prev.course.lessons.map((l) => ({
           ...l,
-          topics: l.topics.map((t) => (t.id === stepId ? {...t, status: res.step_status} : t)),
-          quizzes: l.quizzes.map((q) => (q.id === stepId ? {...q, status: res.step_status} : q)),
+          topics: (l.topics ?? []).map((t) => (t.id === stepId ? {...t, status: res.step_status} : t)),
+          quizzes: (l.quizzes ?? []).map((q) => (q.id === stepId ? {...q, status: res.step_status} : q)),
         }));
         return {
           ...prev,
@@ -302,7 +322,11 @@ const StepContentScreen = ({route, navigation}: any) => {
   }
 
   const lesson: CourseLesson | undefined = activity?.course.lessons.find((l) => l.id === lessonId);
-  const allSteps = lesson ? [...lesson.topics, ...lesson.quizzes] : [];
+  // Defensive fallback: getCourseActivity() normalizes topics/quizzes to
+  // real arrays (some courses' "activity"-type lessons previously came
+  // back without these keys at all, which crashed this exact spread) —
+  // guarding here too so this screen stays safe regardless of the source.
+  const allSteps = lesson ? [...(lesson.topics ?? []), ...(lesson.quizzes ?? [])] : [];
   const stepIndex = allSteps.findIndex((s) => s.id === stepId);
   const currentStep = stepIndex >= 0 ? allSteps[stepIndex] : null;
   const prevStep = stepIndex > 0 ? allSteps[stepIndex - 1] : null;
@@ -315,7 +339,7 @@ const StepContentScreen = ({route, navigation}: any) => {
   // and routes accordingly.
   const goToStep = (step: {id: number} | null) => {
     if (!step || !lesson) return;
-    const isQuiz = lesson.quizzes.some((q) => q.id === step.id);
+    const isQuiz = (lesson.quizzes ?? []).some((q) => q.id === step.id);
     if (isQuiz) {
       navigation?.navigate?.('Quiz', {courseId, stepId: step.id});
     } else {
@@ -341,9 +365,7 @@ const StepContentScreen = ({route, navigation}: any) => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation?.goBack?.()} />
         <TouchableOpacity>
           <ExpandIcon />
         </TouchableOpacity>
@@ -392,7 +414,7 @@ const StepContentScreen = ({route, navigation}: any) => {
         )}
 
         {stepContent?.content?.short_description ? (
-          <Text style={styles.bodyText}>{stepContent.content.short_description}</Text>
+          <Text style={styles.bodyText}>{decodeEntities(stepContent.content.short_description)}</Text>
         ) : null}
 
         {/* Topic/Materials sub-tabs — only shown if there's actually
@@ -434,7 +456,7 @@ const StepContentScreen = ({route, navigation}: any) => {
               <ContentBlockView key={idx} block={block} onPlayVideo={setVideoModalUrl} />
             ))
           ) : (
-            <Text style={styles.bodyText}>{stepContent!.content.materials}</Text>
+            <Text style={styles.bodyText}>{decodeEntities(stepContent!.content.materials)}</Text>
           )
         )}
 
@@ -583,12 +605,17 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
           <View style={[styles.commentAvatar, {backgroundColor: '#E8E9F1'}]} />
         )}
         <View>
-          <Text style={styles.commentAuthorName}>{comment.author_name}</Text>
-          <Text style={styles.commentDate}>{comment.date_formatted}</Text>
+          {/* author_name/content/date_formatted come from the same
+              WP-backed comments endpoint as everything else in this app —
+              previously rendered completely raw here, so a commenter name
+              or comment body containing an entity (e.g. an apostrophe in
+              "can't") showed up as literal "&#039;" text. */}
+          <Text style={styles.commentAuthorName}>{decodeEntities(comment.author_name)}</Text>
+          <Text style={styles.commentDate}>{decodeEntities(comment.date_formatted)}</Text>
         </View>
       </View>
       <View style={styles.commentBody}>
-        <Text style={styles.commentText}>{comment.content}</Text>
+        <Text style={styles.commentText}>{decodeEntities(comment.content)}</Text>
         <TouchableOpacity onPress={onReply}>
           <Text style={styles.commentReplyText}>{'Reply'}</Text>
         </TouchableOpacity>
@@ -608,17 +635,21 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
 // pattern gets used a third time, worth extracting to a shared component.
 const ContentBlockView = ({block, onPlayVideo}: {block: ContentBlock; onPlayVideo: (url: string) => void}) => {
   if (block.type === 'heading') {
-    return <Text style={styles.blockHeading}>{block.text}</Text>;
+    // block.text/items come out of parseCourseOverviewHtml(), a shared
+    // utility whose own entity-decoding hasn't been independently
+    // verified for this field — decoding here too is a safe no-op if it
+    // already decodes upstream, and a real fix if it doesn't.
+    return <Text style={styles.blockHeading}>{decodeEntities(block.text || '')}</Text>;
   }
   if (block.type === 'paragraph') {
-    return <Text style={styles.bodyText}>{block.text}</Text>;
+    return <Text style={styles.bodyText}>{decodeEntities(block.text || '')}</Text>;
   }
   if (block.type === 'list') {
     return (
       <View style={{gap: 4}}>
         {block.items?.map((item, idx) => (
           <Text key={idx} style={styles.bodyText}>
-            {block.ordered ? `${idx + 1}. ${item}` : `•  ${item}`}
+            {block.ordered ? `${idx + 1}. ${decodeEntities(item)}` : `•  ${decodeEntities(item)}`}
           </Text>
         ))}
       </View>
@@ -854,4 +885,15 @@ export default StepContentScreen;
    6. Breadcrumb, Complete/Prev/Next state, and Module Progress remain
       built on the already-confirmed getCourseActivity() response —
       unaffected by this rewrite, still real.
+
+   7. FIXED (Aug 2026): stepTitle/breadcrumb titles, short_description,
+      plain-text materials, and step comments (author name/content/date)
+      are HTML-entity-encoded by the backend the same way every other
+      WP-backed field in this app is — previously only titles got a
+      single-entity (&#8211;) fix via safeTitleText(), and every other
+      field rendered completely raw. All of the above now go through the
+      new decodeEntities() helper (same entity set used elsewhere in this
+      project). Block text coming out of parseCourseOverviewHtml() is also
+      now decoded defensively here, since that shared utility's own
+      entity-handling hasn't been independently verified.
 ──────────────────────────────────────────────────────────────────────── */

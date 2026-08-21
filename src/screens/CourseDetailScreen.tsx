@@ -43,6 +43,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import VideoPlayerModal from '../components/VideoPlayerModal';
+import BackButton from '../components/BackButton';
 import {
   getCourseDetails,
   getCourseActivity,
@@ -70,22 +71,6 @@ import {getUserIdFromToken} from '../api/profileApi';
 import {parseCourseOverviewHtml, ContentBlock, parseFaqsHtml} from '../utils/parseCourseOverviewHtml';
 
 // ─── Icons (from Figma) ─────────────────────────────────────────────────
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Path
-      d="M0.7 7C0.7 3.5206 3.5206 0.7 7 0.7H21C24.4794 0.7 27.3 3.5206 27.3 7V21C27.3 24.4794 24.4794 27.3 21 27.3H7C3.5206 27.3 0.7 24.4794 0.7 21V7Z"
-      stroke="#8F9098"
-      strokeWidth={1.4}
-    />
-    <Path
-      d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-      fill="#8F9098"
-      stroke="#8F9098"
-      strokeWidth={0.7}
-    />
-  </Svg>
-);
 
 // Rebuilt from mask-based SVG (same shape used for the Modules back/next
 // pills) as plain fill — see project rule on react-native-svg not
@@ -261,7 +246,70 @@ const ProgressCard = ({activity}: {activity: CourseActivityResponse}) => {
 
 // ─── Modules tab (fully data-backed, confirmed getCourseActivity shape) ───
 
-const stripEntities = (s: string) => s.replace(/&#8211;/g, '–').replace(/&#038;/g, '&').replace(/&amp;/g, '&');
+// CONFIRMED live crash fix (Aug 2026): title fields returned by the
+// backend are NOT reliably plain strings. getCourseActivity's
+// course.title (and, inconsistently, individual lesson/topic/quiz
+// title fields too — this varies per course/backend response, which is
+// exactly why this crashed on some courses' modules and not others) can
+// come back as WordPress's standard raw/rendered post-title shape
+// ({raw: string, rendered: string}) instead. stripEntities() used to call
+// .replace() directly on whatever was passed in, assuming it was always a
+// string — when a title arrived as an object instead, that .replace()
+// threw ("undefined is not a function" / TypeError), crashing this
+// screen's Modules tab entirely (and, on iOS specifically, surfacing as a
+// hard crash / blank screen rather than a recoverable redbox). This is
+// the same class of bug already fixed once in StepContentScreen.tsx (see
+// safeTitleText there) — extracting it the same way here so every
+// lesson/topic/quiz title on this screen is safe regardless of which
+// shape the backend sends for a given course.
+const safeTitleText = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const obj = value as {rendered?: unknown; raw?: unknown};
+    if (typeof obj.rendered === 'string') return obj.rendered;
+    if (typeof obj.raw === 'string') return obj.raw;
+  }
+  return '';
+};
+
+// ─── Decode HTML entities ───────────────────────────────────────────────
+// This screen pulls text from several different confirmed endpoints
+// (getCourseDetails header/sidebar, getCourseActivity lessons/topics/
+// quizzes, and the per-tab content endpoints), all backed by the same
+// WordPress/LearnDash install that HTML-entity-encodes text everywhere
+// else in this app (e.g. "&#038;" for "&", "&#8217;" for a curly
+// apostrophe). stripEntities() previously only replaced 3 entities
+// (&#8211;, &#038;, &amp;) and was only ever called on title fields —
+// every other piece of text on this screen (description snippets, meta
+// labels, enrollment status/button labels, stat labels, tab bar labels,
+// instructor names/bios, certification/assessment/FAQ text, and the
+// generic SectionsRenderer fallback) rendered completely raw. Widened to
+// the full entity set already used elsewhere in this project
+// (coursesApi.ts/feedApi.ts/etc), including a generic numeric-entity
+// fallback, and applied to every user-facing text field below.
+const decodeEntities = (text: unknown): string => {
+  const s = typeof text === 'string' ? text : safeTitleText(text);
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#034;/g, '"')
+    .replace(/&#038;/g, '&')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&hellip;/g, '…')
+    .replace(/&#8230;/g, '…')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+};
+
+const stripEntities = (s: unknown) => decodeEntities(safeTitleText(s));
 
 // Duration was confirmed (via a live crash) to sometimes be an object
 // {minutes, display}, not a plain string — this extracts safely rendering
@@ -297,7 +345,7 @@ const ModuleStepRow = ({
           plain string — rendering it directly crashed the app. Now goes
           through getDurationText(), which handles both shapes safely. */}
       {durationText ? (
-        <Text style={[styles.stepDuration, completed && styles.stepDurationCompleted]}>{durationText}</Text>
+        <Text style={[styles.stepDuration, completed && styles.stepDurationCompleted]}>{decodeEntities(durationText)}</Text>
       ) : null}
       {completed ? <CheckCircleIcon /> : <EmptyCircleIcon />}
     </TouchableOpacity>
@@ -315,12 +363,20 @@ const ModuleRow = ({
   onToggle: () => void;
   onStepPress: (step: CourseTopic | CourseQuizStep, kind: 'topic' | 'quiz') => void;
 }) => {
-  const hasChildren = lesson.topics.length > 0 || lesson.quizzes.length > 0;
+  // Defensive fallback (belt-and-suspenders): coursesApi.ts's
+  // getCourseActivity() already normalizes topics/quizzes to real arrays
+  // for every lesson (some courses' "activity"-type lessons come back
+  // from the backend with these keys missing entirely), but guarding here
+  // too means this component stays safe even if it's ever fed data from
+  // somewhere that skips that normalization.
+  const lessonTopics = lesson.topics ?? [];
+  const lessonQuizzes = lesson.quizzes ?? [];
+  const hasChildren = lessonTopics.length > 0 || lessonQuizzes.length > 0;
   // Module (lesson) itself has no reliable top-level "completed" status of
   // its own in the confirmed data — so it's derived here from whether
   // every one of its topics AND quizzes is completed, same signal already
   // used per-step below.
-  const allModuleSteps = [...lesson.topics, ...lesson.quizzes];
+  const allModuleSteps = [...lessonTopics, ...lessonQuizzes];
   const moduleCompleted = allModuleSteps.length > 0 && allModuleSteps.every((s) => s.status === 'completed');
 
   return (
@@ -334,7 +390,7 @@ const ModuleRow = ({
             {stripEntities(lesson.title)}
           </Text>
         </View>
-        {lesson.counts?.display ? <Text style={styles.moduleCountText}>{lesson.counts.display}</Text> : null}
+        {lesson.counts?.display ? <Text style={styles.moduleCountText}>{decodeEntities(lesson.counts.display)}</Text> : null}
         {hasChildren ? (
           <View style={expanded ? styles.moduleChevronExpanded : styles.moduleChevronCollapsed}>
             <SmallChevronRight />
@@ -349,13 +405,13 @@ const ModuleRow = ({
           <View style={styles.moduleContentBar}>
             <Text style={styles.moduleContentLabel}>{'Module Content'}</Text>
             {lesson.progress && (
-              <Text style={styles.moduleContentProgress}>{lesson.progress.display}</Text>
+              <Text style={styles.moduleContentProgress}>{decodeEntities(lesson.progress.display)}</Text>
             )}
           </View>
-          {lesson.topics.map((topic) => (
+          {lessonTopics.map((topic) => (
             <ModuleStepRow key={`t-${topic.id}`} step={topic} kind="topic" onPress={() => onStepPress(topic, 'topic')} />
           ))}
-          {lesson.quizzes.map((quiz) => (
+          {lessonQuizzes.map((quiz) => (
             <ModuleStepRow key={`q-${quiz.id}`} step={quiz} kind="quiz" onPress={() => onStepPress(quiz, 'quiz')} />
           ))}
         </>
@@ -445,7 +501,7 @@ const ModulesTab = ({
           lesson={lesson}
           expanded={expandedIds.has(lesson.id)}
           onToggle={() => toggleModule(lesson.id)}
-          onStepPress={(step, kind) => openStep(step, kind, lesson.id, lesson.title)}
+          onStepPress={(step, kind) => openStep(step, kind, lesson.id, stripEntities(lesson.title))}
         />
       ))}
     </View>
@@ -467,7 +523,7 @@ interface GuessedTabContent {
 
 const PillLabel = ({text}: {text: string}) => (
   <View style={styles.headingTab}>
-    <Text style={styles.headingTabText}>{text}</Text>
+    <Text style={styles.headingTabText}>{decodeEntities(text)}</Text>
   </View>
 );
 
@@ -485,6 +541,12 @@ const PillLabel = ({text}: {text: string}) => (
 // (onPlayVideo prop) instead of Linking.openURL — the raw player.vimeo.com
 // URL 403'd/blocked with a "privacy settings" error when opened bare in an
 // external browser tab (no whitelisted origin). See VideoPlayerModal.tsx.
+//
+// Block text (block.text/items) comes out of parseCourseOverviewHtml(), a
+// shared utility whose own entity-decoding hasn't been independently
+// verified — decoding again here is a safe no-op if it already decodes
+// upstream, and a real fix (same class of bug as everywhere else on this
+// screen) if it doesn't.
 const ContentBlocksRenderer = ({
   blocks,
   onPlayVideo,
@@ -495,17 +557,17 @@ const ContentBlocksRenderer = ({
   <>
     {blocks.map((block, idx) => {
       if (block.type === 'heading') return <PillLabel key={idx} text={block.text || ''} />;
-      if (block.type === 'paragraph') return <Text key={idx} style={styles.bodyText}>{block.text}</Text>;
+      if (block.type === 'paragraph') return <Text key={idx} style={styles.bodyText}>{decodeEntities(block.text || '')}</Text>;
       if (block.type === 'list') {
         return (
           <View key={idx} style={{gap: 8}}>
             {block.items?.map((item, itemIdx) =>
               block.ordered ? (
-                <Text key={itemIdx} style={styles.bodyText}>{`${itemIdx + 1}. ${item}`}</Text>
+                <Text key={itemIdx} style={styles.bodyText}>{`${itemIdx + 1}. ${decodeEntities(item)}`}</Text>
               ) : (
                 <View key={itemIdx} style={styles.bulletRow}>
                   <BulletIcon />
-                  <Text style={[styles.bodyText, {flex: 1}]}>{item}</Text>
+                  <Text style={[styles.bodyText, {flex: 1}]}>{decodeEntities(item)}</Text>
                 </View>
               ),
             )}
@@ -544,10 +606,10 @@ const SectionsRenderer = ({content}: {content: GuessedTabContent | null}) => {
       {content.sections.map((section, idx) => (
         <View key={idx} style={{gap: 12}}>
           {section.label ? <PillLabel text={section.label} /> : null}
-          {section.body ? <Text style={styles.bodyText}>{section.body}</Text> : null}
+          {section.body ? <Text style={styles.bodyText}>{decodeEntities(section.body)}</Text> : null}
           {section.items?.map((item, itemIdx) => (
             <Text key={itemIdx} style={styles.bodyText}>
-              {section.ordered ? `${itemIdx + 1}. ${item}` : `•  ${item}`}
+              {section.ordered ? `${itemIdx + 1}. ${decodeEntities(item)}` : `•  ${decodeEntities(item)}`}
             </Text>
           ))}
         </View>
@@ -584,9 +646,9 @@ const InstructorRow = ({instructor}: {instructor: InstructorItem}) => {
         <View style={[styles.instructorImage, {backgroundColor: '#E8E9F1'}]} />
       )}
       <View style={{flex: 1}}>
-        <Text style={styles.instructorName}>{instructor.name}</Text>
-        {instructor.designation ? <Text style={styles.instructorDegrees}>{instructor.designation}</Text> : null}
-        {roleTitle ? <Text style={styles.instructorDesignation}>{roleTitle}</Text> : null}
+        <Text style={styles.instructorName}>{decodeEntities(instructor.name)}</Text>
+        {instructor.designation ? <Text style={styles.instructorDegrees}>{decodeEntities(instructor.designation)}</Text> : null}
+        {roleTitle ? <Text style={styles.instructorDesignation}>{decodeEntities(roleTitle)}</Text> : null}
         {bioPreviewText ? (
           <>
             {expanded ? (
@@ -596,7 +658,7 @@ const InstructorRow = ({instructor}: {instructor: InstructorItem}) => {
                 ))}
               </View>
             ) : (
-              <Text style={styles.instructorBio} numberOfLines={2}>{bioPreviewText}</Text>
+              <Text style={styles.instructorBio} numberOfLines={2}>{decodeEntities(bioPreviewText)}</Text>
             )}
             <TouchableOpacity onPress={() => setExpanded((v) => !v)}>
               <Text style={styles.readMoreText}>{expanded ? 'Read Less' : 'Read More'}</Text>
@@ -613,18 +675,18 @@ const InstructorRow = ({instructor}: {instructor: InstructorItem}) => {
 // text rather than a pill label, since a pill button reads oddly nested
 // inside a person's bio).
 const ContentBlockInline = ({block}: {block: ContentBlock}) => {
-  if (block.type === 'paragraph') return <Text style={styles.instructorBio}>{block.text}</Text>;
-  if (block.type === 'heading') return <Text style={[styles.instructorBio, {fontFamily: 'Runda-Medium'}]}>{block.text}</Text>;
+  if (block.type === 'paragraph') return <Text style={styles.instructorBio}>{decodeEntities(block.text || '')}</Text>;
+  if (block.type === 'heading') return <Text style={[styles.instructorBio, {fontFamily: 'Runda-Medium'}]}>{decodeEntities(block.text || '')}</Text>;
   if (block.type === 'list') {
     return (
       <View style={{gap: 6}}>
         {block.items?.map((item, idx) =>
           block.ordered ? (
-            <Text key={idx} style={styles.instructorBio}>{`${idx + 1}. ${item}`}</Text>
+            <Text key={idx} style={styles.instructorBio}>{`${idx + 1}. ${decodeEntities(item)}`}</Text>
           ) : (
             <View key={idx} style={styles.bulletRow}>
               <BulletIcon />
-              <Text style={[styles.instructorBio, {flex: 1}]}>{item}</Text>
+              <Text style={[styles.instructorBio, {flex: 1}]}>{decodeEntities(item)}</Text>
             </View>
           ),
         )}
@@ -674,11 +736,16 @@ const FaqsTab = ({content, pillLabel}: {content: {faqs?: GuessedFaq[]} | null; p
               <View style={styles.faqTriangleWrap}>
                 {isOpen ? <FaqTriangleDown /> : <FaqTriangleLeft />}
               </View>
-              <Text style={isOpen ? styles.faqQuestionOpen : styles.faqQuestionClosed}>{faq.question}</Text>
+              {/* faq.question/answer come from parseFaqsHtml(), the same
+                  shared HTML-parsing utility used for headings/paragraphs
+                  elsewhere on this screen — decoded here for the same
+                  reason (unverified whether that utility decodes entities
+                  itself). */}
+              <Text style={isOpen ? styles.faqQuestionOpen : styles.faqQuestionClosed}>{decodeEntities(faq.question)}</Text>
             </TouchableOpacity>
             {isOpen && (
               <View style={styles.faqAnswerWrap}>
-                <Text style={styles.faqAnswerText}>{faq.answer}</Text>
+                <Text style={styles.faqAnswerText}>{decodeEntities(faq.answer)}</Text>
               </View>
             )}
           </View>
@@ -705,12 +772,12 @@ const CertificationsTab = ({content}: {content: CertificationsTabResponse['conte
             <View style={[styles.certImage, {backgroundColor: '#E8E9F1'}]} />
           )}
           <View style={{flex: 1}}>
-            <Text style={styles.certTitle}>{cert.title}</Text>
+            <Text style={styles.certTitle}>{decodeEntities(cert.title)}</Text>
             {/* description_html is plain text in this confirmed sample
                 (no actual tags), rendering as-is; revisit with a real
                 HTML renderer if a future course's value does contain
                 markup. */}
-            <Text style={styles.certInfo}>{cert.description}</Text>
+            <Text style={styles.certInfo}>{decodeEntities(cert.description)}</Text>
           </View>
         </View>
       ))}
@@ -751,7 +818,7 @@ const StatBox = ({icon, count, label}: {icon: React.ReactNode; count: number; la
   <View style={styles.statBox}>
     {icon}
     <Text style={styles.statCount}>{count}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
+    <Text style={styles.statLabel}>{decodeEntities(label)}</Text>
   </View>
 );
 
@@ -1069,15 +1136,13 @@ const CourseDetailScreen = ({route, navigation}: any) => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.backRow}>
-          <TouchableOpacity onPress={() => navigation?.goBack?.()}>
-            <BackIcon />
-          </TouchableOpacity>
+          <BackButton onPress={() => navigation?.goBack?.()} />
         </View>
         <View style={{padding: 16, gap: 16}}>
           {fallbackTitle ? (
             <>
-              <Text style={styles.courseTitle}>{fallbackTitle}</Text>
-              {fallbackTagline ? <Text style={styles.descriptionText}>{fallbackTagline}</Text> : null}
+              <Text style={styles.courseTitle}>{decodeEntities(fallbackTitle)}</Text>
+              {fallbackTagline ? <Text style={styles.descriptionText}>{decodeEntities(fallbackTagline)}</Text> : null}
               <Text style={styles.emptyStateText}>
                 {"We couldn't load full details for this course on your account right now."}
               </Text>
@@ -1109,7 +1174,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
       return (
         <ModulesTab
           courseId={courseId}
-          courseTitle={course.title}
+          courseTitle={stripEntities(course.title)}
           activity={activity}
           loading={activityLoading}
           navigation={navigation}
@@ -1193,19 +1258,17 @@ const CourseDetailScreen = ({route, navigation}: any) => {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBarScroll}>
         {contentTabs.map((t) => (
           <TouchableOpacity key={t.id} style={styles.tabBarItem} onPress={() => handleTabPress(t.id)}>
-            <Text style={[styles.tabBarText, activeTab === t.id && styles.tabBarTextActive]}>{t.label}</Text>
+            <Text style={[styles.tabBarText, activeTab === t.id && styles.tabBarTextActive]}>{decodeEntities(t.label)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
       {/* Back + self-paced row */}
       <View style={styles.backRow}>
-        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation?.goBack?.()} />
         {header.categories.length > 0 && (
           <View style={styles.selfPacedPill}>
-            <Text style={styles.selfPacedText}>{header.categories[0].name}</Text>
+            <Text style={styles.selfPacedText}>{decodeEntities(header.categories[0].name)}</Text>
           </View>
         )}
       </View>
@@ -1222,7 +1285,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
           start={{x: 0, y: 1}}
           end={{x: 0.18, y: 0}}
           style={styles.infoCard}>
-          <Text style={styles.courseTitle}>{course.title}</Text>
+          <Text style={styles.courseTitle}>{stripEntities(course.title)}</Text>
 
           {header.certification_logos.length > 0 && (
             <View style={styles.logoRow}>
@@ -1234,22 +1297,22 @@ const CourseDetailScreen = ({route, navigation}: any) => {
 
           {activeTab === 'overview' && (
             <>
-              <Text style={styles.descriptionText}>{header.about_snippet}</Text>
+              <Text style={styles.descriptionText}>{decodeEntities(header.about_snippet)}</Text>
 
               <View style={styles.metaRow}>
                 <View style={styles.metaItem}>
                   <CertificateIcon />
-                  <Text style={styles.metaText}>{header.meta.certificate_name}</Text>
+                  <Text style={styles.metaText}>{decodeEntities(header.meta.certificate_name)}</Text>
                 </View>
               </View>
               <View style={styles.metaRow}>
                 <View style={styles.metaItem}>
                   <ClockIcon />
-                  <Text style={styles.metaText}>{header.meta.learning_hours}</Text>
+                  <Text style={styles.metaText}>{decodeEntities(header.meta.learning_hours)}</Text>
                 </View>
                 <View style={styles.metaItem}>
                   <DegreeIcon />
-                  <Text style={styles.metaText}>{header.meta.access_period}</Text>
+                  <Text style={styles.metaText}>{decodeEntities(header.meta.access_period)}</Text>
                 </View>
               </View>
             </>
@@ -1271,7 +1334,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
                 (sidebar.enrollment.status.label, e.g. "In Progress" /
                 "Not Started") is shown. */}
             <View style={styles.statusRow}>
-              <Text style={styles.statusText}>{sidebar.enrollment.status.label}</Text>
+              <Text style={styles.statusText}>{decodeEntities(sidebar.enrollment.status.label)}</Text>
             </View>
           </>
         )}
@@ -1298,16 +1361,16 @@ const CourseDetailScreen = ({route, navigation}: any) => {
                 );
               }
             }}>
-            <Text style={styles.ctaButtonText}>{sidebar.enrollment.button.label}</Text>
+            <Text style={styles.ctaButtonText}>{decodeEntities(sidebar.enrollment.button.label)}</Text>
           </TouchableOpacity>
 
           {header.meta.price_type !== 'closed' && !sidebar.enrollment.is_enrolled && (
-            <Text style={styles.priceText}>{header.meta.price}</Text>
+            <Text style={styles.priceText}>{decodeEntities(header.meta.price)}</Text>
           )}
 
           {activeTab === 'overview' && (
             <>
-              <Text style={styles.courseIncludesLabel}>{sidebar.course_includes.title}</Text>
+              <Text style={styles.courseIncludesLabel}>{decodeEntities(sidebar.course_includes.title)}</Text>
               <View style={styles.statsRow}>
                 <StatBox icon={<ModulesIcon />} count={sidebar.course_includes.totals.modules} label={sidebar.course_includes.totals.labels.modules} />
                 <StatBox icon={<TopicsIcon />} count={sidebar.course_includes.totals.topics} label={sidebar.course_includes.totals.labels.topics} />
@@ -1359,7 +1422,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
                         const authorBodyBlocks = hasLeadingName ? authorBlocks.slice(1) : authorBlocks;
                         return (
                           <>
-                            {authorName ? <Text style={styles.instructorName}>{authorName}</Text> : null}
+                            {authorName ? <Text style={styles.instructorName}>{decodeEntities(authorName)}</Text> : null}
                             {authorBodyBlocks.map((block, idx) => (
                               <ContentBlockInline key={idx} block={block} />
                             ))}
@@ -1686,4 +1749,32 @@ export default CourseDetailScreen;
       (headings/paragraphs/lists) but not inline emphasis. A real HTML
       renderer (react-native-render-html) would fix this properly if
       needed; not currently a confirmed project dependency.
+
+   5. FIXED (Aug 2026): CONFIRMED live crash — lesson/topic/quiz `title`
+      fields (and course.title) can come back from the backend as either
+      a plain string OR a WordPress raw/rendered object ({raw, rendered}),
+      inconsistently per course. Every title render on this screen now
+      goes through stripEntities(), which safely extracts text from
+      either shape via the new safeTitleText() helper (same fix already
+      applied once in StepContentScreen.tsx). Previously stripEntities()
+      called .replace() directly assuming a string, which threw whenever
+      a course's title data happened to be object-shaped — this is the
+      most likely explanation for the app crashing "in different modules"
+      inconsistently across courses, and for the Modules tab going blank
+      on iOS (an uncaught render exception there has no redbox in a
+      release build, so the screen just goes blank instead of showing an
+      error).
+
+   6. FIXED (Aug 2026): stripEntities() previously only decoded 3 entities
+      (&#8211;, &#038;, &amp;) and was only ever applied to title fields —
+      every other piece of user-facing text on this screen (description
+      snippet, meta labels, enrollment status/button labels, stat labels,
+      tab bar labels, self-paced pill, instructor names/degrees/bios,
+      certification/assessment/FAQ text, and the generic
+      SectionsRenderer/ContentBlocksRenderer fallback paths) rendered
+      completely raw, so any ampersand/apostrophe/quote anywhere in that
+      text showed up as literal "&#038;"/"&#8217;" etc. Replaced with a
+      new decodeEntities() helper using the full entity set already
+      standard elsewhere in this project, and applied it to every
+      user-facing text field on this screen.
 ──────────────────────────────────────────────────────────────────────── */

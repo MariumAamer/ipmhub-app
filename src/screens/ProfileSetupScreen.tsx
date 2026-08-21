@@ -280,8 +280,39 @@ const ProfileSetupScreen = ({navigation}: any) => {
       const userId = storedUser?.userId || 0;
       if (photoUri) await uploadAvatar(photoUri);
       await saveProfile(userId, {jobTitle, company, industry: selectedIndustry, country: selectedCountry.name, countryCode: selectedCountry.code, phone: `${selectedPhoneCountry.dialCode}${phoneNumber}`, linkedIn, introduction});
-      if (introduction.trim()) await postIntroductionActivity(introduction.trim());
+
+      // Posting the introduction is a separate write from saveProfile (a
+      // different endpoint entirely — the 'introduction' CPT vs xprofile
+      // fields), so it gets its own try/catch. Previously a failure here
+      // was swallowed inside postIntroductionActivity itself (bare `catch
+      // {}`, no res.ok check), so the profile appeared to save fine and the
+      // user was taken straight to the congratulations screen even when the
+      // introduction was never actually created — which is exactly why the
+      // "about yourself" text from onboarding never showed up on the Intros
+      // screen. Now the failure surfaces: the rest of onboarding still
+      // completes (the profile info did save), but the user is told the
+      // intro post itself didn't go through, instead of it silently vanishing.
+      let introFailed = false;
+      if (introduction.trim()) {
+        try {
+          await postIntroductionActivity(introduction.trim());
+        } catch (introErr) {
+          introFailed = true;
+          console.log('postIntroductionActivity error:', introErr);
+        }
+      }
+
       setShowCongrats(true);
+      if (introFailed) {
+        // Fires after the congrats modal is shown rather than blocking it —
+        // the profile itself did save successfully.
+        setTimeout(() => {
+          Alert.alert(
+            'Introduction Not Posted',
+            "Your profile saved, but we couldn't publish your introduction to the Intros feed. Please try posting it again from your profile.",
+          );
+        }, 300);
+      }
     } catch {
       Alert.alert('Error', 'Could not save profile. Please try again.');
     } finally { setSaving(false); }

@@ -28,6 +28,7 @@ import {
   resolveFullName,
   countryFlag,
   getToken,
+  stripHtml,
   IntroPost,
 } from '../api/feedApi';
 import {getUserIdFromToken} from '../api/profileApi';
@@ -134,7 +135,9 @@ const IntroCard = ({post, myAvatar, navigation}: any) => {
   // Comments come embedded on the post already (getIntroductions pulls them
   // from /custom/v1/introductions in the same call) — this is only used to
   // refresh after posting a new comment, or as a fallback if the embedded
-  // list was empty but the count says otherwise.
+  // list was empty but the count says otherwise. Failures here are logged
+  // but non-fatal: handleSubmit() already appends the just-posted comment
+  // optimistically, so a slow/failed reload doesn't lose it from the screen.
   const loadComments = async () => {
     if (!post.activityId) return;
     setLoadingComments(true);
@@ -142,7 +145,8 @@ const IntroCard = ({post, myAvatar, navigation}: any) => {
       const data = await getActivityComments(post.activityId);
       setComments(data);
       setCommentCount(data.length);
-    } catch {
+    } catch (err) {
+      console.log('IntrosScreen loadComments failed:', err);
     } finally {
       setLoadingComments(false);
     }
@@ -154,19 +158,52 @@ const IntroCard = ({post, myAvatar, navigation}: any) => {
     if (next && comments.length === 0 && commentCount > 0) loadComments();
   };
 
+  // postActivityComment now has a 15s timeout and throws with a real message
+  // on failure (see feedApi.ts) instead of hanging forever with no error, or
+  // silently "succeeding" on a non-2xx response. On success, the comment is
+  // appended to the list immediately — it no longer depends on a second
+  // network round-trip (loadComments) to actually appear, since that
+  // round-trip can itself be slow or fail without losing what the user typed.
   const handleSubmit = async () => {
     if (!commentText.trim() || !post.activityId) return;
+    const text = commentText.trim();
     setSubmitting(true);
     try {
-      await postActivityComment(post.activityId, commentText.trim());
+      const result = await postActivityComment(post.activityId, text);
       setCommentText('');
-      if (showComments) loadComments();
-      else {
-        setShowComments(true);
-        loadComments();
-      }
-    } catch {
-      Alert.alert('Error', 'Could not post comment.');
+      setComments((prev: any[]) => [
+        ...prev,
+        {
+          id: result?.id ?? result?.comment_id ?? `local-${Date.now()}`,
+          author: {
+            name: result?.name || 'You',
+            avatar: myAvatar || '',
+          },
+          content: text,
+          time: 'Just now',
+          likes: 0,
+          liked: false,
+        },
+      ]);
+      setCommentCount((c: number) => c + 1);
+      setShowComments(true);
+      // NOT calling loadComments() here on purpose. postActivityComment's
+      // POST response already IS the authoritative created comment (real id,
+      // real content, confirmed via a live device response 2026-08-18) — no
+      // second round-trip is needed. Re-fetching immediately after posting
+      // was actively harmful: GET /activity/{id}/comment doesn't reliably
+      // reflect a comment that was JUST created (propagation lag on the
+      // server side), so it was overwriting the comment we just appended
+      // with a stale list that didn't have it yet — comment posts fine, then
+      // silently vanishes a moment later with no error. The list will pick
+      // up the confirmed state naturally next time this card's comments are
+      // toggled closed/open or the screen is refreshed.
+    } catch (err) {
+      console.log('IntrosScreen handleSubmit failed:', err);
+      Alert.alert(
+        'Error',
+        `Could not post comment.${err instanceof Error ? `\n\n${err.message}` : ''}`,
+      );
     } finally {
       setSubmitting(false);
     }
@@ -250,7 +287,14 @@ const IntroCard = ({post, myAvatar, navigation}: any) => {
           {likeCount > 0 && (
             <TouchableOpacity
               onPress={() =>
-                navigation?.navigate('LikedBy', {likedBy: post.likedBy, title: 'Liked by'})
+                navigation?.navigate('LikedBy', {
+                  likedBy: post.likedBy,
+                  likesCount: likeCount,
+                  title: 'Liked by',
+                  // Fallback fetch id for LikedByScreen — the intro post's
+                  // linked BuddyBoss activity id. See same fix on FeedScreen.
+                  postId: post.activityId,
+                })
               }
               hitSlop={{top: 8, bottom: 8, left: 4, right: 8}}>
               <Text style={[styles.statText, liked && styles.statTextActive]}>
@@ -299,6 +343,10 @@ const IntroCard = ({post, myAvatar, navigation}: any) => {
                             likedBy: c.likedBy || [],
                             likesCount: c.likes,
                             title: 'Liked by',
+                            // Fallback fetch id for LikedByScreen when
+                            // c.likedBy comes back empty even though c.likes
+                            // is > 0 — same fix as FeedScreen's comment likes.
+                            postId: typeof c.id === 'number' ? c.id : undefined,
                           })
                         }>
                         <Text style={styles.commentLikeCount}>
@@ -469,12 +517,23 @@ const IntrosScreen = ({navigation}: any) => {
             return {
               id: p.id,
               type: label,
-              name,
-              role,
+              // resolveFullName() already decodes entities; the wpAuthor.name
+              // fallback above and role/title below did not — WordPress post
+              // titles and xprofile "job title" fields come back the same
+              // HTML-entity-encoded way everything else in this app does
+              // (e.g. "R&#038;D Lead"), so they need the same decode as the
+              // post title below rather than being trusted as plain text.
+              name: stripHtml(name),
+              role: stripHtml(role),
               flag,
               avatar,
-              title:
-                p.title?.rendered?.replace(/<[^>]*>/g, '') || 'Untitled',
+              // Previously: p.title?.rendered?.replace(/<[^>]*>/g, '') — that
+              // strips HTML tags but leaves entities (&#038;, &#8217;, etc.)
+              // undecoded, so any ampersand/apostrophe in a post title
+              // rendered as literal entity text on this card. stripHtml()
+              // (imported from feedApi.ts, already fixed/used elsewhere in
+              // this file) strips tags AND decodes entities.
+              title: stripHtml(p.title?.rendered || '') || 'Untitled',
             };
           }),
         );

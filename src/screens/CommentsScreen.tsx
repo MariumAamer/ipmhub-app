@@ -23,23 +23,7 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
-import Svg, {Path} from 'react-native-svg';
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Path
-      d="M0.7 7C0.7 3.5206 3.5206 0.7 7 0.7H21C24.4794 0.7 27.3 3.5206 27.3 7V21C27.3 24.4794 24.4794 27.3 21 27.3H7C3.5206 27.3 0.7 24.4794 0.7 21V7Z"
-      stroke="#8F9098"
-      strokeWidth={1.4}
-    />
-    <Path
-      d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-      fill="#8F9098"
-      stroke="#8F9098"
-      strokeWidth={0.7}
-    />
-  </Svg>
-);
+import BackButton from '../components/BackButton';
 
 interface LocalComment {
   id: string;
@@ -91,9 +75,7 @@ const CommentsScreen = ({route, navigation}: any) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation?.goBack?.()} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>

@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -8,28 +8,26 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  SafeAreaView,
   StatusBar,
+  Platform,
+  KeyboardAvoidingView,
   ActivityIndicator,
   Alert,
+  Modal,
+  ScrollView,
 } from 'react-native';
+// Was importing SafeAreaView from 'react-native' — that core component is
+// iOS-only (a no-op on Android), which is why this screen also carried a
+// manual `Platform.OS === 'android' ? StatusBar.currentHeight + 12 : 12`
+// hack in its header style below (see comment there). Swapped to the real
+// cross-platform SafeAreaView and removed the now-redundant hack.
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, G, Mask, Rect} from 'react-native-svg';
-import {searchMembers, sendMessage, stripHtml, MemberSearchResult} from '../api/dmApi';
+import BackButton from '../components/BackButton';
+import {searchMembers, sendMessage, stripHtml, MemberSearchResult, searchGifs, GiphyGif} from '../api/dmApi';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
-
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Rect x="0.7" y="0.7" width="26.6" height="26.5996" rx="6.3" stroke="#8F9098" strokeWidth="1.4" />
-    <Path
-      d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z"
-      fill="#8F9098"
-      stroke="#8F9098"
-      strokeWidth="0.7"
-    />
-  </Svg>
-);
 
 const SearchIcon = () => (
   <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
@@ -53,7 +51,6 @@ const XIcon = () => (
   </Svg>
 );
 
-// Icons for compose bar
 const AaIcon = () => (
   <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
     <Path d="M11.0023 13.3253L7.71459 4.55815C7.67151 4.44326 7.59439 4.34424 7.49354 4.27434C7.39269 4.20444 7.2729 4.16699 7.1502 4.16699C7.02749 4.16699 6.90771 4.20444 6.80685 4.27434C6.706 4.34424 6.62888 4.44326 6.58581 4.55815L3.29811 13.3253C3.24374 13.4746 3.25051 13.6394 3.31696 13.7837C3.38341 13.928 3.50416 14.0403 3.65295 14.096C3.80173 14.1518 3.96651 14.1465 4.11145 14.0814C4.25639 14.0163 4.36975 13.8966 4.42689 13.7484L5.41758 11.1067C5.42148 11.0963 5.42848 11.0872 5.43763 11.0809C5.44679 11.0745 5.45767 11.0711 5.46882 11.0711H8.83158C8.84273 11.0711 8.85361 11.0745 8.86276 11.0809C8.87192 11.0872 8.87891 11.0963 8.88281 11.1067L9.87351 13.7484C9.93064 13.8966 10.044 14.0163 10.1889 14.0814C10.3339 14.1465 10.4987 14.1518 10.6474 14.096C10.7962 14.0403 10.917 13.928 10.9834 13.7837C11.0499 13.6394 11.0567 13.4746 11.0023 13.3253ZM5.91074 9.79107L7.09896 6.62255C7.10291 6.61216 7.10992 6.60321 7.11907 6.59689C7.12822 6.59057 7.13908 6.58719 7.1502 6.58719C7.16132 6.58719 7.17217 6.59057 7.18132 6.59689C7.19047 6.60321 7.19749 6.61216 7.20143 6.62255L8.38966 9.79162C8.39275 9.7999 8.3938 9.8088 8.3927 9.81758C8.39161 9.82635 8.38841 9.83473 8.38338 9.84199C8.37834 9.84926 8.37163 9.8552 8.3638 9.85931C8.35597 9.86342 8.34727 9.86558 8.33843 9.86559H5.96197C5.95313 9.86558 5.94442 9.86342 5.9366 9.85931C5.92877 9.8552 5.92205 9.84926 5.91702 9.84199C5.91199 9.83473 5.90879 9.82635 5.90769 9.81758C5.9066 9.8088 5.90764 9.7999 5.91074 9.79162V9.79107ZM13.9659 6.79707C12.8228 6.78886 11.7993 7.45105 11.3631 8.47928C11.3006 8.62642 11.2991 8.79236 11.359 8.94059C11.4189 9.08882 11.5351 9.20721 11.6823 9.2697C11.8294 9.33219 11.9954 9.33366 12.1436 9.27381C12.2918 9.21395 12.4102 9.09766 12.4727 8.95052C12.716 8.37818 13.2883 8.00695 13.9335 8.00256C14.819 7.99654 15.5338 8.7286 15.5338 9.6149C15.5338 9.62557 15.5297 9.63582 15.5223 9.64349C15.5149 9.65116 15.5048 9.65564 15.4941 9.656C14.8935 9.67271 14.1812 9.71271 13.5456 9.78751C12.0456 9.96395 11.1502 10.7818 11.1502 11.9752C11.1502 12.6105 11.3902 13.1807 11.8261 13.5829C12.2352 13.9596 12.7941 14.167 13.3968 14.167C14.2461 14.167 14.9774 13.9478 15.5322 13.5308H15.5338C15.5335 13.61 15.5487 13.6884 15.5787 13.7617C15.6087 13.8349 15.6528 13.9016 15.7085 13.9578C15.7642 14.014 15.8305 14.0587 15.9035 14.0893C15.9765 14.1199 16.0548 14.1358 16.134 14.1362C16.2131 14.1365 16.2916 14.1213 16.3648 14.0913C16.4381 14.0613 16.5047 14.0172 16.5609 13.9615C16.6171 13.9057 16.6618 13.8395 16.6924 13.7665C16.723 13.6935 16.739 13.6152 16.7393 13.536V9.61819C16.7393 8.079 15.5064 6.80831 13.9659 6.79707ZM13.3968 12.9615C12.9165 12.9615 12.3557 12.7031 12.3557 11.9752C12.3557 11.6829 12.4606 11.4782 12.6963 11.3114C12.9256 11.1489 13.2771 11.033 13.6864 10.9848C14.265 10.9166 14.9144 10.879 15.4711 10.8623C15.4785 10.8623 15.4859 10.8638 15.4927 10.8667C15.4995 10.8697 15.5057 10.8739 15.5108 10.8793C15.516 10.8847 15.5199 10.8911 15.5225 10.898C15.5251 10.905 15.5262 10.9124 15.5259 10.9198C15.4516 12.293 14.7519 12.9615 13.3968 12.9615Z" fill="#192647" />
@@ -94,6 +91,103 @@ const EmojiIcon = () => (
   </Svg>
 );
 
+// Same categorized emoji set used on DMConversationScreen — kept in sync so
+// both the "New Message" compose bar and an existing conversation's compose
+// bar behave identically (per Marium: "this works for new conversation as
+// well as the other?"). Plain unicode, no bundled assets or API needed.
+const EMOJI_CATEGORIES: {label: string; emojis: string[]}[] = [
+  {
+    label: 'Smileys & Emotion',
+    emojis: [
+      '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊',
+      '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪',
+      '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏',
+      '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕',
+      '🤢', '🤮', '🥵', '🥶', '🥴', '😵', '🤯', '🥳', '😎', '🤓', '🧐', '😕',
+      '😟', '🙁', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥',
+      '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡',
+      '😠', '🤬', '😈', '👿', '💀', '☠️', '💩',
+    ],
+  },
+  {
+    label: 'Gestures & People',
+    emojis: [
+      '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙',
+      '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜',
+      '👏', '🙌', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦵', '🦶',
+      '👂', '👃', '🧠', '👀', '👁️', '👅', '👄', '💋', '🩸',
+    ],
+  },
+  {
+    label: 'Animals & Nature',
+    emojis: [
+      '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮',
+      '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐔', '🐧', '🐦', '🐤', '🦆', '🦉',
+      '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐢', '🐍',
+      '🦎', '🦖', '🐙', '🦀', '🐬', '🐳', '🐘', '🦒', '🐫', '🐄', '🐑', '🐓',
+      '🦃', '🐇', '🐿️', '🦔', '🌵', '🌲', '🌳', '🌴', '🌱', '🌿', '🍀', '🌸',
+      '🌼', '🌻', '🌞', '🌝', '🌚', '🌕', '⭐', '🌟', '✨', '⚡', '🔥', '💧',
+      '🌈', '☀️', '☁️', '⛈️', '❄️',
+    ],
+  },
+  {
+    label: 'Food & Drink',
+    emojis: [
+      '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒',
+      '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️',
+      '🌽', '🥕', '🧄', '🧅', '🥔', '🍠', '🥐', '🍞', '🥖', '🥨', '🧀', '🥚',
+      '🍳', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🌭', '🍔', '🍟', '🍕', '🥪',
+      '🌮', '🌯', '🥙', '🧆', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍜', '🍝',
+      '🍣', '🍤', '🍙', '🍚', '🍛', '🍲', '🍥', '🥟', '🥠', '🍢', '🍡', '🍧',
+      '🍨', '🍦', '🥧', '🍰', '🎂', '🧁', '🍮', '🍭', '🍬', '🍫', '🍩', '🍪',
+      '☕', '🍵', '🧃', '🥤', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧊',
+    ],
+  },
+  {
+    label: 'Activities & Objects',
+    emojis: [
+      '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🏓', '🏸', '🥅', '🏒',
+      '🏑', '🥍', '🏏', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿',
+      '⛷️', '🏂', '🏋️', '🤼', '🤸', '⛹️', '🤺', '🤾', '🏌️', '🏇', '🧘', '🏄',
+      '🏊', '🤽', '🚣', '🧗', '🚴', '🚵', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️',
+      '🏵️', '🎗️', '🎫', '🎟️', '🎪', '🤹', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧',
+      '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '🧩', '♟️',
+      '🎯', '🎳', '🎮', '🎰', '🧸', '🪀', '🪁', '🎈', '🎉', '🎊', '🎁', '🏮',
+      '🧧',
+    ],
+  },
+  {
+    label: 'Travel & Places',
+    emojis: [
+      '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚',
+      '🚛', '🚜', '🛵', '🏍️', '🚲', '🛴', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡',
+      '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇',
+      '🚊', '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵',
+      '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '🗺️', '🧭', '🏔️', '⛰️', '🌋', '🗻',
+      '🏕️', '🏖️', '🏜️', '🏝️', '🏞️', '🏟️', '🏛️', '🏗️', '🧱', '🏘️', '🏚️', '🏠',
+      '🏡', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '🏭',
+      '💒', '🗼', '🗽', '⛪', '🕌', '🛕', '🕍', '⛩️', '🕋', '⛲', '⛺', '🌁',
+      '🌃', '🏙️', '🌄', '🌅', '🌆', '🌇', '🌉',
+    ],
+  },
+  {
+    label: 'Symbols',
+    emojis: [
+      '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕',
+      '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️',
+      '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌',
+      '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️',
+      '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️',
+      '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌',
+      '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱',
+      '🔞', '📵', '🚭', '❗', '❓', '❕', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️',
+      '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎',
+      '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🈳', '🈂️', '🛂',
+      '🛃', '🛄', '🛅',
+    ],
+  },
+];
+
 // ─── DMNewMessageScreen ───────────────────────────────────────────────────────
 
 const DMNewMessageScreen = ({navigation, route}: any) => {
@@ -105,8 +199,46 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
   const [loading, setLoading] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
+  // Controls whether the member list is shown at all — it should only be
+  // visible while the search input has focus (tapping in), and gets hidden
+  // again once a person is picked or the user taps away. Previously the
+  // FlatList was always mounted regardless of focus, so the full member
+  // list stayed on screen (blocking the compose box below it) with no way
+  // to dismiss it after selecting someone.
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
+  // Emoji / GIF picker state — mirrors DMConversationScreen so both compose
+  // bars behave the same way.
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifResults, setGifResults] = useState<GiphyGif[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const [textSelection, setTextSelection] = useState({start: 0, end: 0});
 
   useEffect(() => { doSearch(''); }, []);
+
+  // Loads/searches Giphy whenever the picker is open and the query changes —
+  // same behavior as DMConversationScreen's GIF picker.
+  useEffect(() => {
+    if (!showGifPicker) return;
+    let cancelled = false;
+    setGifLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await searchGifs(gifQuery);
+        if (!cancelled) setGifResults(data);
+      } catch {
+        if (!cancelled) setGifResults([]);
+      } finally {
+        if (!cancelled) setGifLoading(false);
+      }
+    }, gifQuery.trim() ? 350 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showGifPicker, gifQuery]);
 
   useEffect(() => {
     const timer = setTimeout(() => doSearch(searchQuery), 300);
@@ -128,12 +260,41 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
     setSelected(prev => [...prev, member]);
     setResults(prev => prev.filter(m => m.id !== member.id));
     setSearchQuery('');
+    // Hide the list and drop focus/keyboard once someone's picked, so the
+    // list of remaining members doesn't just sit there covering the compose
+    // box — matches "once I select the person, it should hide".
+    setSearchFocused(false);
+    searchInputRef.current?.blur();
   };
 
   const removeMember = (id: number) => {
     const member = selected.find(m => m.id === id);
     setSelected(prev => prev.filter(m => m.id !== id));
     if (member) setResults(prev => [member, ...prev]);
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const {start, end} = textSelection;
+    const before = messageText.slice(0, start);
+    const after = messageText.slice(end);
+    const next = `${before}${emoji}${after}`;
+    setMessageText(next);
+    const cursor = start + emoji.length;
+    setTextSelection({start: cursor, end: cursor});
+  };
+
+  // No DM thread exists yet on this screen (it's created when Send is
+  // pressed), so a picked GIF can't be sent immediately like it can on
+  // DMConversationScreen. Instead its URL gets inserted into the compose
+  // box — DMConversationScreen recognizes a GIF-URL-only message and
+  // renders it as an image once this message actually sends.
+  const insertGif = (gif: GiphyGif) => {
+    if (!gif.url) return;
+    const separator = messageText.trim().length ? ' ' : '';
+    const next = `${messageText}${separator}${gif.url}`;
+    setMessageText(next);
+    setTextSelection({start: next.length, end: next.length});
+    setShowGifPicker(false);
   };
 
   const handleSend = async () => {
@@ -190,80 +351,179 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
 
       {/* Header - no AppHeader, just back + title */}
       <View style={n.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={n.backBtn}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton style={n.backBtn} onPress={() => navigation.goBack()} />
         <Text style={n.headerTitle}>{'New Message'}</Text>
       </View>
 
-      {/* Search bar with chips */}
-      <View style={n.searchBar}>
-        <SearchIcon />
-        {selected.map(m => (
-          <TouchableOpacity key={m.id} style={n.chip} onPress={() => removeMember(m.id)}>
-            <Text style={n.chipText}>{m.name}</Text>
-            <XIcon />
-          </TouchableOpacity>
-        ))}
-        <TextInput
-          style={n.searchInput}
-          placeholder={selected.length ? '' : 'Type a name or multiple names...'}
-          placeholderTextColor="#8F9098"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      {/* Member list */}
-      {loading ? (
-        <ActivityIndicator color="#192546" style={{marginTop: 20}} />
-      ) : (
-        <FlatList
-          data={results}
-          keyExtractor={item => String(item.id)}
-          renderItem={renderMember}
-          showsVerticalScrollIndicator={false}
-          style={n.list}
-        />
-      )}
-
-      {/* Compose box - same as conversation screen */}
-      {selected.length > 0 && (
-        <View style={n.composeOuter}>
-          <TextInput
-            style={n.composeInput}
-            placeholder="Hi!"
-            placeholderTextColor="#8F9098"
-            value={messageText}
-            onChangeText={setMessageText}
-            multiline
-            textAlignVertical="top"
-          />
-          <View style={n.composeActionsRow}>
-            <View style={n.iconsFrame}>
-              <TouchableOpacity><AaIcon /></TouchableOpacity>
-              <TouchableOpacity><CameraIcon /></TouchableOpacity>
-              <TouchableOpacity><VideoIcon /></TouchableOpacity>
-              <TouchableOpacity><AttachIcon /></TouchableOpacity>
-              <TouchableOpacity><GifIcon /></TouchableOpacity>
-              <TouchableOpacity><EmojiIcon /></TouchableOpacity>
-            </View>
-            <TouchableOpacity onPress={handleSend} disabled={!messageText.trim() || sending}>
-              <LinearGradient
-                colors={['#E257E4', '#084D92']}
-                start={{x: 0, y: 0}}
-                end={{x: 1, y: 0}}
-                style={n.sendBtn}>
-                {sending ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <Text style={n.sendBtnText}>{'Send'}</Text>
-                )}
-              </LinearGradient>
+      {/* KeyboardAvoidingView keeps the compose box above the keyboard on both
+          platforms instead of letting it get covered while typing. */}
+      <KeyboardAvoidingView
+        style={n.flexArea}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
+        {/* Search bar with chips */}
+        <View style={n.searchBar}>
+          <SearchIcon />
+          {selected.map(m => (
+            <TouchableOpacity key={m.id} style={n.chip} onPress={() => removeMember(m.id)}>
+              <Text style={n.chipText}>{m.name}</Text>
+              <XIcon />
             </TouchableOpacity>
-          </View>
+          ))}
+          <TextInput
+            ref={searchInputRef}
+            style={n.searchInput}
+            placeholder={selected.length ? '' : 'Type a name or multiple names...'}
+            placeholderTextColor="#8F9098"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+          />
         </View>
-      )}
+
+        {/* Member list — only shown while the search bar is focused, so it
+            doesn't linger on screen (and cover the compose box) after
+            someone's been picked. */}
+        {searchFocused &&
+          (loading ? (
+            <ActivityIndicator color="#192546" style={{marginTop: 20}} />
+          ) : (
+            <FlatList
+              data={results}
+              keyExtractor={item => String(item.id)}
+              renderItem={renderMember}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={n.list}
+            />
+          ))}
+
+        {/* Compose box - same as conversation screen */}
+        {selected.length > 0 && (
+          <View style={n.composeOuter}>
+            <TextInput
+              style={n.composeInput}
+              placeholder="Hi!"
+              placeholderTextColor="#8F9098"
+              value={messageText}
+              onChangeText={setMessageText}
+              onSelectionChange={e => setTextSelection(e.nativeEvent.selection)}
+              multiline
+              textAlignVertical="top"
+            />
+            <View style={n.composeActionsRow}>
+              <View style={n.iconsFrame}>
+                <TouchableOpacity><AaIcon /></TouchableOpacity>
+                <TouchableOpacity><CameraIcon /></TouchableOpacity>
+                <TouchableOpacity><VideoIcon /></TouchableOpacity>
+                <TouchableOpacity><AttachIcon /></TouchableOpacity>
+                <TouchableOpacity onPress={() => { setGifQuery(''); setShowGifPicker(true); }}><GifIcon /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowEmojiPicker(prev => !prev)}><EmojiIcon /></TouchableOpacity>
+              </View>
+              <TouchableOpacity onPress={handleSend} disabled={!messageText.trim() || sending}>
+                <LinearGradient
+                  colors={['#E257E4', '#084D92']}
+                  start={{x: 0, y: 0}}
+                  end={{x: 1, y: 0}}
+                  style={n.sendBtn}>
+                  {sending ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={n.sendBtnText}>{'Send'}</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Emoji picker — same categorized, scrollable panel as
+            DMConversationScreen, only relevant once a recipient's picked and
+            the compose box is showing. */}
+        {showEmojiPicker && selected.length > 0 && (
+          <View style={n.emojiPanel}>
+            <View style={n.emojiPanelHeader}>
+              <Text style={n.emojiPanelTitle}>{'Emoji'}</Text>
+              <TouchableOpacity onPress={() => setShowEmojiPicker(false)}>
+                <Text style={n.optionsClose}>{'✕'}</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={n.emojiScrollArea} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              {EMOJI_CATEGORIES.map(category => (
+                <View key={category.label}>
+                  <Text style={n.emojiCategoryLabel}>{category.label}</Text>
+                  <View style={n.emojiGrid}>
+                    {category.emojis.map((emoji, idx) => (
+                      <TouchableOpacity
+                        key={`${category.label}-${idx}`}
+                        style={n.emojiCell}
+                        onPress={() => insertEmoji(emoji)}>
+                        <Text style={n.emojiText}>{emoji}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+
+      {/* GIF Picker Modal — same "not connected yet" placeholder as
+          DMConversationScreen. No Giphy/Tenor API key is available yet, so
+          this intentionally doesn't fake results. */}
+      <Modal
+        visible={showGifPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGifPicker(false)}>
+        <TouchableOpacity
+          style={n.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowGifPicker(false)}>
+          <TouchableOpacity activeOpacity={1} style={n.optionsSheet}>
+            <View style={n.optionsHeader}>
+              <Text style={n.optionsTitle}>{'GIFs'}</Text>
+              <TouchableOpacity
+                onPress={() => setShowGifPicker(false)}
+                style={n.optionsCloseBtn}>
+                <Text style={n.optionsClose}>{'✕'}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={n.gifSearchWrap}>
+              <TextInput
+                style={n.gifSearchInput}
+                placeholder="Search GIPHY"
+                placeholderTextColor="#8F9098"
+                value={gifQuery}
+                onChangeText={setGifQuery}
+                autoCorrect={false}
+              />
+            </View>
+            {gifLoading ? (
+              <ActivityIndicator color="#192546" style={{marginVertical: 24}} />
+            ) : (
+              <FlatList
+                data={gifResults}
+                keyExtractor={g => g.id}
+                numColumns={3}
+                contentContainerStyle={n.gifGrid}
+                style={n.gifListArea}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({item}) => (
+                  <TouchableOpacity style={n.gifCell} onPress={() => insertGif(item)}>
+                    <Image source={{uri: item.previewUrl}} style={n.gifThumb} resizeMode="cover" />
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={n.gifEmptyText}>{'No GIFs found'}</Text>
+                }
+              />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -272,15 +532,23 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
 
 const n = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#FFFFFF'},
+  flexArea: {flex: 1},
 
+  // Flat padding now — SafeAreaView (the real cross-platform one, imported
+  // from react-native-safe-area-context above) already reserves the status
+  // bar / notch inset on both iOS and Android, so the old
+  // `Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 12`
+  // hack (which only ever handled Android, via a less-reliable measurement)
+  // is no longer needed here.
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     gap: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E8E9F1',
+    paddingTop: 12,
   },
   backBtn: {padding: 2},
   headerTitle: {
@@ -419,6 +687,137 @@ const n = StyleSheet.create({
     fontFamily: 'Runda',
     fontSize: 14,
     fontWeight: '500',
+  },
+
+  // Emoji picker — same styling as DMConversationScreen
+  emojiPanel: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E8E9F1',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E8E9F1',
+  },
+  emojiPanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E9F1',
+  },
+  emojiPanelTitle: {
+    fontFamily: 'Runda',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#192546',
+  },
+  emojiScrollArea: {
+    maxHeight: 260,
+  },
+  emojiCategoryLabel: {
+    fontFamily: 'Runda',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8F9098',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+  },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  emojiCell: {
+    width: '12.5%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+  },
+  emojiText: {
+    fontSize: 22,
+  },
+
+  // GIF picker placeholder / modal — same as DMConversationScreen
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-end',
+  },
+  optionsSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 36,
+  },
+  optionsHeader: {
+    height: 56,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 18,
+    paddingBottom: 16.5,
+    position: 'relative',
+  },
+  optionsTitle: {
+    fontFamily: 'Runda',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0C4D91',
+    lineHeight: 20,
+    letterSpacing: 0.08,
+    textAlign: 'center',
+  },
+  optionsCloseBtn: {position: 'absolute', right: 24, top: 18, padding: 2},
+  optionsClose: {fontSize: 16, color: '#8F9098'},
+  gifSearchWrap: {
+    paddingHorizontal: 24,
+    paddingBottom: 12,
+  },
+  gifSearchInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#E8E9F1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontFamily: 'Runda',
+    fontSize: 14,
+    color: '#192546',
+    backgroundColor: '#F9FAFB',
+  },
+  gifListArea: {
+    maxHeight: 340,
+  },
+  gifGrid: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+  },
+  gifCell: {
+    flex: 1 / 3,
+    aspectRatio: 1,
+    margin: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#E8E9F1',
+  },
+  gifThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  gifEmptyText: {
+    fontFamily: 'Runda',
+    fontSize: 13,
+    color: '#8F9098',
+    textAlign: 'center',
+    paddingVertical: 24,
   },
 });
 

@@ -13,18 +13,11 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import Svg, {Path, Rect} from 'react-native-svg';
+import Svg, {Path} from 'react-native-svg';
 import {submitArticle} from '../api/resourcesApi';
+import BackButton from '../components/BackButton';
 
 const TERMS_URL = 'https://projectmanagement.ie/terms-and-conditions/';
-
-// Back chevron — same 28x28 bordered icon used across Resources.
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Rect x={0.7} y={0.7} width={26.6} height={26.5996} rx={6.3} stroke="#8F9098" strokeWidth={1.4} />
-    <Path d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z" fill="#8F9098" stroke="#8F9098" strokeWidth={0.7} />
-  </Svg>
-);
 
 const UploadIcon = ({color = '#192546'}: {color?: string}) => (
   <Svg width={7} height={7.5} viewBox="0 0 11 12" fill="none">
@@ -161,9 +154,7 @@ const ArticleSubmissionScreen = ({navigation}: any) => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} />
       </View>
 
       <ScrollView

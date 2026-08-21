@@ -8,7 +8,6 @@ import {
   Image,
   TouchableOpacity,
   StatusBar,
-  SafeAreaView,
   Modal,
   FlatList,
   Dimensions,
@@ -16,8 +15,14 @@ import {
   Linking,
   ActivityIndicator,
 } from 'react-native';
-import Svg, {Path, Rect} from 'react-native-svg';
+// Was importing SafeAreaView from 'react-native' — that core component is
+// iOS-only (a no-op on Android), which is why the back button on both the
+// article and video layouts sat under the Android status bar. Swapped to
+// the real cross-platform SafeAreaView.
+import {SafeAreaView} from 'react-native-safe-area-context';
+import Svg, {Path} from 'react-native-svg';
 import {WebView} from 'react-native-webview';
+import BackButton from '../components/BackButton';
 import {
   getResources,
   getResourceById,
@@ -27,16 +32,6 @@ import {
 } from '../api/resourcesApi';
 import ShareSheet, {ShareButton} from '../components/ShareSheet';
 import InfographicViewer from '../components/InfographicViewer';
-
-// Back chevron — exact from Figma, 28x28, bordered rounded-square,
-// #8F9098 stroke. Replaces the plain "‹" text character, which was
-// rendering as an empty box (no glyph) on some devices/fonts.
-const BackIcon = () => (
-  <Svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-    <Rect x={0.7} y={0.7} width={26.6} height={26.5996} rx={6.3} stroke="#8F9098" strokeWidth={1.4} />
-    <Path d="M10.4494 12.8438C9.8504 13.4423 9.8504 14.4151 10.4494 15.0136L15.2973 19.8623L16 19.1596L11.1521 14.3104C10.9423 14.0997 10.9423 13.7577 11.1521 13.547L15.9973 8.70277L15.2941 8.00006L10.4494 12.8438Z" fill="#8F9098" stroke="#8F9098" strokeWidth={0.7} />
-  </Svg>
-);
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
@@ -242,9 +237,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={s.videoHeader}>
-            <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-              <BackIcon />
-            </TouchableOpacity>
+            <BackButton onPress={() => navigation.goBack()} />
           </View>
 
           <Text style={s.videoTitle}>{listItem.title}</Text>
@@ -326,9 +319,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
           fixed header sibling above the ScrollView — always visible
           regardless of scroll position. */}
       <View style={s.topBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} />
       </View>
 
       <ScrollView ref={scrollViewRef} showsVerticalScrollIndicator={false}>
@@ -532,13 +523,6 @@ const s = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#FFFFFF'},
 
   // ── Article layout ──
-  // Figma: width 390 (device width), height 56, padding 14 342 14 20
-  // — the 342px right padding is effectively "icon pinned left, bar
-  // fills the rest," so we implement it as a fixed-height row with the
-  // icon at the left edge rather than hardcoding the 342 value (which
-  // is just 390 - 20 - 28, i.e. device-width dependent).
-  // minHeight instead of height — height + paddingVertical together is
-  // the same anti-pattern that hid the search bar text earlier.
   topBar: {
     minHeight: 56,
     paddingLeft: 20,
@@ -605,11 +589,7 @@ const s = StyleSheet.create({
     marginTop: 4,
     fontFamily: 'Runda',
   },
-  // Was marginBottom:16 — reduced per feedback ("less space after each
-  // para").
   paragraph: {fontSize: 15, color: '#444', lineHeight: 21, marginBottom: 14, fontFamily: 'Runda'},
-  // Figma: outer frame padding 16, column, gap 20 (implemented as
-  // marginBottom on children — gap unreliable on Android/Hermes).
   courseCard: {
     backgroundColor: '#EEF7FC',
     borderRadius: 10,
@@ -623,7 +603,6 @@ const s = StyleSheet.create({
     marginBottom: 20,
   },
   courseTextWrap: {flex: 1, marginRight: 16},
-  // Figma: Heading/H4 — 14px 500 #192546
   courseTitle: {
     color: '#192546',
     fontFamily: 'Runda',
@@ -631,7 +610,6 @@ const s = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 8,
   },
-  // Figma: Body/Body S — 12px 400 #192546 lineHeight 16
   courseDescription: {
     color: '#192546',
     fontFamily: 'Runda',
@@ -639,11 +617,7 @@ const s = StyleSheet.create({
     fontWeight: '400',
     lineHeight: 16,
   },
-  // Figma: 95x95, circular
   courseIcon: {width: 95, height: 95, borderRadius: 200, backgroundColor: '#FFFFFF'},
-  // Figma: height 40, padding 12 16, radius 50, bg #0C4D91.
-  // minHeight instead of height — same anti-pattern fix used elsewhere
-  // in this project (height + paddingVertical together can hide text).
   courseBtnPrimary: {
     minHeight: 40,
     paddingHorizontal: 16,
@@ -655,7 +629,6 @@ const s = StyleSheet.create({
     marginBottom: 12,
   },
   courseBtnPrimaryText: {color: '#FFFFFF', fontSize: 14, fontWeight: '700', fontFamily: 'Runda'},
-  // Figma: height 40, padding 12 16, radius 50, border 1px #0C4D91
   courseBtnSecondary: {
     minHeight: 40,
     paddingHorizontal: 16,
@@ -692,8 +665,6 @@ const s = StyleSheet.create({
     marginBottom: 16,
     backgroundColor: '#F5F6FA',
   },
-  // alignSelf:'stretch' added — was sizing to intrinsic content width
-  // only, per feedback that this button "should be responsive."
   ctaBtn: {
     backgroundColor: '#0C4D91',
     borderRadius: 50,
@@ -707,7 +678,6 @@ const s = StyleSheet.create({
   inlineLink: {color: '#0C4D91', textDecorationLine: 'underline'},
   listWrap: {marginBottom: 16},
   listRow: {flexDirection: 'row', marginBottom: 10, paddingRight: 4},
-  // Marker color per feedback ("the numbers bullet are light blue").
   listMarker: {
     color: '#46B0E3',
     fontWeight: '700',

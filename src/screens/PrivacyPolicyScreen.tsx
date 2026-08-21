@@ -10,20 +10,13 @@ import {
   SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
-import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import BackButton from '../components/BackButton';
 
 const NAVY = '#192546';
 const DARK_BLUE = '#0C4D91';
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
-
-// ─── Back chevron ─────────────────────────────────────────────────────────────
-const BackIcon = () => (
-  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-    <Path d="M15 18L9 12L15 6" stroke="#444" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-);
 
 // ─── HTML entity decode (small, targeted set — same entities WP's default
 // privacy-policy boilerplate actually uses) ────────────────────────────────
@@ -31,12 +24,12 @@ const decodeEntities = (str: string): string =>
   str
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
-    .replace(/&#8217;/g, '\u2019')
-    .replace(/&#8216;/g, '\u2018')
-    .replace(/&#8220;/g, '\u201C')
-    .replace(/&#8221;/g, '\u201D')
-    .replace(/&#8211;/g, '\u2013')
-    .replace(/&#8212;/g, '\u2014')
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
     .replace(/&#39;/g, "'")
     .replace(/&quot;/g, '"');
 
@@ -48,7 +41,7 @@ const stripHtml = (html: string): string =>
     html
       .replace(/<\/(p|li|h[1-6])>/gi, '\n\n')
       .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<li[^>]*>/gi, '\u2022 ')
+      .replace(/<li[^>]*>/gi, '• ')
       .replace(/<[^>]*>/g, ''),
   )
     .replace(/Suggested text:\s*/gi, '')
@@ -135,9 +128,7 @@ const PrivacyPolicyScreen = ({navigation}: any) => {
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack()}>
-          <BackIcon />
-        </TouchableOpacity>
+        <BackButton style={styles.backBtn} onPress={() => navigation?.goBack()} />
 
         <Text style={styles.pageTitle}>{'Privacy Policy'}</Text>
 

@@ -16,16 +16,36 @@ import {
   Dimensions,
   Animated,
 } from 'react-native';
+import BackButton from '../components/BackButton';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
+
+// Was missing &#038;/&amp;-style numeric ampersand entities beyond the named
+// form, &#039;/&quot; straight quotes, and &#8220;/&#8221; curly double
+// quotes — plus had no generic numeric-entity fallback — so titles/excerpts
+// containing those (e.g. "Project Leadership &#038; Management") still
+// rendered raw. Widened to the same entity set used elsewhere in this
+// project (feedApi.ts/coursesApi.ts/etc), including a numeric &#NNN;/&#xHH;
+// fallback for anything not explicitly listed.
 const stripHtml = (html: string) =>
   (html || '')
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&#8211;/g, '–')
     .replace(/&amp;/g, '&')
-    .replace(/&#8217;/g, "'")
-    .replace(/&#8216;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&#034;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&hellip;/g, '…')
+    .replace(/&#8230;/g, '…')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
     .trim();
 
 const formatDate = (d: string) => {
@@ -80,7 +100,7 @@ const TOCSheet = ({visible, onClose, items, onSelect}: any) => {
                 onClose();
               }}>
               <Text style={[toc.itemText, index === 0 && toc.itemTextActive]}>
-                {item}
+                {stripHtml(item)}
               </Text>
             </TouchableOpacity>
           )}
@@ -330,21 +350,24 @@ const ResourceArticleScreen = ({navigation, route}: any) => {
           ) : (
             <View style={[styles.heroImage, {backgroundColor: '#1A3A6B'}]} />
           )}
-          {/* Back button overlay */}
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}>
-            <Text style={styles.backBtnText}>{'‹'}</Text>
-          </TouchableOpacity>
+          {/* Back button overlay — kept on its own semi-transparent dark
+              circular backdrop (styles.backBtn) since it sits on top of an
+              arbitrary photo hero image; the shared BackButton's grey
+              stroke/fill has no background of its own, so this backdrop is
+              still needed here for the icon to stay visible on light
+              photos. See final report for a flagged contrast note. */}
+          <View style={styles.backBtn}>
+            <BackButton onPress={() => navigation.goBack()} size={22} />
+          </View>
           {/* Category breadcrumb */}
           <View style={styles.heroCategoryWrap}>
             <Text style={styles.heroCategoryText}>{`Articles · ${
-              article.category || 'Resources'
+              stripHtml(article.category || 'Resources')
             }`}</Text>
           </View>
           {/* Title overlay */}
           <View style={styles.heroOverlay}>
-            <Text style={styles.heroTitle}>{article.title}</Text>
+            <Text style={styles.heroTitle}>{stripHtml(article.title || '')}</Text>
             {article.date ? (
               <Text style={styles.heroDate}>{formatDate(article.date)}</Text>
             ) : null}
@@ -371,7 +394,7 @@ const ResourceArticleScreen = ({navigation, route}: any) => {
           {tocItems.length > 0 && (
             <>
               <Text style={styles.sectionHeading}>{'Introduction'}</Text>
-              <Text style={styles.paragraph}>{article.excerpt || ''}</Text>
+              <Text style={styles.paragraph}>{stripHtml(article.excerpt || '')}</Text>
             </>
           )}
           <Text style={styles.paragraph}>
@@ -417,7 +440,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backBtnText: {color: '#FFF', fontSize: 22, fontWeight: '300'},
   heroCategoryWrap: {position: 'absolute', top: 20, left: 60},
   heroCategoryText: {fontSize: 12, color: 'rgba(255,255,255,0.9)'},
   heroOverlay: {
