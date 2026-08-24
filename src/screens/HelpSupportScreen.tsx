@@ -1,17 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useEffect, useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  StatusBar,
-  SafeAreaView,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  Linking,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, StatusBar, TextInput, TouchableOpacity, ActivityIndicator, Linking} from 'react-native';
 import Svg, {Path, Rect} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -285,7 +274,7 @@ const HelpSupportScreen = ({navigation}: any) => {
   const isGlossaryTab = activeTab?.type === 'glossary';
 
   return (
-    <SafeAreaView style={s.root}>
+    <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* Fixed siblings above the ScrollView — neither the shared app header
@@ -491,7 +480,7 @@ const HelpSupportScreen = ({navigation}: any) => {
       )}
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

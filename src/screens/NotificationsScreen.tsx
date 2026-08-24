@@ -1,20 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  SafeAreaView,
-  StatusBar,
-  Image,
-  Modal,
-  Alert,
-  Linking,
-} from 'react-native';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, StatusBar, Image, Modal, Alert, Linking} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 // Drives the side drawer opened by AppHeader's chevron — this screen was
@@ -400,7 +386,7 @@ const NotificationsScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={s.container}>
+    <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
@@ -496,7 +482,7 @@ const NotificationsScreen = ({navigation}: any) => {
         onClose={() => setSortModalVisible(false)}
         onSelect={handleSortSelect}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

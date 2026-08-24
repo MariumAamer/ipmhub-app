@@ -1,17 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useRef, useEffect} from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import {View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, StatusBar, ActivityIndicator, Alert} from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
 import * as Keychain from 'react-native-keychain';
 import AppHeader from '../components/AppHeader';
@@ -499,7 +488,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* ── App-wide header (chevrons, logo, envelope, bell, avatar) ── */}
@@ -741,7 +730,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

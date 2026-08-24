@@ -1,18 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  Image,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Image, StatusBar, ActivityIndicator, RefreshControl} from 'react-native';
 import Svg, {Path, Circle, Rect, G, Mask, Defs} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -204,7 +192,7 @@ const DMListScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={s.container}>
+    <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -264,7 +252,7 @@ const DMListScreen = ({navigation}: any) => {
         onClose={() => setDrawerOpen(false)}
         navigation={navigation}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

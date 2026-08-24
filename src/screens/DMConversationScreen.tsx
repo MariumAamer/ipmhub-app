@@ -1,22 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useRef, useCallback, useMemo} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  Image,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  Modal,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Image, StatusBar, ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, ScrollView} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle, G, Mask, Rect} from 'react-native-svg';
 import {launchImageLibrary} from 'react-native-image-picker';
@@ -603,7 +587,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={c.container}>
+    <View style={c.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* App Header - always visible */}
@@ -874,7 +858,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
         onClose={() => setDrawerOpen(false)}
         navigation={navigation}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

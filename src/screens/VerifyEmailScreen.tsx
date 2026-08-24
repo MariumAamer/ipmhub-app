@@ -1,16 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  Image,
-  Linking,
-} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, Image, Linking} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import {openInbox} from 'react-native-email-link';

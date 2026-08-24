@@ -1,9 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect} from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, Image,
-  TouchableOpacity, StatusBar, SafeAreaView, ActivityIndicator, Alert,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, ActivityIndicator, Alert} from 'react-native';
 import Svg, {Path, Rect, G, Defs, ClipPath} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -192,7 +189,7 @@ const EventDetailScreen = ({navigation, route}: Props) => {
   };
 
   return (
-    <SafeAreaView style={s.container}>
+    <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF"/>
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)}/>
 
@@ -276,7 +273,7 @@ const EventDetailScreen = ({navigation, route}: Props) => {
         onClose={() => setDrawerOpen(false)}
         navigation={navigation}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

@@ -42,7 +42,9 @@ import {
 import ProfileDrawer from '../components/ProfileDrawer';
 import FabMenu from '../components/FabMenu';
 import {getUserIdFromToken} from '../api/profileApi';
+import {getTopicTagsAndVoices} from '../api/forumsApi';
 import Svg, {Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Ellipse, Rect} from 'react-native-svg';
+import MaskedView from '@react-native-masked-view/masked-view';
 import AppHeader from '../components/AppHeader';
 
 const {width: W} = Dimensions.get('window');
@@ -161,6 +163,63 @@ const EditIcon = () => (
   <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
     <Path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="#192546" />
   </Svg>
+);
+
+// Gradient "sparkle" icon for "New Forum" — same icon/gradient as
+// MemberProfileScreen's forum cards, kept in sync so a discussion card
+// looks identical whether seen here or on a member's Activity tab.
+const NewForumIcon = () => (
+  <Svg width={12} height={12} viewBox="0 0 15 15" fill="none">
+    <Defs>
+      <SvgLinearGradient id="feedForumBadgeGrad" x1="14.2782" y1="12.0188" x2="1.58882" y2="12.5869" gradientUnits="userSpaceOnUse">
+        <Stop stopColor="#E257E4" />
+        <Stop offset={1} stopColor="#005AB4" />
+      </SvgLinearGradient>
+    </Defs>
+    <Path
+      d="M7.5 0C11.6421 0 15 3.35786 15 7.5C15 11.6421 11.6421 15 7.5 15C3.35786 15 0 11.6421 0 7.5C0 3.35786 3.35786 0 7.5 0ZM7.50061 2.5C7.42779 2.5 7.3564 2.52231 7.29675 2.56409C7.23709 2.6059 7.19161 2.66528 7.16675 2.73376L6.828 3.66028C6.56201 4.38671 6.14028 5.04624 5.59326 5.59326C5.04624 6.14028 4.38671 6.56201 3.66028 6.828L2.73376 7.16675C2.66528 7.19161 2.6059 7.23709 2.56409 7.29675C2.52231 7.3564 2.5 7.42779 2.5 7.50061C2.50005 7.57332 2.52239 7.64429 2.56409 7.70386C2.6059 7.76352 2.66528 7.809 2.73376 7.83386L3.66028 8.17322C4.38669 8.4392 5.04625 8.86035 5.59326 9.40735C6.14028 9.95437 6.56201 10.6139 6.828 11.3403L7.16675 12.2662C7.19161 12.3347 7.23709 12.3941 7.29675 12.4359C7.3564 12.4777 7.42779 12.5 7.50061 12.5C7.57332 12.4999 7.64429 12.4776 7.70386 12.4359C7.76352 12.3941 7.809 12.3347 7.83386 12.2662L8.17322 11.3403C8.43921 10.6139 8.86035 9.95435 9.40735 9.40735C9.95435 8.86035 10.6139 8.43921 11.3403 8.17322L12.2662 7.83386C12.3347 7.809 12.3941 7.76352 12.4359 7.70386C12.4776 7.64429 12.4999 7.57332 12.5 7.50061C12.5 7.42779 12.4777 7.3564 12.4359 7.29675C12.3941 7.23709 12.3347 7.19161 12.2662 7.16675L11.3403 6.828C10.6139 6.56201 9.95437 6.14028 9.40735 5.59326C8.86035 5.04625 8.4392 4.38669 8.17322 3.66028L7.83386 2.73376C7.809 2.66528 7.76352 2.6059 7.70386 2.56409C7.64429 2.52239 7.57332 2.50005 7.50061 2.5Z"
+      fill="url(#feedForumBadgeGrad)"
+    />
+  </Svg>
+);
+
+// Circular reply-arrow icon for "Forum Reply" — same as MemberProfileScreen.
+const ForumReplyIcon = () => (
+  <Svg width={12} height={12} viewBox="0 0 15 15" fill="none">
+    <Defs>
+      <SvgLinearGradient id="feedForumReplyGrad" x1="14.2782" y1="12.0188" x2="1.58882" y2="12.5869" gradientUnits="userSpaceOnUse">
+        <Stop stopColor="#E257E4" />
+        <Stop offset={1} stopColor="#005AB4" />
+      </SvgLinearGradient>
+    </Defs>
+    <Path
+      d="M0 7.5C0 11.625 3.375 15 7.5 15C11.625 15 15 11.625 15 7.5C15 3.375 11.625 0 7.5 0C3.375 0 0 3.375 0 7.5ZM2.25 6.75L6 3V5.25C9.795 5.7975 11.46 8.4975 12 11.25C10.6425 9.3225 8.7075 8.25 6 8.25V10.5L2.25 6.75Z"
+      fill="url(#feedForumReplyGrad)"
+    />
+  </Svg>
+);
+
+// Solid-fill (non-gradient) two-people icon for the "N People Involved" row.
+const PeopleIcon = () => (
+  <Svg width={15} height={13} viewBox="0 0 15 13" fill="none">
+    <Path
+      d="M7.50026 4.875C8.16321 4.875 8.79901 4.61819 9.26779 4.16107C9.73657 3.70395 9.99993 3.08396 9.99993 2.4375C9.99993 1.79103 9.73657 1.17105 9.26779 0.713927C8.79901 0.256807 8.16321 0 7.50026 0C6.83731 0 6.20151 0.256807 5.73273 0.713927C5.26395 1.17105 5.0006 1.79103 5.0006 2.4375C5.0006 3.08396 5.26395 3.70395 5.73273 4.16107C6.20151 4.61819 6.83731 4.875 7.50026 4.875ZM4.16737 4.0625C4.16737 4.49347 3.9918 4.9068 3.67928 5.21155C3.36676 5.51629 2.9429 5.6875 2.50093 5.6875C2.05896 5.6875 1.63509 5.51629 1.32258 5.21155C1.01006 4.9068 0.834485 4.49347 0.834485 4.0625C0.834485 3.63152 1.01006 3.2182 1.32258 2.91345C1.63509 2.6087 2.05896 2.4375 2.50093 2.4375C2.9429 2.4375 3.36676 2.6087 3.67928 2.91345C3.9918 3.2182 4.16737 3.63152 4.16737 4.0625ZM0.409542 10.0149C0.267299 9.93604 0.160779 9.8078 0.111248 9.65574C-0.0355608 9.19207 -0.0371003 8.69623 0.106827 8.2317C0.250754 7.76717 0.533596 7.3551 0.919134 7.04827C1.30467 6.74144 1.77536 6.5538 2.27091 6.50939C2.76647 6.46498 3.26434 6.56582 3.70077 6.799C2.80368 7.65827 2.2423 8.79593 2.11348 10.0157C2.09459 10.1971 2.10154 10.3743 2.13431 10.5471C1.52635 10.495 0.937551 10.3133 0.409542 10.0149ZM12.8662 10.5462C13.4741 10.4944 14.0629 10.313 14.591 10.0149C14.7329 9.93589 14.8391 9.80766 14.8884 9.65574C15.0355 9.19202 15.0372 8.69605 14.8934 8.23137C14.7495 7.76669 14.4667 7.35447 14.0811 7.04751C13.6955 6.74055 13.2248 6.55283 12.7291 6.50841C12.2334 6.46399 11.7354 6.56489 11.2989 6.79818C12.1968 7.65742 12.7588 8.79543 12.8879 10.0157C12.9067 10.1929 12.8994 10.3718 12.8662 10.5471M14.166 4.0625C14.166 4.49347 13.9905 4.9068 13.6779 5.21155C13.3654 5.51629 12.9416 5.6875 12.4996 5.6875C12.0576 5.6875 11.6338 5.51629 11.3212 5.21155C11.0087 4.9068 10.8331 4.49347 10.8331 4.0625C10.8331 3.63152 11.0087 3.2182 11.3212 2.91345C11.6338 2.6087 12.0576 2.4375 12.4996 2.4375C12.9416 2.4375 13.3654 2.6087 13.6779 2.91345C13.9905 3.2182 14.166 3.63152 14.166 4.0625ZM3.58745 10.7169C3.50506 10.6453 3.44121 10.5557 3.4011 10.4554C3.36099 10.3552 3.34575 10.2471 3.35665 10.14C3.46263 9.1402 3.94494 8.21421 4.71035 7.54101C5.47576 6.86781 6.46992 6.4952 7.50068 6.4952C8.53144 6.4952 9.5256 6.86781 10.291 7.54101C11.0564 8.21421 11.5387 9.1402 11.6447 10.14C11.6556 10.2471 11.6404 10.3552 11.6003 10.4554C11.5601 10.5557 11.4963 10.6453 11.4139 10.7169C10.3423 11.6647 8.94698 12.189 7.50026 12.1875C6.05368 12.1896 4.65838 11.6652 3.58745 10.7169Z"
+      fill="#192647"
+    />
+  </Svg>
+);
+
+// Gradient "New Forum"/"Forum Reply" label text — same MaskedView technique
+// as MemberProfileScreen (RN has no CSS background-clip:text equivalent).
+const ForumBadgeLabel = ({text}: {text: string}) => (
+  <MaskedView maskElement={<Text style={styles.forumBadgeText}>{text}</Text>}>
+    <LinearGradient
+      colors={['#E257E4', '#005AB4']}
+      start={{x: 0, y: 0}}
+      end={{x: 1, y: 0}}>
+      <Text style={[styles.forumBadgeText, {opacity: 0}]}>{text}</Text>
+    </LinearGradient>
+  </MaskedView>
 );
 
 // ─── Get stored user ──────────────────────────────────────────────────────────
@@ -458,7 +517,7 @@ const CreatePostBar = ({myAvatar, onPress}: any) => (
 );
 
 // ─── Newest Members Section ───────────────────────────────────────────────────
-const NewestMembersSection = ({members, loading, onFollow, navigation}: any) => (
+const NewestMembersSection = ({members, loading, followBusy, onFollow, navigation}: any) => (
   <View style={styles.sectionCard}>
     <Text style={styles.sectionTitle}>{'Newest Members'}</Text>
     {loading ? (
@@ -470,24 +529,32 @@ const NewestMembersSection = ({members, loading, onFollow, navigation}: any) => 
         showsHorizontalScrollIndicator={false}
         keyExtractor={(m: Member) => String(m.id)}
         contentContainerStyle={styles.newestMembersRow}
-        renderItem={({item: m}: {item: Member}) => (
-          <TouchableOpacity
-            style={styles.newestMemberCard}
-            activeOpacity={0.85}
-            onPress={() => navigation?.push('MemberProfile', {userId: m.id})}>
-            <Image source={{uri: m.avatar}} style={styles.newestMemberAvatar} />
-            <Text style={styles.newestMemberName} numberOfLines={2}>{m.name}</Text>
-            <Text style={styles.newestMemberRole} numberOfLines={2}>{m.title}</Text>
+        renderItem={({item: m}: {item: Member}) => {
+          const busy = !!followBusy?.[m.id];
+          return (
             <TouchableOpacity
-              style={[styles.newestFollowBtn, m.following && styles.newestFollowingBtn]}
-              onPress={() => onFollow(m.id, m.following)}
-              activeOpacity={0.85}>
-              <Text style={[styles.newestFollowBtnText, m.following && styles.newestFollowingBtnText]}>
-                {m.following ? '✓ Following' : '+ Follow'}
-              </Text>
+              style={styles.newestMemberCard}
+              activeOpacity={0.85}
+              onPress={() => navigation?.push('MemberProfile', {userId: m.id})}>
+              <Image source={{uri: m.avatar}} style={styles.newestMemberAvatar} />
+              <Text style={styles.newestMemberName} numberOfLines={2}>{m.name}</Text>
+              <Text style={styles.newestMemberRole} numberOfLines={2}>{m.title}</Text>
+              <TouchableOpacity
+                style={[styles.newestFollowBtn, m.following && styles.newestFollowingBtn]}
+                onPress={() => onFollow(m.id, m.following)}
+                disabled={busy}
+                activeOpacity={0.85}>
+                {busy ? (
+                  <ActivityIndicator size="small" color={m.following ? '#1A3A6B' : '#FFF'} />
+                ) : (
+                  <Text style={[styles.newestFollowBtnText, m.following && styles.newestFollowingBtnText]}>
+                    {m.following ? '✓ Following' : '+ Follow'}
+                  </Text>
+                )}
+              </TouchableOpacity>
             </TouchableOpacity>
-          </TouchableOpacity>
-        )}
+          );
+        }}
       />
     )}
   </View>
@@ -705,6 +772,11 @@ const PostCard = ({
   const isIntro = post.type === 'intro';
   const isOwnPost = post.author.id === myUserId;
   const [textExpanded, setTextExpanded] = useState(false);
+  // forumMeta.type is the exact "New Forum"/"Forum Reply" label computed in
+  // feedApi.ts from the activity's raw bbp_topic_create/bbp_reply_create
+  // type — same source of truth used for the icon choice below, so the
+  // badge always matches (never guessed independently here).
+  const isForumReply = post.forumMeta?.type === 'Forum Reply';
 
   const displayedContent =
     textExpanded && post.fullContent ? post.fullContent : post.content;
@@ -784,13 +856,39 @@ const PostCard = ({
         </TouchableOpacity>
       ) : null}
 
-      {post.forumTags?.length > 0 ? (
-        <View style={styles.forumTagsRow}>
+      {/* Tags row — own row, above the forum-type badge. */}
+      {isForumPost && post.forumTags?.length ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.forumTagsRow}
+          contentContainerStyle={styles.forumTagsRowContent}>
           {post.forumTags.map((tag: string, i: number) => (
             <View key={i} style={styles.forumTag}>
-              <Text style={styles.forumTagText}>{tag}</Text>
+              <Text style={styles.forumTagText} numberOfLines={1}>{tag}</Text>
             </View>
           ))}
+        </ScrollView>
+      ) : null}
+
+      {/* New Forum/Forum Reply badge + "N People Involved" — same row, per
+          Figma. Badge uses the same icon/gradient-text treatment as
+          MemberProfileScreen's forum cards, so a discussion reads
+          identically in both places. */}
+      {isForumPost ? (
+        <View style={styles.forumBadgeRow}>
+          <View style={styles.forumBadgeGroup}>
+            {isForumReply ? <ForumReplyIcon /> : <NewForumIcon />}
+            <ForumBadgeLabel text={post.forumMeta?.type || (isForumReply ? 'Forum Reply' : 'New Forum')} />
+          </View>
+          {post.forumMeta?.people ? (
+            <View style={styles.peopleInvolvedGroup}>
+              <PeopleIcon />
+              <Text style={styles.peopleInvolvedText}>
+                {`${post.forumMeta.people} People Involved`}
+              </Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -878,6 +976,10 @@ const FeedScreen = ({navigation}: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
+  // Tracks which member IDs currently have a follow/unfollow request in
+  // flight, so the button can show a spinner instead of looking inert
+  // while awaiting the real backend response.
+  const [followBusy, setFollowBusy] = useState<Record<number, boolean>>({});
   const [hasMore, setHasMore] = useState(true);
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
   const [error, setError] = useState('');
@@ -949,8 +1051,42 @@ const FeedScreen = ({navigation}: any) => {
         }),
       );
 
-      if (reset) setPosts(enriched);
-      else setPosts(prev => [...prev, ...enriched]);
+      // Enrich forum-type posts with their real tags + "People Involved"
+      // count. Feed's own activity endpoint doesn't carry topic_tags or
+      // voice_count on bbp_topic_create/bbp_reply_create items (confirmed
+      // against a real payload — those fields only exist on
+      // /buddyboss/v1/topics/{id}), so a follow-up per-topic fetch fills
+      // them in here, same enrichment pattern as the author profile fetch
+      // above. Only runs for the forum posts actually on this page (a
+      // handful out of 15, not all of them), and skips anything without a
+      // resolved topicId.
+      const forumTopicIds = enriched
+        .filter(p => p.type === 'forum' && p.topicId)
+        .map(p => p.topicId as number);
+      let withForumData = enriched;
+      if (forumTopicIds.length > 0) {
+        try {
+          const topicData = await getTopicTagsAndVoices(forumTopicIds);
+          withForumData = enriched.map(post => {
+            if (post.type !== 'forum' || !post.topicId) return post;
+            const extra = topicData.get(post.topicId);
+            if (!extra) return post;
+            return {
+              ...post,
+              forumTags: extra.tags.length ? extra.tags : post.forumTags,
+              forumMeta: post.forumMeta
+                ? {...post.forumMeta, people: extra.voiceCount || post.forumMeta.people}
+                : post.forumMeta,
+            };
+          });
+        } catch {
+          // Leave posts as-is (tags/people count just stay hidden) —
+          // this enrichment is best-effort, same as the author one above.
+        }
+      }
+
+      if (reset) setPosts(withForumData);
+      else setPosts(prev => [...prev, ...withForumData]);
       setHasMore(data.length === 15);
       setPage(pageNum);
     } catch (err: any) {
@@ -1013,15 +1149,30 @@ const FeedScreen = ({navigation}: any) => {
   };
 
   const handleFollow = async (memberId: number, currentlyFollowing: boolean) => {
+    if (followBusy[memberId]) return; // already in flight, ignore repeat taps
+    setFollowBusy(prev => ({...prev, [memberId]: true}));
     setMembers(prev =>
       prev.map(m => (m.id === memberId ? {...m, following: !currentlyFollowing} : m)),
     );
     try {
       await toggleFollow(memberId, currentlyFollowing);
-    } catch {
+    } catch (err: any) {
       setMembers(prev =>
         prev.map(m => (m.id === memberId ? {...m, following: currentlyFollowing} : m)),
       );
+      Alert.alert(
+        'Something went wrong',
+        currentlyFollowing
+          ? "Couldn't unfollow this member. Please try again."
+          : "Couldn't follow this member. Please try again.",
+      );
+      console.log('[FeedScreen] toggleFollow', err);
+    } finally {
+      setFollowBusy(prev => {
+        const next = {...prev};
+        delete next[memberId];
+        return next;
+      });
     }
   };
 
@@ -1168,6 +1319,7 @@ const FeedScreen = ({navigation}: any) => {
         <NewestMembersSection
           members={members.filter(m => m.id !== myUserId)}
           loading={loadingMembers}
+          followBusy={followBusy}
           onFollow={handleFollow}
           navigation={navigation}
         />
@@ -1405,7 +1557,16 @@ const styles = StyleSheet.create({
   nameWithFlag: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap'},
   flagText: {fontSize: 14},
 
-  postTitle: {fontSize: 15, fontWeight: '700', color: '#192546', lineHeight: 22, marginBottom: 6, fontFamily: 'Runda'},
+  // Figma: Heading/H3
+  postTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#192647',
+    lineHeight: 20,
+    letterSpacing: 0.08,
+    marginBottom: 6,
+    fontFamily: 'Runda',
+  },
   // Figma: Body/Body M
   postContent: {
     fontSize: 14,
@@ -1442,15 +1603,48 @@ const styles = StyleSheet.create({
   linkPreviewTitle: {fontSize: 13, fontWeight: '600', color: '#1A1A1A', lineHeight: 18, marginBottom: 4},
   linkPreviewUrl: {fontSize: 11, color: '#AAAAAA'},
 
-  forumTagsRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, marginBottom: 10},
+  // Tags row — its own row, above the forum-type badge row.
+  forumTagsRow: {marginTop: 8, marginBottom: 8},
+  forumTagsRowContent: {flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 4},
+  // Figma: tag pill — width 96, padding 4px 10px, border-radius 30,
+  // 0.5px solid #192647 border, centered content.
   forumTag: {
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 20,
-    paddingHorizontal: 10,
+    minWidth: 113,
     paddingVertical: 4,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 30,
+    borderWidth: 0.5,
+    borderColor: '#192647',
   },
-  forumTagText: {fontSize: 11, color: '#555'},
+  // Figma: Action/Action M
+  forumTagText: {
+    color: '#192647',
+    fontFamily: 'Runda',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // New Forum/Forum Reply badge + "N People Involved" — same row, per Figma:
+  // badge on the left, people-involved on the right.
+  forumBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 10,
+  },
+  forumBadgeGroup: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  forumBadgeText: {fontFamily: 'Runda', fontSize: 12, fontWeight: '500', lineHeight: 16, color: '#000'},
+
+  // "N People Involved" — solid-fill (non-gradient) icon + text.
+  peopleInvolvedGroup: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  peopleInvolvedText: {
+    color: '#192647',
+    fontFamily: 'Runda',
+    fontSize: 12,
+    fontWeight: '500',
+  },
 
   joinDiscussionWrap: {marginBottom: 14, borderRadius: 10, overflow: 'hidden'},
   joinDiscussionBtn: {borderRadius: 10, paddingVertical: 13, alignItems: 'center'},

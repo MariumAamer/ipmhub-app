@@ -31,11 +31,17 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  SafeAreaView,
   StatusBar,
   TextInput,
   Alert,
 } from 'react-native';
+// FIXED (Aug 2026): was importing SafeAreaView from 'react-native' — that
+// core component only applies the safe-area inset on iOS and is a no-op on
+// Android, which is why the status bar's clock/battery icons overlapped
+// the back arrow and breadcrumb on Android devices. Swapped to the real
+// cross-platform SafeAreaView, same fix already applied to
+// DMNewMessageScreen.tsx and used via useSafeAreaInsets in AppHeader.tsx.
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import BackButton from '../components/BackButton';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -163,8 +169,18 @@ const looksLikeHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
 // the full entity set already used elsewhere in this project
 // (coursesApi.ts/feedApi.ts/etc), including a generic numeric-entity
 // fallback for anything not explicitly listed.
-const decodeEntities = (text: string): string =>
-  (text || '')
+//
+// CONFIRMED live crash fix (Aug 2026): "(text || '').replace is not a
+// function (it is undefined)" — crashed inside CommentCard when a step
+// comment's author_name/content came back as something other than a
+// plain string (e.g. the same {raw, rendered} object shape already seen
+// on course/lesson titles, or a number). `text || ''` only substitutes
+// the fallback when `text` is falsy; a truthy non-string sails through
+// and has no .replace method. Now explicitly checks typeof text ===
+// 'string' before doing any replacing, so any non-string input safely
+// renders as empty instead of crashing the screen.
+const decodeEntities = (text: unknown): string =>
+  (typeof text === 'string' ? text : '')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#034;/g, '"')
@@ -609,7 +625,11 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
               WP-backed comments endpoint as everything else in this app —
               previously rendered completely raw here, so a commenter name
               or comment body containing an entity (e.g. an apostrophe in
-              "can't") showed up as literal "&#039;" text. */}
+              "can't") showed up as literal "&#039;" text. CONFIRMED live
+              crash fix (Aug 2026): these fields aren't guaranteed to be
+              plain strings either — decodeEntities() now coerces safely
+              instead of assuming, so a non-string value here renders as
+              empty rather than crashing the screen. */}
           <Text style={styles.commentAuthorName}>{decodeEntities(comment.author_name)}</Text>
           <Text style={styles.commentDate}>{decodeEntities(comment.date_formatted)}</Text>
         </View>
@@ -708,8 +728,15 @@ type StepContentResponseStep = {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#FFFFFF'},
-  headerRow: {flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12},
-  scrollContent: {paddingHorizontal: 16, paddingBottom: 24, gap: 16},
+  headerRow: {flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12},
+  // FIXED (Aug 2026): screen content (Topic tab body, images, headings,
+  // Student Support card, comments) was rendering with only 16px of
+  // horizontal breathing room, tight enough to read as edge-to-edge on
+  // device — bumped to 20px to match the padding this app already uses on
+  // comparable detail screens (PrivacyPolicyScreen, ResourceDetailScreen),
+  // and added paddingTop so the Topic/Materials sub-tab row doesn't sit
+  // flush under the header.
+  scrollContent: {paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 16},
 
   breadcrumbRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 4, flexWrap: 'wrap'},
   breadcrumbText: {color: '#0C4D91', fontFamily: 'Runda-Medium', fontSize: 12, width: 104},
@@ -896,4 +923,19 @@ export default StepContentScreen;
       project). Block text coming out of parseCourseOverviewHtml() is also
       now decoded defensively here, since that shared utility's own
       entity-handling hasn't been independently verified.
+
+   8. FIXED (Aug 2026): live crash "(text || '').replace is not a
+      function (it is undefined)" at StepContentScreen.tsx:171, thrown
+      from inside CommentCard when rendering a comment. decodeEntities()
+      previously assumed its input was either a string or falsy
+      (`(text || '')`); a truthy non-string value (an object, a number —
+      the same {raw, rendered} shape already confirmed on titles is one
+      candidate) passed straight through and had no .replace method.
+      decodeEntities() now explicitly checks `typeof text === 'string'`
+      before replacing, so any non-string field renders as empty text
+      instead of crashing the whole screen. If a populated comment later
+      shows blank author/content where text was expected, that's the
+      signal the backend is sending a non-string shape here too and it
+      needs the same {raw,rendered}-style extraction safeTitleText()
+      already has for titles.
 ──────────────────────────────────────────────────────────────────────── */

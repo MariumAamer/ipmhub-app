@@ -1,20 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  TextInput,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
-  Dimensions,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Alert, Dimensions} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -557,7 +543,7 @@ const IntrosScreen = ({navigation}: any) => {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
@@ -669,7 +655,7 @@ const IntrosScreen = ({navigation}: any) => {
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

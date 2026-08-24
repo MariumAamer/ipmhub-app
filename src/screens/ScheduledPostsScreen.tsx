@@ -1,18 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  StatusBar,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
-  Image,
-} from 'react-native';
+import {View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Image} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import * as Keychain from 'react-native-keychain';
 

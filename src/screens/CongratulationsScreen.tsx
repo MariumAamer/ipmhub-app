@@ -1,15 +1,6 @@
 import React, {useEffect, useRef} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  StatusBar,
-  ScrollView,
-  Image,
-  Animated,
-} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView, Image, Animated} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 
 const CongratulationsScreen = ({navigation}: any) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;

@@ -1,17 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React, {useRef, useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  Linking,
-  ActivityIndicator,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, Linking, ActivityIndicator} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import {markStepComplete} from '../api/coursesApi';
 import {getUserIdFromToken} from '../api/profileApi';

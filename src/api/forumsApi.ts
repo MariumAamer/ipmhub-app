@@ -258,6 +258,12 @@ export interface ForumTopic {
   forumName: string;
   tags: string[];
   replyCount: number;
+  // "People involved" — bbPress's own participant count (author + everyone
+  // who's replied), confirmed present as `voice_count` on the real
+  // /buddyboss/v1/topics response (e.g. a topic with 1 reply from a second
+  // person came back voice_count: 2). Not available on the Feed activity
+  // endpoint's forum items — only here, on the topic itself.
+  voiceCount: number;
   lastActiveTime: string;
   time: string;
   rawDate: string;
@@ -299,6 +305,7 @@ const mapTopic = (item: any, currentUserId: number | null): ForumTopic => {
     forumName: item._embedded?.forum?.[0]?.title?.rendered || '',
     tags,
     replyCount: parseInt(item.total_reply_count, 10) || 0,
+    voiceCount: parseInt(item.voice_count, 10) || 0,
     lastActiveTime: item.last_active_time || '',
     time: formatDate(item.date),
     rawDate: item.date,
@@ -364,6 +371,30 @@ export const getTopic = async (
   const data = await res.json();
   await prefetchAuthors([data]);
   return mapTopic(data, currentUserId);
+};
+
+// ─── GET tags + voice count for a batch of topic ids (Feed forum-card enrichment)
+// Feed's own activity endpoint doesn't carry topic_tags or voice_count on
+// forum-type items (confirmed against a real payload 2026-08-24 — those
+// fields only exist on /buddyboss/v1/topics/{id}), so FeedScreen calls this
+// after loading a page of posts to fill in tags/"People Involved" for the
+// forum-type ones. Runs the per-topic fetches in parallel rather than
+// sequentially — still N calls for N forum posts on the page (no batch
+// topics-by-id endpoint exists here), but capped at however many forum
+// posts are actually on one page of Feed (usually a handful out of 15).
+export const getTopicTagsAndVoices = async (
+  topicIds: number[],
+): Promise<Map<number, {tags: string[]; voiceCount: number}>> => {
+  const result = new Map<number, {tags: string[]; voiceCount: number}>();
+  const uniqueIds = [...new Set(topicIds)].filter(Boolean);
+  if (uniqueIds.length === 0) return result;
+  await Promise.all(
+    uniqueIds.map(async id => {
+      const topic = await getTopic(id);
+      if (topic) result.set(id, {tags: topic.tags, voiceCount: topic.voiceCount});
+    }),
+  );
+  return result;
 };
 
 // ─── Reply type ────────────────────────────────────────────────────────────────

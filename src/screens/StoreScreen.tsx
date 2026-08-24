@@ -607,6 +607,18 @@ function AllTab({ coursesData, certsData, swData, loading }: {
 
 export default function StoreScreen({ navigation }: any) {
   const [token, setToken] = useState<string | null>(null);
+  // Tracks whether the saved-token lookup itself has finished, separately
+  // from whether the store data has loaded. Previously `allLoading` started
+  // `true` and was only ever flipped to `false` inside the token-gated
+  // fetch effect below (`if (!token) return;` before `setAllLoading` was
+  // ever reached). If a user has no saved token (logged out / Keychain
+  // empty / read failed), `token` resolves to `null` and stays `null`
+  // forever, so that effect's body — including the `finally(() =>
+  // setAllLoading(false))` — never runs. Result: `allLoading` is stuck
+  // `true` and the All tab renders `SkeletonCard` placeholders forever
+  // (matches the reported bug — Store screen stuck on shimmering
+  // placeholder cards, never resolving to real content).
+  const [tokenChecked, setTokenChecked] = useState(false);
   const [activeTab, setActiveTab] = useState<MainTab>('All');
   const [coursesData, setCoursesData] = useState<StoreResponse>({ items: [], pagination: null });
   const [certsData, setCertsData] = useState<StoreResponse>({ items: [], pagination: null });
@@ -617,10 +629,18 @@ export default function StoreScreen({ navigation }: any) {
   // no onDrawerOpen prop at all, so tapping the chevron did nothing.
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  useEffect(() => { getSavedToken().then(t => setToken(t)); }, []);
+  useEffect(() => {
+    getSavedToken().then(t => { setToken(t); setTokenChecked(true); });
+  }, []);
 
   useEffect(() => {
-    if (!token) return;
+    if (!tokenChecked) return;
+    if (!token) {
+      // No saved token — nothing to fetch, so stop showing skeletons
+      // instead of leaving allLoading stuck true forever.
+      setAllLoading(false);
+      return;
+    }
     setAllLoading(true);
     fetchAllStore(token)
       .then(({ courses, certifications, softwares }) => {
@@ -628,7 +648,7 @@ export default function StoreScreen({ navigation }: any) {
       })
       .catch(e => console.log('[StoreScreen] error:', e))
       .finally(() => setAllLoading(false));
-  }, [token]);
+  }, [token, tokenChecked]);
 
   const MAIN_TABS: MainTab[] = ['All', 'Courses', 'Certifications', 'PM Softwares'];
 

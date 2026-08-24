@@ -18,7 +18,7 @@
  * over a free-text field.
  */
 import React, {useState, useEffect} from 'react';
-import {SafeAreaView,ScrollView,View,Text,StyleSheet,StatusBar,Alert,TouchableOpacity} from 'react-native';
+import {ScrollView, View, Text, StyleSheet, StatusBar, Alert, TouchableOpacity} from 'react-native';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import {BackBtn,PageHeader,Field,SearchableDropdown,ImageUpload,SaveBtn,AddMoreBtn,Divider,COUNTRIES,loadXProfileGroups,saveEditProfileCredentials,pickImage} from '../components/editShared';
@@ -107,7 +107,7 @@ const EditCredential = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={st.container}>
+    <View style={st.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <ScrollView contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
@@ -152,7 +152,7 @@ const EditCredential = ({navigation}: any) => {
         <View style={{height:40}} />
       </ScrollView>
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

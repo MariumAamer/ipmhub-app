@@ -9,10 +9,7 @@
  * xProfile POST loop entirely.
  */
 import React, {useState, useEffect} from 'react';
-import {
-  SafeAreaView, View, Text,
-  StyleSheet, StatusBar, Alert, Platform,
-} from 'react-native';
+import {View, Text, StyleSheet, StatusBar, Alert, Platform} from 'react-native';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -97,7 +94,7 @@ const EditProfileDetails = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={st.container}>
+    <View style={st.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -140,7 +137,7 @@ const EditProfileDetails = ({navigation}: any) => {
       </KeyboardAwareScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

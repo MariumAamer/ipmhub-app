@@ -12,17 +12,8 @@
 // invented) rather than showing placeholder people, per project rule.
 
 import React, {useState} from 'react';
-import {
-  View,
-  Text,
-  Image,
-  TextInput,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  StatusBar,
-} from 'react-native';
+import {View, Text, Image, TextInput, StyleSheet, TouchableOpacity, ScrollView, StatusBar} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import BackButton from '../components/BackButton';
 
 interface LocalComment {

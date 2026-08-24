@@ -12,7 +12,7 @@
  * xProfile field ID approach entirely.
  */
 import React, {useState, useEffect} from 'react';
-import {SafeAreaView, View, Text, StyleSheet, StatusBar, Alert, TouchableOpacity, Platform} from 'react-native';
+import {View, Text, StyleSheet, StatusBar, Alert, TouchableOpacity, Platform} from 'react-native';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -118,7 +118,7 @@ const EditExperience = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={st.container}>
+    <View style={st.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <KeyboardAwareScrollView
@@ -192,7 +192,7 @@ const EditExperience = ({navigation}: any) => {
         <View style={{height:40}} />
       </KeyboardAwareScrollView>
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

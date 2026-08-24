@@ -27,16 +27,8 @@
 // state, not synced to any backend.
 
 import React, {useState, useEffect} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  SafeAreaView,
-  StatusBar,
-} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path, Circle} from 'react-native-svg';
 import BackButton from '../components/BackButton';
 import {

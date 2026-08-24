@@ -8,11 +8,14 @@ import {
   TextInput,
   TouchableOpacity,
   StatusBar,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   Linking,
 } from 'react-native';
+// SafeAreaView from 'react-native' is iOS-only (no-op on Android), which is
+// why the back button/header sat under the Android status bar. Swapped to
+// the real cross-platform SafeAreaView, matching ResourceDetailScreen etc.
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import {submitArticle} from '../api/resourcesApi';
 import BackButton from '../components/BackButton';
@@ -20,7 +23,7 @@ import BackButton from '../components/BackButton';
 const TERMS_URL = 'https://projectmanagement.ie/terms-and-conditions/';
 
 const UploadIcon = ({color = '#192546'}: {color?: string}) => (
-  <Svg width={7} height={7.5} viewBox="0 0 11 12" fill="none">
+  <Svg width={11} height={12} viewBox="0 0 11 12" fill="none">
     <Path d="M3.2929 3.19895L4.64534 1.86089L4.65556 8.41749C4.65556 8.81593 4.98216 9.13894 5.38503 9.13894C5.78791 9.13894 6.11451 8.81593 6.11451 8.41749L6.10429 1.86908L7.44897 3.19897C7.72886 3.48557 8.19066 3.4935 8.48044 3.21669C8.77023 2.93987 8.77825 2.48315 8.49836 2.19655C8.49248 2.19053 8.48651 2.18462 8.48044 2.17883L6.91839 0.633943C6.06376 -0.211311 4.67813 -0.211311 3.82348 0.63392L3.82345 0.633943L2.26142 2.17881C1.98153 2.4654 1.98955 2.92213 2.27934 3.19895C2.56203 3.46897 3.0102 3.46897 3.2929 3.19895Z" fill={color} />
     <Path d="M10.1256 7.16943C9.75274 7.16943 9.45052 7.4631 9.45052 7.82534V9.83285C9.45026 9.93152 9.36801 10.0115 9.26646 10.0117H1.53413C1.43258 10.0114 1.35031 9.93152 1.35007 9.83285V7.82534C1.35007 7.4631 1.04785 7.16943 0.675037 7.16943C0.302227 7.16943 0 7.4631 0 7.82534V9.83285C0.00099146 10.6557 0.687272 11.3225 1.53413 11.3235H9.26644C10.1133 11.3225 10.7996 10.6557 10.8006 9.83285V7.82534C10.8006 7.4631 10.4984 7.16943 10.1256 7.16943Z" fill={color} />
   </Svg>
@@ -414,12 +417,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   filePickerText: {flex: 1, fontSize: 14, color: '#8F9098', fontFamily: 'Runda', marginRight: 8},
-  // Figma: 13x13 circle, padding 3.52, bg #E8E9F1
+  // Circle sized to actually contain the 11x12 icon with even padding
   uploadIconCircle: {
-    width: 13,
-    height: 13,
-    padding: 3.52,
-    borderRadius: 55.556,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#E8E9F1',
     alignItems: 'center',
     justifyContent: 'center',
@@ -435,7 +437,7 @@ const styles = StyleSheet.create({
     minHeight: 90,
     paddingTop: 12,
     paddingHorizontal: 16.749,
-    paddingBottom: 60,
+    paddingBottom: 12,
     borderRadius: 5,
     borderWidth: 1,
     borderColor: '#C5C6CC',

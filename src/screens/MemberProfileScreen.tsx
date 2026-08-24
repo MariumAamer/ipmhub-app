@@ -34,9 +34,11 @@ import {
   Alert,
 } from 'react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
-import Svg, {Path, Rect, Mask, G, Circle} from 'react-native-svg';
+import Svg, {Path, Rect, Mask, G, Circle, Defs, LinearGradient as SvgLinearGradient, Stop} from 'react-native-svg';
+import MaskedView from '@react-native-masked-view/masked-view';
 import {apiRequest} from '../api/apiClient';
 import {getUserIdFromToken, uploadAvatar} from '../api/profileApi';
+import {getThreadList} from '../api/dmApi';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import LinearGradient from 'react-native-linear-gradient';
@@ -400,6 +402,12 @@ const PMsYouMayKnow = ({currentUserId, members: membersProp, navigation}: {curre
 
   if (members.length === 0) return null;
 
+  // Follow/unfollow a suggested member. Runs on both the card's own Follow
+  // button AND a tap anywhere else on the card (per spec: tapping the card
+  // should also follow) — the button is nested inside the card's
+  // TouchableOpacity, so a button tap is handled once by the button (RN's
+  // touch responder system gives the nested Touchable priority) and never
+  // double-fires this.
   const toggle = async (id: number) => {
     const isFlw = following[id];
     // Optimistic update immediately
@@ -432,25 +440,26 @@ const PMsYouMayKnow = ({currentUserId, members: membersProp, navigation}: {curre
           const busy  = loading[m.id]   || false;
 
           return (
-            <TouchableOpacity
-              key={m.id}
-              style={s.pmsCard}
-              activeOpacity={0.85}
-              onPress={() => navigation?.push('MemberProfile', {userId: m.id})}>
-              {m.avatarUrl
-                ? <Image source={{uri: m.avatarUrl}} style={s.pmsAvatar} />
-                : <View style={[s.pmsAvatar, {backgroundColor:"#192546", alignItems:"center", justifyContent:"center"}]}>
-                    <Text style={{color:"#FFF", fontWeight:"700", fontSize:20}}>
-                      {m.fullName[0] || "?"}
-                    </Text>
-                  </View>
-              }
-              <Text style={s.pmsName} numberOfLines={2}>{m.fullName}</Text>
-              {/* Always rendered (even when empty) so every card reserves the
-                  same 2-line height here — otherwise members with no role
-                  text end up shorter than others and the Follow button
-                  below sits at a different y-position per card. */}
-              <Text style={s.pmsRole} numberOfLines={2}>{m.role || ' '}</Text>
+            <View key={m.id} style={s.pmsCard}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => navigation?.push('MemberProfile', {userId: m.id})}
+                style={{alignItems:'center'}}>
+                {m.avatarUrl
+                  ? <Image source={{uri: m.avatarUrl}} style={s.pmsAvatar} />
+                  : <View style={[s.pmsAvatar, {backgroundColor:"#192546", alignItems:"center", justifyContent:"center"}]}>
+                      <Text style={{color:"#FFF", fontWeight:"700", fontSize:20}}>
+                        {m.fullName[0] || "?"}
+                      </Text>
+                    </View>
+                }
+                <Text style={s.pmsName} numberOfLines={2}>{m.fullName}</Text>
+                {/* Always rendered (even when empty) so every card reserves the
+                    same 2-line height here — otherwise members with no role
+                    text end up shorter than others and the Follow button
+                    below sits at a different y-position per card. */}
+                <Text style={s.pmsRole} numberOfLines={2}>{m.role || ' '}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[s.pmsFollowBtn, isFlw && s.pmsFollowBtnActive]}
                 onPress={() => toggle(m.id)}
@@ -462,7 +471,7 @@ const PMsYouMayKnow = ({currentUserId, members: membersProp, navigation}: {curre
                     </Text>
                 }
               </TouchableOpacity>
-            </TouchableOpacity>
+            </View>
           );
         })}
       </ScrollView>
@@ -470,8 +479,212 @@ const PMsYouMayKnow = ({currentUserId, members: membersProp, navigation}: {curre
   );
 };
 
+// ─── Forum post card — matches the feed's forum post styling (FeedScreen's
+// PostCard when post.type === 'forum'): "New Forum"/"Forum Reply" pill,
+// bold title, body with Read more, tag pills, gradient Join Discussion
+// button. The whole card (not just the button) opens the discussion,
+// per Marium's spec.
+// Gradient "sparkle" icon for "New Forum" — exact SVG + gradient stops from
+// Marium's spec.
+const NewForumIcon = () => (
+  <Svg width={12} height={12} viewBox="0 0 15 15" fill="none">
+    <Defs>
+      <SvgLinearGradient id="forumBadgeGrad" x1="14.2782" y1="12.0188" x2="1.58882" y2="12.5869" gradientUnits="userSpaceOnUse">
+        <Stop stopColor="#E257E4" />
+        <Stop offset={1} stopColor="#005AB4" />
+      </SvgLinearGradient>
+    </Defs>
+    <Path
+      d="M7.5 0C11.6421 0 15 3.35786 15 7.5C15 11.6421 11.6421 15 7.5 15C3.35786 15 0 11.6421 0 7.5C0 3.35786 3.35786 0 7.5 0ZM7.50061 2.5C7.42779 2.5 7.3564 2.52231 7.29675 2.56409C7.23709 2.6059 7.19161 2.66528 7.16675 2.73376L6.828 3.66028C6.56201 4.38671 6.14028 5.04624 5.59326 5.59326C5.04624 6.14028 4.38671 6.56201 3.66028 6.828L2.73376 7.16675C2.66528 7.19161 2.6059 7.23709 2.56409 7.29675C2.52231 7.3564 2.5 7.42779 2.5 7.50061C2.50005 7.57332 2.52239 7.64429 2.56409 7.70386C2.6059 7.76352 2.66528 7.809 2.73376 7.83386L3.66028 8.17322C4.38669 8.4392 5.04625 8.86035 5.59326 9.40735C6.14028 9.95437 6.56201 10.6139 6.828 11.3403L7.16675 12.2662C7.19161 12.3347 7.23709 12.3941 7.29675 12.4359C7.3564 12.4777 7.42779 12.5 7.50061 12.5C7.57332 12.4999 7.64429 12.4776 7.70386 12.4359C7.76352 12.3941 7.809 12.3347 7.83386 12.2662L8.17322 11.3403C8.43921 10.6139 8.86035 9.95435 9.40735 9.40735C9.95435 8.86035 10.6139 8.43921 11.3403 8.17322L12.2662 7.83386C12.3347 7.809 12.3941 7.76352 12.4359 7.70386C12.4776 7.64429 12.4999 7.57332 12.5 7.50061C12.5 7.42779 12.4777 7.3564 12.4359 7.29675C12.3941 7.23709 12.3347 7.19161 12.2662 7.16675L11.3403 6.828C10.6139 6.56201 9.95437 6.14028 9.40735 5.59326C8.86035 5.04625 8.4392 4.38669 8.17322 3.66028L7.83386 2.73376C7.809 2.66528 7.76352 2.6059 7.70386 2.56409C7.64429 2.52239 7.57332 2.50005 7.50061 2.5Z"
+      fill="url(#forumBadgeGrad)"
+    />
+  </Svg>
+);
+
+// Circular reply-arrow icon for "Forum Reply" — same gradient stops, exact
+// SVG from Marium's spec (distinct from the New Forum sparkle icon above).
+const ForumReplyIcon = () => (
+  <Svg width={12} height={12} viewBox="0 0 15 15" fill="none">
+    <Defs>
+      <SvgLinearGradient id="forumReplyGrad" x1="14.2782" y1="12.0188" x2="1.58882" y2="12.5869" gradientUnits="userSpaceOnUse">
+        <Stop stopColor="#E257E4" />
+        <Stop offset={1} stopColor="#005AB4" />
+      </SvgLinearGradient>
+    </Defs>
+    <Path
+      d="M0 7.5C0 11.625 3.375 15 7.5 15C11.625 15 15 11.625 15 7.5C15 3.375 11.625 0 7.5 0C3.375 0 0 3.375 0 7.5ZM2.25 6.75L6 3V5.25C9.795 5.7975 11.46 8.4975 12 11.25C10.6425 9.3225 8.7075 8.25 6 8.25V10.5L2.25 6.75Z"
+      fill="url(#forumReplyGrad)"
+    />
+  </Svg>
+);
+
+// Gradient "New Forum"/"Forum Reply" label — text fill is the purple
+// gradient (linear-gradient(267deg, #E257E4 8.04%, #005AB4 89.17%)) via
+// MaskedView (RN has no CSS background-clip:text equivalent — same
+// technique already used for GradientText/GradientTitle elsewhere in this
+// app). No underline per Marium's correction — the original spec's
+// text-decoration was dropped from the design.
+const ForumBadgeLabel = ({text}: {text: string}) => (
+  <View style={s.forumBadgeLabelWrap}>
+    <MaskedView
+      maskElement={<Text style={s.forumBadgeText}>{text}</Text>}>
+      <LinearGradient
+        colors={['#E257E4', '#005AB4']}
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 0}}>
+        <Text style={[s.forumBadgeText, {opacity: 0}]}>{text}</Text>
+      </LinearGradient>
+    </MaskedView>
+  </View>
+);
+
+const ForumPostCard = ({forum, navigation}: {forum: any; navigation?: any}) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const title = stripHtml(forum.title || forum.type_label || 'Forum Discussion');
+  const body  = stripHtml(forum.excerpt || forum.content || forum.description || '');
+  const isLong = body.length > 180;
+  const displayedBody = expanded || !isLong ? body : `${body.slice(0, 180)}...`;
+  const isReply = forum.type === 'reply' || forum.is_reply || forum.type === 'bbp_reply_create';
+  const badgeLabel = forum.type_label || (isReply ? 'Forum Reply' : 'New Forum');
+  const tags: string[] = (forum.tags || forum.forum_tags || [])
+    .map((t: any) => decodeEntities(typeof t === 'string' ? t : t?.name || ''))
+    .filter(Boolean);
+  // Replies don't carry a topic id from the API — only a permalink straight
+  // to the parent discussion (with a #post-X anchor). Topics use their own id.
+  // Some orphaned replies (parent topic/forum deleted) come back with
+  // forum_id: 0 and a bare "#post-X" fragment instead of a full URL — that
+  // isn't openable via Linking, so treat it the same as "no link available".
+  const hasValidPermalink = !!forum.permalink && /^https?:\/\//i.test(forum.permalink);
+  const canOpen = isReply ? hasValidPermalink : !!forum.id;
+
+  const openDiscussion = () => {
+    if (isReply) {
+      if (hasValidPermalink) Linking.openURL(forum.permalink).catch(() => {});
+      return;
+    }
+    if (!forum.id) return;
+    navigation?.navigate('ForumTopic', {topicId: forum.id});
+  };
+
+  return (
+    <TouchableOpacity style={s.forumCard} activeOpacity={0.9} onPress={openDiscussion} disabled={!canOpen}>
+      {title ? <Text style={s.forumCardTitle}>{title}</Text> : null}
+      {body ? (
+        <Text style={s.forumCardBody}>
+          {displayedBody}
+          {isLong && !expanded ? (
+            <Text style={s.forumReadMore} onPress={() => setExpanded(true)}>{'  Read more'}</Text>
+          ) : null}
+        </Text>
+      ) : null}
+
+      {/* New Forum/Forum Reply badge + tag pills on one scrollable row,
+          per Marium's spec/screenshot. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={s.forumBadgeRow}
+        contentContainerStyle={s.forumBadgeRowContent}>
+        <View style={s.forumBadge}>
+          {isReply ? <ForumReplyIcon /> : <NewForumIcon />}
+          <ForumBadgeLabel text={badgeLabel} />
+        </View>
+        {tags.slice(0, 5).map((tag, i) => (
+          <View key={i} style={s.forumTag}><Text style={s.forumTagText}>{tag}</Text></View>
+        ))}
+      </ScrollView>
+
+      <TouchableOpacity
+        style={s.joinDiscussionWrap}
+        activeOpacity={0.85}
+        disabled={!canOpen}
+        onPress={openDiscussion}>
+        <LinearGradient
+          colors={['#084D92', '#C157DE']}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 0}}
+          style={s.joinDiscussionBtn}>
+          <Text style={s.joinDiscussionText}>{'Join Discussion'}</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+};
+
+// Newspaper/document icon for the "no resources yet" card — exact SVG from
+// Marium's spec.
+const ResourceEmptyIcon = () => (
+  <Svg width={38.621} height={38.621} viewBox="0 0 39 39" fill="none">
+    <Path fillRule="evenodd" clipRule="evenodd" d="M19.5839 20.0642H27.9563C28.3735 20.0642 28.5745 19.6946 28.5745 19.2388C28.5745 18.783 28.3735 18.4135 27.9563 18.4135H19.5839C19.1667 18.4135 18.8284 18.783 18.8284 19.2388C18.8284 19.6946 19.1667 20.0642 19.5839 20.0642ZM27.9563 22.806H9.9751C9.55794 22.806 9.21967 23.1756 9.21967 23.6313C9.21967 24.0871 9.55794 24.4567 9.9751 24.4567H27.9563C28.3735 24.4567 28.5745 24.0871 28.5745 23.6313C28.5745 23.1756 28.3735 22.806 27.9563 22.806ZM19.5839 15.6716H27.9563C28.3735 15.6716 28.5745 15.3021 28.5745 14.8463C28.5745 14.3905 28.3735 14.0209 27.9563 14.0209H19.5839C19.1667 14.0209 18.8284 14.3905 18.8284 14.8463C18.8284 15.3021 19.1667 15.6716 19.5839 15.6716ZM9.93282 20.062H16.0569C16.4509 20.062 16.7703 19.7402 16.7703 19.3435V14.739C16.7703 14.3422 16.4509 14.0206 16.0569 14.0206H9.93282C9.5389 14.0206 9.21967 14.3422 9.21967 14.739V19.3437C9.21949 19.7402 9.53872 20.062 9.93282 20.062ZM10.866 15.6711H15.1196V18.4157H10.866V15.6711ZM30.7525 4.82715H6.90269C5.75628 4.82715 4.82715 5.7539 4.82715 6.8972V30.7569C4.82715 31.9002 5.75628 32.8271 6.90269 32.8271H30.7523C31.8986 32.8271 32.8279 31.9004 32.8279 30.7569V6.8972C32.8279 5.7539 31.8986 4.82715 30.7525 4.82715ZM31.0441 30.5433C31.0441 30.8953 30.7587 31.1805 30.4069 31.1805H7.11246C6.76047 31.1805 6.4751 30.8951 6.4751 30.5433V11.4131H31.0443L31.0441 30.5433ZM31.0441 9.76789H6.4751V7.11155C6.4751 6.75955 6.76047 6.47419 7.11246 6.47419H30.4069C30.7589 6.47419 31.0441 6.75955 31.0441 7.11155V9.76789ZM9.838 28.8492H18.2105C18.6276 28.8492 18.9659 28.4796 18.9659 28.0239C18.9659 27.5681 18.6276 27.1985 18.2105 27.1985H9.838C9.42084 27.1985 9.08257 27.5681 9.08257 28.0239C9.08257 28.4796 9.42066 28.8492 9.838 28.8492Z" fill="#192647"/>
+  </Svg>
+);
+
+// Forums icon for the public "no activity yet" card — exact SVG from
+// Marium's spec.
+const ForumsEmptyIcon = () => (
+  <Svg width={38.621} height={38.621} viewBox="0 0 40 40" fill="none">
+    <Path d="M27.0312 19.5C26.8741 19.5 26.7049 19.4758 26.5478 19.4275C26.2473 19.326 25.9864 19.1325 25.8021 18.8744C25.6177 18.6163 25.5193 18.3067 25.5207 17.9896V15.8629C23.8291 15.7058 22.4999 14.28 22.4999 12.5521V8.32292C22.4999 6.48625 23.9861 5 25.8228 5H33.6771C35.5137 5 37 6.48625 37 8.32292V12.5521C37 14.3888 35.5137 15.875 33.6771 15.875H30.5112L28.2395 18.8958C27.9495 19.2825 27.5024 19.5 27.0312 19.5ZM25.8228 6.8125C24.9891 6.8125 24.3124 7.48917 24.3124 8.32292V12.5521C24.3124 13.3858 24.9891 14.0625 25.8228 14.0625H27.3333V17.0833L29.6049 14.0625H33.6891C34.5229 14.0625 35.1996 13.3858 35.1996 12.5521V8.32292C35.1996 7.48917 34.5229 6.8125 33.6891 6.8125H25.8228ZM17.0623 22.5208C15.7013 22.5176 14.3969 21.9756 13.4345 21.0132C12.4722 20.0508 11.9301 18.7464 11.9269 17.3854C11.9301 16.0244 12.4722 14.72 13.4345 13.7577C14.3969 12.7953 15.7013 12.2532 17.0623 12.25C18.4234 12.2532 19.7277 12.7953 20.6901 13.7577C21.6525 14.72 22.1946 16.0244 22.1978 17.3854C22.1946 18.7464 21.6525 20.0508 20.6901 21.0132C19.7277 21.9756 18.4234 22.5176 17.0623 22.5208ZM17.0623 14.0625C15.2257 14.0625 13.7394 15.5487 13.7394 17.3854C13.7394 19.2221 15.2257 20.7083 17.0623 20.7083C18.899 20.7083 20.3853 19.2221 20.3853 17.3854C20.3853 15.5487 18.899 14.0625 17.0623 14.0625ZM9.77724 31.4867C11.3602 33.1542 13.8131 34 17.0635 34C20.314 34 22.7669 33.1542 24.3499 31.4867C26.189 29.5413 26.1297 27.1935 26.1261 27.0352V27.0279C26.1261 25.5417 24.9178 24.3333 23.4315 24.3333H10.6956C9.20932 24.3333 8.00097 25.5417 8.00097 26.9796V26.9953C7.99614 27.2249 7.95022 29.5533 9.77724 31.4867ZM9.81349 27.0279C9.81349 26.5446 10.2122 26.1458 10.6956 26.1458H23.4315C23.9149 26.1458 24.3136 26.5446 24.3136 27.0763V27.0787C24.2878 28.2543 23.8321 29.3797 23.0328 30.2421C21.8123 31.535 19.7823 32.1875 17.0635 32.1875C14.3448 32.1875 12.351 31.5471 11.1185 30.2663C10.2881 29.397 9.82122 28.2433 9.81349 27.0412V27.0279Z" fill="#192647" />
+  </Svg>
+);
+
+// Posts icon for the public "no activity yet" card — exact SVG from
+// Marium's spec.
+const PostsEmptyIcon = () => (
+  <Svg width={38.621} height={38.621} viewBox="0 0 40 40" fill="none">
+    <Path d="M19.1191 23.9795C19.348 23.9795 19.5676 24.0706 19.7295 24.2324C19.8913 24.3943 19.9824 24.6139 19.9824 24.8428C19.9824 25.0717 19.8913 25.2913 19.7295 25.4531C19.5676 25.615 19.348 25.706 19.1191 25.7061H9.5791C9.35034 25.7059 9.13051 25.6149 8.96875 25.4531C8.80702 25.2913 8.7168 25.0716 8.7168 24.8428C8.7168 24.614 8.80702 24.3943 8.96875 24.2324C9.13051 24.0707 9.35034 23.9796 9.5791 23.9795H19.1191ZM30.1846 20.1641C30.4135 20.1641 30.633 20.2551 30.7949 20.417C30.9568 20.5789 31.0479 20.7984 31.0479 21.0273C31.0478 21.2561 30.9567 21.4759 30.7949 21.6377C30.6331 21.7994 30.4133 21.8906 30.1846 21.8906H9.5791C9.35034 21.8905 9.13051 21.7995 8.96875 21.6377C8.80699 21.4759 8.71689 21.2561 8.7168 21.0273C8.7168 20.7986 8.80713 20.5788 8.96875 20.417C9.13051 20.2552 9.35034 20.1642 9.5791 20.1641H30.1846ZM11.3398 8.72656C11.574 8.74822 11.8041 8.80495 12.0225 8.89453C12.3133 9.0139 12.5775 9.1898 12.7998 9.41211C13.0221 9.63444 13.198 9.89858 13.3174 10.1895C13.4366 10.48 13.4971 10.7914 13.4951 11.1055C13.4952 11.5183 13.389 11.9249 13.1855 12.2842C12.9821 12.6434 12.689 12.944 12.335 13.1562C11.981 13.3685 11.5777 13.4849 11.165 13.4951C10.7523 13.5053 10.3436 13.4085 9.97949 13.2139C9.61539 13.0192 9.30777 12.7336 9.08691 12.3848C8.86612 12.036 8.73995 11.6359 8.71973 11.2236C8.69953 10.8114 8.7861 10.4009 8.97168 10.0322C9.15739 9.66348 9.43594 9.34842 9.7793 9.11914C10.1718 8.85683 10.6333 8.71708 11.1055 8.7168L11.3398 8.72656ZM29.4219 10.2432C29.6507 10.2432 29.8704 10.3334 30.0322 10.4951C30.194 10.6569 30.285 10.8767 30.2852 11.1055C30.2852 11.3342 30.1939 11.554 30.0322 11.7158C29.8704 11.8776 29.6507 11.9687 29.4219 11.9688H16.4482C16.2193 11.9688 15.9998 11.8777 15.8379 11.7158C15.6761 11.554 15.585 11.3343 15.585 11.1055C15.5851 10.8767 15.6761 10.6569 15.8379 10.4951C15.9997 10.3335 16.2195 10.2432 16.4482 10.2432H29.4219Z" fill="#192647" stroke="#192647" strokeWidth={0.2} />
+    <Path d="M23.7734 4.90039C25.6949 4.90039 27.1426 4.90024 28.293 4.99414C29.4443 5.08814 30.3073 5.27691 31.0586 5.65918C32.37 6.32734 33.4364 7.39364 34.1045 8.70508C34.4867 9.45637 34.6756 10.3193 34.7695 11.4707C34.8634 12.6209 34.8633 14.068 34.8633 15.9893V24.5371C34.8633 26.4567 34.863 27.5255 34.7686 28.2969C34.6731 29.0764 34.4811 29.5547 34.1045 30.2949C33.4364 31.6064 32.37 32.6727 31.0586 33.3408C30.3073 33.7231 29.4443 33.9119 28.293 34.0059C27.1426 34.0998 25.6949 34.0996 23.7734 34.0996H15.9893C14.068 34.0996 12.621 34.0997 11.4707 34.0059C10.3192 33.9119 9.45642 33.7231 8.70508 33.3408C7.39354 32.6727 6.32733 31.6065 5.65918 30.2949C5.28249 29.5546 5.08959 29.0765 4.99414 28.2969C4.89972 27.5255 4.90039 26.4567 4.90039 24.5371V15.9893C4.90039 14.068 4.90026 12.621 4.99414 11.4707C5.08813 10.3192 5.27689 9.45642 5.65918 8.70508C6.32733 7.39354 7.39354 6.32733 8.70508 5.65918C9.45642 5.27689 10.3192 5.08813 11.4707 4.99414C12.621 4.90026 14.068 4.90039 15.9893 4.90039H23.7734ZM7.15527 29.7207C7.62118 30.6349 8.3651 31.3778 9.2793 31.8438C9.79394 32.1055 10.3921 32.2396 11.2129 32.3066C12.0351 32.3738 13.0724 32.374 14.4629 32.374H25.2998C26.6904 32.374 27.7277 32.3738 28.5498 32.3066C29.3706 32.2396 29.9685 32.1065 30.4824 31.8447C31.3967 31.3788 32.1395 30.6349 32.6055 29.7207H32.6064C32.73 29.4799 32.8214 29.2211 32.8936 28.9307C32.3607 29.4799 31.7419 29.9409 31.0586 30.2891C30.3073 30.6713 29.4443 30.8591 28.293 30.9531C27.1426 31.047 25.6949 31.0479 23.7734 31.0479H15.9893C14.0679 31.0479 12.621 31.047 11.4707 30.9531C10.3194 30.8592 9.45633 30.6712 8.70508 30.2891V30.2881C8.02163 29.9396 7.40108 29.4812 6.86816 28.9316C6.9406 29.2218 7.0347 29.4797 7.15625 29.7207H7.15527ZM6.62598 23.0107C6.62598 24.4043 6.62629 25.0543 6.69238 25.4902C6.75699 25.9163 6.88321 26.1319 7.15527 26.666C7.62121 27.5803 8.36502 28.3241 9.2793 28.79C9.79401 29.0526 10.3928 29.1867 11.2139 29.2539C12.036 29.3212 13.0727 29.3213 14.4629 29.3213H25.2998C26.6904 29.3213 27.7277 29.321 28.5498 29.2539C29.3706 29.1869 29.9685 29.0537 30.4824 28.792C31.3967 28.3261 32.1395 27.5822 32.6055 26.668C32.8785 26.1327 33.0055 25.9167 33.0703 25.4902C33.1366 25.0541 33.1367 24.4043 33.1367 23.0107V17.3105H6.62598V23.0107ZM14.4629 6.62598C13.0726 6.62598 12.0358 6.62626 11.2139 6.69336C10.3932 6.76037 9.7951 6.89365 9.28125 7.15527C8.36694 7.62121 7.62318 8.365 7.15723 9.2793C6.89469 9.79401 6.76058 10.3928 6.69336 11.2139C6.62609 12.036 6.62598 13.0727 6.62598 14.4629V15.584H33.1367V14.4629C33.1367 13.0726 33.1364 12.0358 33.0693 11.2139C33.0107 10.4954 32.9012 9.94759 32.6992 9.47754L32.6074 9.28125C32.1415 8.36692 31.3977 7.62318 30.4834 7.15723C29.9687 6.89478 29.3707 6.76057 28.5498 6.69336C27.7276 6.62604 26.6904 6.62598 25.2998 6.62598H14.4629Z" fill="#192647" stroke="#192647" strokeWidth={0.2} />
+  </Svg>
+);
+
+// Generic "nothing here yet" card for a visitor looking at someone else's
+// profile — icon + Heading/H2 title + Body/Body M description, exact spec
+// from Marium (white card, radius 5, padding 24, drop shadow, no border).
+// Used for Resources/Forums/Posts on a non-own profile.
+const EmptyStateCard = ({icon, title, description}: {icon: React.ReactNode; title: string; description: string}) => (
+  <View style={s.emptyStateCard}>
+    <View style={s.emptyStateHeaderRow}>
+      {icon}
+      <Text style={s.emptyStateTitle}>{title}</Text>
+    </View>
+    <Text style={s.emptyStateDesc}>{description}</Text>
+  </View>
+);
+
+// "No resources published yet" card — two variants per Marium's spec:
+// - Own profile: the original actionable prompt (title/description/
+//   "Submit a Resource" button), since the viewer can actually go publish one.
+// - Someone else's profile: the generic EmptyStateCard, since there's
+//   nothing for a visitor to do.
+const ResourceEmptyCard = ({displayName, isOwn, navigation}: {displayName?: string; isOwn?: boolean; navigation?: any}) => {
+  if (isOwn) {
+    return (
+      <>
+        <Text style={s.activitySectionLabel}>{'Resources Published on IPM'}</Text>
+        <View style={s.activityEmptyCard}>
+          <Text style={s.activityEmptyTitle}>{'Publish Your First Resource on IPM'}</Text>
+          <Text style={s.activityEmptyDesc}>{'Share your insights and contribute to the project management community.'}</Text>
+          {/* Route name assumed as 'ArticleSubmission' (ArticleSubmissionScreen.tsx)
+              per this file's existing convention (screen file name minus 'Screen').
+              Confirm against AppNavigator if this doesn't resolve. */}
+          <TouchableOpacity style={s.activityEmptyBtn} onPress={() => navigation?.navigate('ArticleSubmission')}>
+            <Text style={s.activityEmptyBtnText}>{'Submit a Resource'}</Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+  return (
+    <EmptyStateCard
+      icon={<ResourceEmptyIcon />}
+      title="Resources Published on IPM"
+      description={`Resources published on IPM by ${displayName || 'this member'} will appear here.`}
+    />
+  );
+};
+
 // ─── Activity Tab — matches web: Resources + Forums sections ─────────────────
-const ActivityTab = ({userId, displayName, navigation, profileData}: {userId: number; displayName: string; navigation?: any; profileData?: any}) => {
+const ActivityTab = ({userId, isOwn, displayName, navigation, profileData}: {userId: number; isOwn?: boolean; displayName: string; navigation?: any; profileData?: any}) => {
   const [resources, setResources] = useState<any[]>([]);
   const [loading,   setLoading]   = useState(true);
 
@@ -518,54 +731,26 @@ const ActivityTab = ({userId, displayName, navigation, profileData}: {userId: nu
     </View>
   );
 
-  if (resources.length === 0 && forums.length === 0 && posts.length === 0) return (
-    <View style={s.activityEmptyWrap}>
-      {/* Resources empty */}
-      <Text style={s.activitySectionLabel}>{'Resources Published on IPM'}</Text>
-      <View style={s.activityEmptyCard}>
-        <Text style={s.activityEmptyTitle}>{'Publish Your First Resource on IPM'}</Text>
-        <Text style={s.activityEmptyDesc}>{'Share your insights and contribute to the project management community.'}</Text>
-        {/* Route name assumed as 'ArticleSubmission' (ArticleSubmissionScreen.tsx)
-            per this file's existing convention (screen file name minus 'Screen').
-            Confirm against AppNavigator if this doesn't resolve. */}
-        <TouchableOpacity style={s.activityEmptyBtn} onPress={() => navigation?.navigate('ArticleSubmission')}>
-          <Text style={s.activityEmptyBtnText}>{'Submit a Resource'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Forums empty */}
-      <Text style={[s.activitySectionLabel, {marginTop:20}]}>{'Forums'}</Text>
-      <View style={s.activityEmptyCard}>
-        <Text style={s.activityEmptyTitle}>{'Join Your First Discussion'}</Text>
-        <Text style={s.activityEmptyDesc}>{'Take part in conversations with project professionals across industries and regions.'}</Text>
-        {/* Route name assumed as 'NewDiscussion' (NewDiscussionScreen.tsx) */}
-        <TouchableOpacity style={s.activityEmptyBtn} onPress={() => navigation?.navigate('NewDiscussion')}>
-          <Text style={s.activityEmptyBtnText}>{'Join Discussion'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Posts empty */}
-      <Text style={[s.activitySectionLabel, {marginTop:20}]}>{'Posts'}</Text>
-      <View style={s.activityEmptyCard}>
-        <Text style={s.activityEmptyTitle}>{'Share an Update with the Community'}</Text>
-        <Text style={s.activityEmptyDesc}>{'Post reflections, lessons learned, or updates from your project work to the IPM Hub.'}</Text>
-        {/* Route name assumed as 'CreatePost' (CreatePostScreen.tsx) */}
-        <TouchableOpacity style={s.activityEmptyBtn} onPress={() => navigation?.navigate('CreatePost')}>
-          <Text style={s.activityEmptyBtnText}>{'Create Your First Post'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <PMsYouMayKnow currentUserId={userId} navigation={navigation} />
-    </View>
-  );
-
+  // Resources/Forums/Posts each render independently — populated list, or
+  // an empty-state card — rather than one special "everything is empty"
+  // layout. That special-cased branch used to be the only place an empty
+  // Resources card rendered when Forums/Posts also had nothing, and it
+  // never passed isOwn/navigation to ResourceEmptyCard — so a brand-new
+  // member looking at their OWN empty profile incorrectly saw the visitor
+  // ("Resources published on IPM by {name} will appear here.") card instead
+  // of their own actionable "Publish Your First Resource" prompt. Handling
+  // every section the same way regardless of the other two's state fixes
+  // that and matches Marium's "always show all three" spec.
   return (
     <View style={s.tabContent}>
-      {resources.length > 0 && (
+      {/* Resources */}
+      {resources.length > 0 ? (
         <>
           <View style={s.sectionRow}>
             <Text style={s.sectionTitle}>{'Resources Published on IPM'}</Text>
-            <TouchableOpacity><ChevronRightCircle /></TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation?.navigate('Resources')}>
+              <ChevronRightCircle />
+            </TouchableOpacity>
           </View>
           {resources.map((r: any) => {
             const img  = r?._embedded?.['wp:featuredmedia']?.[0]?.source_url;
@@ -581,61 +766,97 @@ const ActivityTab = ({userId, displayName, navigation, profileData}: {userId: nu
                 }
                 <View style={{flex:1}}>
                   <Text style={s.resourceTitle} numberOfLines={2}>{stripHtml(r.title?.rendered || '')}</Text>
-                  <Text style={s.resourceMeta}>{date}{'  '}<Text style={s.resourceTag}>{tag}</Text></Text>
+                  <Text style={s.resourceMeta}>{date}{'  ·  '}{tag}</Text>
                 </View>
               </View>
             );
           })}
         </>
+      ) : (
+        <ResourceEmptyCard displayName={displayName} isOwn={isOwn} navigation={navigation} />
       )}
 
-      {/* Forums section */}
-      {forums.length > 0 && (
+      {/* Forums */}
+      <View style={s.divider} />
+      {forums.length > 0 ? (
         <>
-          <View style={s.divider} />
           <View style={s.sectionRow}>
             <Text style={s.sectionTitle}>{'Forums'}</Text>
           </View>
-          {forums.map((f: any) => {
-            const title = stripHtml(f.title || f.excerpt || f.type_label || '');
-            const date  = f.date_display || (f.date ? new Date(f.date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : '');
-            return (
-              <View key={f.id} style={s.resourceCard}>
-                <View style={[s.resourceThumb, {backgroundColor:'#EFF3FF', alignItems:'center', justifyContent:'center'}]}>
-                  <EmptyForumsIcon />
-                </View>
-                <View style={{flex:1}}>
-                  <Text style={s.resourceTitle} numberOfLines={2}>{title}</Text>
-                  <Text style={s.resourceMeta}>{date}</Text>
-                </View>
-              </View>
-            );
-          })}
+          {forums.map((f: any) => (
+            <ForumPostCard key={f.id} forum={f} navigation={navigation} />
+          ))}
         </>
+      ) : isOwn ? (
+        <>
+          <Text style={s.activitySectionLabel}>{'Forums'}</Text>
+          <View style={s.activityEmptyCard}>
+            <Text style={s.activityEmptyTitle}>{'Join Your First Discussion'}</Text>
+            <Text style={s.activityEmptyDesc}>{'Take part in conversations with project professionals across industries and regions.'}</Text>
+            {/* Route name assumed as 'NewDiscussion' (NewDiscussionScreen.tsx) */}
+            <TouchableOpacity style={s.activityEmptyBtn} onPress={() => navigation?.navigate('NewDiscussion')}>
+              <Text style={s.activityEmptyBtnText}>{'Join Discussion'}</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        <EmptyStateCard
+          icon={<ForumsEmptyIcon />}
+          title="Forums"
+          description={`Discussions and replies shared by ${displayName || 'this member'} will appear here.`}
+        />
       )}
 
-      {/* Posts/Updates section */}
-      {posts.length > 0 && (
+      {/* Posts/Updates */}
+      <View style={s.divider} />
+      {posts.length > 0 ? (
         <>
-          <View style={s.divider} />
           <View style={s.sectionRow}>
             <Text style={s.sectionTitle}>{'Posts'}</Text>
           </View>
           {posts.map((p: any) => {
             const text = stripHtml(p.excerpt || p.content?.rendered || p.content || p.title || '');
             const date = p.date_display || (p.date ? new Date(p.date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : '');
+            // Tap the row to open the actual post — permalink is the only
+            // thing the API gives us to locate it (no in-app "activity
+            // detail" screen/route exists for these yet).
+            const hasLink = !!p.permalink && /^https?:\/\//i.test(p.permalink);
             return (
-              <View key={p.id} style={s.activityRow}>
+              <TouchableOpacity
+                key={p.id}
+                style={s.activityRow}
+                activeOpacity={hasLink ? 0.7 : 1}
+                disabled={!hasLink}
+                onPress={() => hasLink && Linking.openURL(p.permalink).catch(() => {})}>
                 <View style={s.activityDot} />
                 <View style={{flex:1}}>
                   <Text style={s.activityText} numberOfLines={3}>{text}</Text>
                   <Text style={s.activityTime}>{date}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </>
+      ) : isOwn ? (
+        <>
+          <Text style={s.activitySectionLabel}>{'Posts'}</Text>
+          <View style={s.activityEmptyCard}>
+            <Text style={s.activityEmptyTitle}>{'Share an Update with the Community'}</Text>
+            <Text style={s.activityEmptyDesc}>{'Post reflections, lessons learned, or updates from your project work to the IPM Hub.'}</Text>
+            {/* Route name assumed as 'CreatePost' (CreatePostScreen.tsx) */}
+            <TouchableOpacity style={s.activityEmptyBtn} onPress={() => navigation?.navigate('CreatePost')}>
+              <Text style={s.activityEmptyBtnText}>{'Create Your First Post'}</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        <EmptyStateCard
+          icon={<PostsEmptyIcon />}
+          title="Posts"
+          description={`Posts and updates shared by ${displayName || 'this member'} on IPM Hub will appear here.`}
+        />
       )}
+
       <PMsYouMayKnow currentUserId={userId} members={profileData?.sidebar?.pms_you_may_know?.members} navigation={navigation} />
     </View>
   );
@@ -902,19 +1123,25 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
 };
 
 // ─── Connections Tab ──────────────────────────────────────────────────────────
-const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayName, profileData}: {
+const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayName, profileData, navigation}: {
   userId: number;
   isOwn: boolean;
   totalFollowers: number;
   totalFollowing: number;
   displayName?: string;
   profileData?: any;
+  navigation?: any;
 }) => {
   const [subTab,    setSubTab]   = useState<'followers'|'following'>('followers');
   const [followers, setFollowers] = useState<any[]>([]);
   const [following, setFollowing] = useState<any[]>([]);
   const [loading,   setLoading]  = useState(true);
   const [busy,      setBusy]     = useState<Record<number,boolean>>({});
+  const [myUserId,  setMyUserId] = useState<number | null>(null);
+
+  useEffect(() => {
+    getUserIdFromToken().then(id => setMyUserId(id));
+  }, []);
 
   // Normalize the new endpoint's connections shape ({user_id, name,
   // username, headline, country, avatar_url, profile_url}) into what
@@ -965,21 +1192,62 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
     finally { setBusy(p => ({...p, [memberId]: false})); }
   };
 
+  // Following tab's "Message" button — opens (or creates) a DM thread with
+  // this member instead of unfollowing them. Reuses the same
+  // find-existing-thread-or-start-fresh pattern as LikedByScreen.
+  const openDM = async (item: any) => {
+    let threadId: number | null = null;
+    try {
+      const threads = await getThreadList(1);
+      const existing = threads.find(t =>
+        Object.values(t.recipients || {}).some(
+          (r: any) => Number(r.user_id) === Number(item.id),
+        ),
+      );
+      threadId = existing?.id ?? null;
+    } catch {}
+    navigation?.navigate('DMConversation', {
+      threadId,
+      recipientName: item.name,
+      recipientAvatar: item.avatarUrl,
+      recipientUserId: item.id,
+      currentUserId: myUserId,
+    });
+  };
+
   const list = subTab === 'followers' ? followers : following;
   const fCnt  = profileData?.connections?.followers_count ?? totalFollowers;
   const fgCnt = profileData?.connections?.following_count ?? totalFollowing;
 
   const MemberRow = ({item}: {item: any}) => {
     const isFlw = item?.is_following || false;
+    // Following list: everyone here is already followed, so the button is
+    // always "Message" and opens a DM instead of toggling follow.
+    const isFollowingList = subTab === 'following';
 
     return (
-      <View style={s.connRow}>
-        {item.avatarUrl
-          ? <Image source={{uri: item.avatarUrl}} style={s.connAvatar} />
-          : <View style={[s.connAvatar, {backgroundColor:'#192546', alignItems:'center', justifyContent:'center'}]}>
-              <Text style={{color:'#FFF', fontWeight:'700', fontSize:16}}>{item.name[0] || '?'}</Text>
-            </View>
-        }
+      <TouchableOpacity
+        style={s.connRow}
+        activeOpacity={0.7}
+        // Tapping the row toggles follow/unfollow — Instagram-style: not
+        // yet following → follow; already following → unfollow. Uses the
+        // same toggleFollow as the button below (which the button's own
+        // nested TouchableOpacity intercepts, so a button tap never
+        // double-fires this).
+        onPress={() => toggleFollow(item.id, isFlw)}>
+        {/* Avatar is its own nested touchable so a tap on the photo opens
+            that member's profile instead of toggling follow — the row's
+            own onPress above only fires when the tap lands outside this
+            (same nested-TouchableOpacity-intercepts pattern used for the
+            Follow/Message button below). */}
+        <TouchableOpacity onPress={() => navigation?.push('MemberProfile', {userId: item.id})}>
+          {item.avatarUrl
+            ? <Image source={{uri: item.avatarUrl}} style={s.connAvatar} />
+            : <View style={[s.connAvatar, {backgroundColor:'#192546', alignItems:'center', justifyContent:'center'}]}>
+                <Text style={{color:'#FFF', fontWeight:'700', fontSize:16}}>{item.name[0] || '?'}</Text>
+              </View>
+          }
+        </TouchableOpacity>
         <View style={{flex:1}}>
           <Text style={s.connName}>{item.name}</Text>
           {item.jobTitle
@@ -993,19 +1261,19 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
             : null}
         </View>
         <TouchableOpacity
-          style={[s.connBtn, isFlw && s.connBtnActive]}
-          onPress={() => toggleFollow(item.id, isFlw)}
+          style={[s.connBtn, (isFollowingList || isFlw) && s.connBtnActive]}
+          onPress={() => (isFollowingList ? openDM(item) : toggleFollow(item.id, isFlw))}
           disabled={busy[item.id]}>
           {busy[item.id]
-            ? <ActivityIndicator size="small" color={isFlw ? '#888' : '#192546'} />
-            : <Text style={[s.connBtnText, isFlw && s.connBtnTextActive]}>
-                {/* A follower you haven't followed back is not yet a
-                    connection — label reads "Follow", not "Connect". */}
-                {isFlw ? 'Message' : 'Follow'}
+            ? <ActivityIndicator size="small" color={(isFollowingList || isFlw) ? '#888' : '#192546'} />
+            : <Text style={[s.connBtnText, (isFollowingList || isFlw) && s.connBtnTextActive]}>
+                {/* Following tab: always "Message". Followers tab: "Follow"
+                    until you follow them back, then "Message". */}
+                {isFollowingList ? 'Message' : (isFlw ? 'Message' : 'Follow')}
               </Text>
           }
         </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -1499,7 +1767,7 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
 };
 
 // ─── Profile Header ───────────────────────────────────────────────────────────
-const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollow, navigation, onAvatarChange}: any) => {
+const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollow, navigation, onAvatarChange, userId}: any) => {
   const xmap = parseXprofile(profile?.xprofile);
   const basic = profileData?.basic;
 
@@ -1619,7 +1887,13 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
 
             {/* Real PDU count from the new consolidated endpoint's
                 sidebar.pdus.total — no longer a placeholder. */}
-            <TouchableOpacity style={s.badgesRow} onPress={() => navigation?.navigate('Badges')}>
+            {/* Pass this profile's own userId — BadgesScreen used to always
+                fetch the LOGGED-IN user's badges regardless of whose
+                profile "View Badges" was tapped from. It now takes a
+                user_id param (same pattern as ProfileDrawer's badge
+                progress fetch) and switches to a public, read-only badge
+                grid when the id isn't the viewer's own. */}
+            <TouchableOpacity style={s.badgesRow} onPress={() => navigation?.navigate('Badges', {userId})}>
               <Text style={s.badgesText}>
                 {isOwn ? 'My Badges' : 'View Badges'}
                 {isOwn && typeof pduTotal === 'number' ? <Text style={s.badgesDot}>{`  ·  ${pduTotal} PDUs`}</Text> : null}
@@ -1795,6 +2069,7 @@ const MemberProfileScreen = ({navigation, route}: any) => {
           onFollow={handleFollow}
           navigation={navigation}
           onAvatarChange={handleAvatarChange}
+          userId={targetId}
         />
 
         {/* Tab bar */}
@@ -1812,7 +2087,7 @@ const MemberProfileScreen = ({navigation, route}: any) => {
         </View>
 
         {/* Tab content */}
-        {targetId && activeTab === 'activity' && <ActivityTab userId={targetId} displayName={profile?.name || ''} navigation={navigation} profileData={profileData} />}
+        {targetId && activeTab === 'activity' && <ActivityTab userId={targetId} isOwn={isOwn} displayName={profile?.name || ''} navigation={navigation} profileData={profileData} />}
         {targetId && activeTab === 'experience' && <ExperienceTab userId={targetId} isOwn={isOwn} navigation={navigation} displayName={profile?.name || ''} profileData={profileData} />}
         {targetId && activeTab === 'connections' && (
           <ConnectionsTab
@@ -1822,6 +2097,7 @@ const MemberProfileScreen = ({navigation, route}: any) => {
             totalFollowing={profile?.following ?? 0}
             displayName={profile?.name || ''}
             profileData={profileData}
+            navigation={navigation}
           />
         )}
         {targetId && activeTab === 'courses' && <CoursesTab userId={targetId} isOwn={isOwn} displayName={profile?.name || ''} navigation={navigation} profileData={profileData} />}
@@ -1990,7 +2266,46 @@ const s = StyleSheet.create({
   resourceThumb: {width:80, height:72, borderRadius:8, backgroundColor:'#E0E0E0'},
   resourceTitle: {fontSize:13, fontWeight:'600', color:'#1A1A1A', lineHeight:18, marginBottom:6},
   resourceMeta:  {fontSize:11, color:'#AAA'},
-  resourceTag:   {color:'#1A3A6B', fontWeight:'500'},
+
+  // Generic "nothing here yet" card for a visitor on someone else's profile
+  // (Resources/Forums/Posts) — exact spec from Marium: white card, radius 5,
+  // padding 24, drop shadow (no border), icon (no background) + Heading/H2
+  // title on one row, Body/Body M description below.
+  emptyStateCard: {
+    alignSelf:'stretch', backgroundColor:'#FFF', borderRadius:5, padding:24, gap:10,
+    marginBottom:20,
+    shadowColor:'#000', shadowOffset:{width:0, height:0}, shadowOpacity:0.17, shadowRadius:11, elevation:4,
+  },
+  emptyStateHeaderRow: {flexDirection:'row', alignItems:'center', gap:12},
+  emptyStateTitle: {fontFamily:'Runda', fontSize:18, fontWeight:'700', color:'#192647', letterSpacing:0.09, flex:1},
+  emptyStateDesc: {fontFamily:'Runda', fontSize:14, fontWeight:'400', color:'#192647', lineHeight:18},
+
+  // Forum post card — matches FeedScreen's forum-type PostCard so a
+  // discussion looks the same whether seen on the main Feed or here on
+  // a member's Activity tab.
+  forumCard: {
+    backgroundColor:'#FFF', borderRadius:8.201, padding:16, marginBottom:14,
+    shadowColor:'#000', shadowOffset:{width:0, height:0}, shadowOpacity:0.15, shadowRadius:10.023, elevation:3,
+  },
+  // Badge + tags — one horizontally scrollable row, positioned after the
+  // body and before "Join Discussion", per Marium's screenshot.
+  forumBadgeRow: {marginBottom:12},
+  forumBadgeRowContent: {flexDirection:'row', alignItems:'center', gap:8, paddingRight:4},
+  forumBadge: {flexDirection:'row', alignItems:'center', gap:4},
+  // Text/Resources Filter-Action-M spec — Runda 12px/500, lineHeight 16.
+  // Fill color is set to transparent by the LinearGradient sibling in
+  // ForumBadgeLabel; this base style is reused as the MaskedView mask shape.
+  forumBadgeText: {fontFamily:'Runda', fontSize:12, fontWeight:'500', lineHeight:16, color:'#000'},
+  forumBadgeLabelWrap: {position:'relative'},
+  forumCardTitle: {fontSize:15, fontWeight:'700', color:'#192546', lineHeight:20, marginBottom:6},
+  forumCardBody:  {fontSize:13, color:'#192546', lineHeight:18, marginBottom:10},
+  forumReadMore:  {color:'#46B0E3', fontSize:13, fontWeight:'500'},
+  forumTag: {borderWidth:1, borderColor:'#DDD', borderRadius:20, paddingHorizontal:10, paddingVertical:4},
+  forumTagText: {fontSize:11, color:'#555'},
+  joinDiscussionWrap: {borderRadius:10, overflow:'hidden'},
+  joinDiscussionBtn: {borderRadius:10, paddingVertical:13, alignItems:'center'},
+  joinDiscussionText: {color:'#FFFFFF', fontSize:15, fontWeight:'700'},
+
   activityRow:   {flexDirection:'row', alignItems:'flex-start', gap:8, paddingVertical:8, borderBottomWidth:1, borderBottomColor:'#F5F5F5'},
   activityDot:   {width:8, height:8, borderRadius:4, backgroundColor:'#46B0E3', marginTop:4},
   activityText:  {flex:1, fontSize:13, color:'#444', lineHeight:18},
@@ -2166,7 +2481,6 @@ const s = StyleSheet.create({
   emptySection: {backgroundColor:'#FFF', paddingHorizontal:16, paddingVertical:16},
 
   // Activity empty states — Figma exact
-  activityEmptyWrap:  {backgroundColor:'#FFF', paddingHorizontal:16, paddingVertical:16},
   activitySectionLabel: {fontSize:18, fontWeight:'700', color:'#192647', letterSpacing:0.09, marginBottom:12},
   activityEmptyCard: {
     borderWidth:1, borderColor:'#E8E8E8', borderRadius:12,

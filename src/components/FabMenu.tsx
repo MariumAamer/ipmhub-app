@@ -131,8 +131,6 @@ const FabMenu = ({visible, onClose, navigation}: FabMenuProps) => {
     runOrDefer(() => navigation?.navigate('NewDiscussion'));
   };
 
-  if (!visible) return null;
-
   return (
     <Modal
       visible={visible}

@@ -1,15 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useEffect, useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator} from 'react-native';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import BackButton from '../components/BackButton';
@@ -123,7 +114,7 @@ const PrivacyPolicyScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -155,7 +146,7 @@ const PrivacyPolicyScreen = ({navigation}: any) => {
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

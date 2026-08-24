@@ -26,18 +26,7 @@
 
 import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {useFocusEffect} from '@react-navigation/native';
-import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  SafeAreaView,
-  StatusBar,
-  Linking,
-} from 'react-native';
+import {View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar, Linking} from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import AppHeader from '../components/AppHeader';
@@ -1119,9 +1108,9 @@ const CourseDetailScreen = ({route, navigation}: any) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <ActivityIndicator color="#0C4D91" style={{marginTop: 60}} />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -1134,7 +1123,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
     // person still sees something useful in-app. Does NOT auto-redirect
     // to the browser — that's an explicit tap only, not a fallback.
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.backRow}>
           <BackButton onPress={() => navigation?.goBack?.()} />
         </View>
@@ -1158,7 +1147,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
             <Text style={styles.emptyText}>{'Course not found.'}</Text>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -1250,7 +1239,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
 
   return (
     <>
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -1445,7 +1434,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
 
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
     <VideoPlayerModal
       visible={!!videoModalUrl}
       videoUrl={videoModalUrl}

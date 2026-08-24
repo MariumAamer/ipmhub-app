@@ -1,18 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useEffect, useRef, useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TextInput,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  Linking,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, StatusBar, ActivityIndicator, Linking} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
@@ -807,7 +795,7 @@ const CertificationsScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -842,7 +830,7 @@ const CertificationsScreen = ({navigation}: any) => {
         onClose={() => setDrawerOpen(false)}
         navigation={navigation}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

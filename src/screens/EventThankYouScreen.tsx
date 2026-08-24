@@ -1,9 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React, {useState} from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, Image,
-  TouchableOpacity, StatusBar, SafeAreaView, Platform,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, Platform} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path, Rect, G, Mask, Defs, ClipPath, Circle} from 'react-native-svg';
 import {EventItem} from '../api/eventsApi';
 import {stripHtml} from '../api/apiClient';

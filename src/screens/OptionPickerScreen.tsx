@@ -23,7 +23,7 @@
  * currently does. Flag if this needs real geo-detection.
  */
 import React, {useState} from 'react';
-import {SafeAreaView, View, Text, StyleSheet, StatusBar, TouchableOpacity, FlatList} from 'react-native';
+import {View, Text, StyleSheet, StatusBar, TouchableOpacity, FlatList} from 'react-native';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import {BackBtn, PageHeader, SearchBar, COUNTRY_FLAGS, sh} from '../components/editShared';
@@ -61,7 +61,7 @@ const OptionPickerScreen = ({navigation, route}: any) => {
   );
 
   return (
-    <SafeAreaView style={st.container}>
+    <View style={st.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <View style={st.content}>
@@ -87,7 +87,7 @@ const OptionPickerScreen = ({navigation, route}: any) => {
         />
       </View>
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

@@ -1,8 +1,5 @@
 import React, {useState} from 'react';
-import {
-  View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, StatusBar, SafeAreaView,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar} from 'react-native';
 import Svg, {Path, Mask, G, Rect} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -77,7 +74,7 @@ const EditProfileScreen = ({navigation}: any) => {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -114,7 +111,7 @@ const EditProfileScreen = ({navigation}: any) => {
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

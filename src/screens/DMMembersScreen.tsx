@@ -1,15 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Image,
-  SafeAreaView,
-  StatusBar,
-} from 'react-native';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, Image, StatusBar} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import BackButton from '../components/BackButton';
 import {DMThreadDetail, DMRecipient} from '../api/dmApi';
 

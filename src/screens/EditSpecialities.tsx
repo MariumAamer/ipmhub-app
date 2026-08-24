@@ -21,10 +21,7 @@
  * calls back into addOne() and returns here immediately.
  */
 import React, {useState, useEffect} from 'react';
-import {
-  SafeAreaView, ScrollView, View, Text, StyleSheet,
-  StatusBar, Alert, TouchableOpacity,
-} from 'react-native';
+import {ScrollView, View, Text, StyleSheet, StatusBar, Alert, TouchableOpacity} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -103,7 +100,7 @@ const EditSpecialities = ({navigation}: any) => {
   const proposed = ALL_SPECIALITIES.filter(s => !selected.includes(s)).slice(0, 12);
 
   return (
-    <SafeAreaView style={st.container}>
+    <View style={st.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -163,7 +160,7 @@ const EditSpecialities = ({navigation}: any) => {
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

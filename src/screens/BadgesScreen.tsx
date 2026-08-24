@@ -8,11 +8,17 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
+// The core react-native SafeAreaView is iOS-only (a no-op on Android), which
+// is why the header/status bar/notch area was covering the "Badges" title
+// and top content on Android. Same fix already applied to StepContentScreen,
+// ResourceDetailScreen, DMNewMessageScreen, etc — swap to the real
+// cross-platform SafeAreaView.
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop} from 'react-native-svg';
 import {getToken} from '../api/apiClient';
+import {getUserIdFromToken} from '../api/profileApi';
 import BackButton from '../components/BackButton';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -153,18 +159,25 @@ interface MyBadgesResponse {
   earn_more_badges: ApiEarnMoreBadges;
 }
 
-const fetchMyBadges = async (): Promise<MyBadgesResponse | null> => {
+// userId is optional — omit it to fetch the signed-in user's own badges
+// (the original behavior). Pass another member's id to fetch THEIRS
+// instead, same ?user_id= param ProfileDrawer's badge-progress fetch
+// already uses against this endpoint.
+const fetchBadges = async (userId?: number | null): Promise<MyBadgesResponse | null> => {
   try {
     const token = await getToken();
     if (!token) return null;
-    const res = await fetch(`${BASE}/custom/v1/my-badges`, {
+    const url = userId
+      ? `${BASE}/custom/v1/my-badges?user_id=${userId}`
+      : `${BASE}/custom/v1/my-badges`;
+    const res = await fetch(url, {
       headers: {Authorization: `Bearer ${token}`},
     });
     if (!res.ok) return null;
     const json = await res.json();
     return json ? deepDecodeEntities(json) : null;
   } catch (e) {
-    console.log('[BadgesScreen] fetchMyBadges error:', e);
+    console.log('[BadgesScreen] fetchBadges error:', e);
     return null;
   }
 };
@@ -386,22 +399,45 @@ const EarnMoreBadgeCard = ({badge}: {badge: ApiEarnMoreBadge}) => {
   );
 };
 
+// ─── Public badge card ──────────────────────────────────────────────────────
+// Used only on the "public view" grid below (someone else's earned
+// badges) — per Marium's spec: padding 16, column, centered, gap 16,
+// radius 5, white bg, shadow "0 0 10.023px -1.822px rgba(0,0,0,.15)".
+// Just the badge image + its title underneath, nothing interactive.
+const PublicBadgeCard = ({badge}: {badge: ApiEarnedBadge}) => (
+  <View style={styles.publicBadgeCard}>
+    <Image source={{uri: badge.image}} style={styles.publicBadgeImage} resizeMode="contain" />
+    <Text style={styles.publicBadgeTitle}>{badge.label}</Text>
+  </View>
+);
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-const BadgesScreen = ({navigation}: {navigation: any}) => {
+const BadgesScreen = ({navigation, route}: {navigation: any; route?: any}) => {
+  // userId param: passed from MemberProfileScreen's "View Badges" button
+  // with THAT profile's own id — see comment there. Omitted (or equal to
+  // the signed-in user's own id) means "my badges" and keeps the full,
+  // interactive screen below. Any other id means we're looking at
+  // someone else's badges and switches to the simplified public grid.
+  const paramUserId: number | undefined = route?.params?.userId;
+
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<MyBadgesResponse | null>(null);
+  const [isOwn, setIsOwn] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const earnMoreY = useRef(0);
 
   useEffect(() => {
     (async () => {
-      const res = await fetchMyBadges();
+      const myId = await getUserIdFromToken();
+      const own = !paramUserId || String(paramUserId) === String(myId);
+      setIsOwn(own);
+      const res = await fetchBadges(own ? undefined : paramUserId);
       setData(res);
       setLoading(false);
     })();
-  }, []);
+  }, [paramUserId]);
 
   const scrollToEarnMore = () => {
     scrollRef.current?.scrollTo({y: Math.max(earnMoreY.current - 16, 0), animated: true});
@@ -423,13 +459,48 @@ const BadgesScreen = ({navigation}: {navigation: any}) => {
     );
   }
 
+  // ── Public view: someone else's profile ──────────────────────────────────
+  // Just their earned badges as a simple 2-column grid, per Marium's spec —
+  // no progress bar, no in-progress activities, no "earn more" section and
+  // no download/share actions, since none of those apply to a visitor
+  // looking at another member's badges.
+  if (!isOwn) {
+    const items = data.earned_badges?.items || [];
+    return (
+      <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <BackButton onPress={() => navigation.goBack()} />
+          <Text style={styles.publicHeaderTitle}>Badges</Text>
+          <View style={{width: 32}} />
+        </View>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.publicScrollContent}
+          showsVerticalScrollIndicator={false}>
+          {items.length === 0 ? (
+            <Text style={styles.activityDesc}>
+              {`${data.profile?.full_name || 'This member'} hasn’t earned any badges yet.`}
+            </Text>
+          ) : (
+            <View style={styles.publicBadgeGrid}>
+              {items.map(badge => (
+                <PublicBadgeCard key={badge.id} badge={badge} />
+              ))}
+            </View>
+          )}
+          <View style={{height: 40}} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   const {profile, progress, activities, earned_badges, earn_more_badges} = data;
   const progressPct = progress.total_points > 0
     ? progress.current_points / progress.total_points
     : 0;
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       {/* ── Header ── */}
       <View style={styles.header}>
         <BackButton onPress={() => navigation.goBack()} />
@@ -563,7 +634,7 @@ const BadgesScreen = ({navigation}: {navigation: any}) => {
 
         <View style={{height: 40}} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -576,7 +647,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 52 : 16,
+    // Flat padding now — the wrapping SafeAreaView (the real cross-platform
+    // one, imported from react-native-safe-area-context above) already
+    // reserves the status bar / notch inset on both iOS and Android, so the
+    // old iOS-only 52px guess (which also left Android with no inset at
+    // all) is no longer needed here.
+    paddingTop: 16,
     paddingBottom: 12, backgroundColor: '#FFF',
     borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
@@ -584,9 +660,50 @@ const styles = StyleSheet.create({
     fontFamily: 'Runda', fontWeight: '700', fontSize: 18,
     color: '#192647', letterSpacing: 0.09,
   },
+  // Public-view header title — per Marium's spec: Heading/H3, 16px/500,
+  // lineHeight 20, letterSpacing 0.08 (lighter weight than the "my
+  // badges" header since this view has no interactive content below it).
+  publicHeaderTitle: {
+    fontFamily: 'Runda', fontWeight: '500', fontSize: 16,
+    color: '#192546', lineHeight: 20, letterSpacing: 0.08,
+  },
 
   scroll: {flex: 1},
   scrollContent: {paddingHorizontal: 16, paddingTop: 24},
+
+  // Public view grid — screen layout: column, flex-start, gap 16.
+  publicScrollContent: {paddingHorizontal: 16, paddingTop: 16, gap: 16},
+  publicBadgeGrid: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    columnGap: 16, rowGap: 16,
+  },
+  // Each badge card — per Marium's spec: padding 16, column, center,
+  // gap 16, flex:1 0 0, radius 5, white bg, shadow
+  // "0 0 10.023px -1.822px rgba(0,0,0,.15)". Two per row (width ~47%
+  // reproduces flex:1 0 0 with wrapping when there are more than two).
+  publicBadgeCard: {
+    width: '47%',
+    padding: 16,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 16,
+    borderRadius: 5,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.15,
+    shadowRadius: 10.023,
+    elevation: 3,
+  },
+  publicBadgeImage: {
+    width: '100%', aspectRatio: 1,
+    borderRadius: 8, backgroundColor: '#F5F6FA',
+  },
+  // Badge title — per Marium's spec: Heading/H4, 14px/500, centered.
+  publicBadgeTitle: {
+    fontFamily: 'Runda', fontWeight: '500', fontSize: 14,
+    color: '#192546', textAlign: 'center',
+  },
 
   // Banner — LinearGradient ROOT, no overflow:hidden
   banner: {

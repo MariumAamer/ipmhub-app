@@ -1,21 +1,8 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
 import LinearGradient from 'react-native-linear-gradient';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Image,
-  ScrollView,
-  SafeAreaView,
-  StatusBar,
-  Platform,
-  RefreshControl,
-  ActivityIndicator,
-  Modal,
-  Alert,
-} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, StatusBar, Platform, RefreshControl, ActivityIndicator, Modal, Alert} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import {
   getTopic,
   getReplies,

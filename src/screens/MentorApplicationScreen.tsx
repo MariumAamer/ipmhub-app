@@ -1,21 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useRef} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  Modal,
-  FlatList,
-  Dimensions,
-  Animated,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, StatusBar, Modal, FlatList, Dimensions, Animated, Alert, ActivityIndicator} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import {TIMEZONES, submitMentorApplication} from '../api/mentorApplicationApi';
 

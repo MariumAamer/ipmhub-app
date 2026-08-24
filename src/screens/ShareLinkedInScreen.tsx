@@ -1,16 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React, {useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  Linking,
-  Alert,
-} from 'react-native';
+import {View, Text, StyleSheet, TextInput, TouchableOpacity, StatusBar, Linking, Alert} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import {LinkedInIcon} from '../components/forumsIcons';
 

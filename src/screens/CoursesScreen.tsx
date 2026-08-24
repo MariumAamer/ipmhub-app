@@ -9,21 +9,7 @@
 // bottom of this file for everything still open.
 
 import React, {useState, useEffect, useCallback} from 'react';
-import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  FlatList,
-  TextInput,
-  Modal,
-  ActivityIndicator,
-  SafeAreaView,
-  StatusBar,
-  Linking,
-} from 'react-native';
+import {View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, FlatList, TextInput, Modal, ActivityIndicator, StatusBar, Linking} from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -393,7 +379,7 @@ const FiltersSheet = ({
   const hasAnyFilter = Object.keys(activeFilters).length > 0;
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <SafeAreaView style={styles.filtersScreen}>
+      <View style={styles.filtersScreen}>
         <ScrollView contentContainerStyle={styles.filtersScreenContent} showsVerticalScrollIndicator={false}>
           <TouchableOpacity style={styles.filtersCloseBtn} onPress={onClose}>
             <CloseIcon />
@@ -437,7 +423,7 @@ const FiltersSheet = ({
             <Text style={styles.applyFiltersText}>{'Apply Filters'}</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
@@ -720,7 +706,7 @@ const CoursesScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <TopTabs active={tab} onChange={setTab} />
@@ -728,7 +714,7 @@ const CoursesScreen = ({navigation}: any) => {
       {tab === 'upcoming' && <UpcomingCoursesTab onOpenCourse={openCourse} />}
       {tab === 'search' && <SearchAllCoursesTab />}
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

@@ -1,22 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Animated,
-  Dimensions,
-  Alert,
-  Linking,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, ActivityIndicator, FlatList, Modal, Animated, Dimensions, Alert, Linking} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle, G, Defs, ClipPath, Rect} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
@@ -492,7 +476,7 @@ const MentorsScreen = ({navigation}: any) => {
     list.find(i => i.value === value)?.name || 'All';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -621,7 +605,7 @@ const MentorsScreen = ({navigation}: any) => {
         onClose={() => setDrawerOpen(false)}
         navigation={navigation}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

@@ -1,24 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  TextInput,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  RefreshControl,
-  Animated,
-  Modal,
-  FlatList,
-  Dimensions,
-  Linking,
-  Alert,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Animated, Modal, FlatList, Dimensions, Linking, Alert} from 'react-native';
 import {WebView} from 'react-native-webview';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
@@ -407,7 +389,7 @@ const ResourcesScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
@@ -548,7 +530,7 @@ const ResourcesScreen = ({navigation}: any) => {
       />
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

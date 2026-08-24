@@ -154,6 +154,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
     navigation?.navigate('MainApp', {screen: 'Feed'});
   };
 
+  // Own avatar = go to my own MemberProfile. Uses push, not navigate:
+  // AppHeader renders on top of MemberProfileScreen itself (someone else's
+  // profile), so the current route is already named 'MemberProfile' with a
+  // different userId param. React Navigation's navigate() to a screen name
+  // that's already the focused route just merges params into that same
+  // route instead of opening a new instance — which is why tapping this
+  // avatar did nothing while viewing someone else's profile. push() always
+  // adds a fresh 'MemberProfile' screen onto the stack regardless of what's
+  // currently focused (same fix already used for avatar taps elsewhere,
+  // e.g. FeedScreen's post author avatar).
+  const handleAvatarPress = () => {
+    navigation?.push('MemberProfile', {userId: myUserId});
+  };
+
   return (
     <View style={[styles.header, {paddingTop: Platform.OS === 'android' ? insets.top + 10 : 10}]}>
       {/* Left — chevron (drawer) + logo (home), separate tap targets */}
@@ -187,10 +201,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
           <BellIcon />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() =>
-            navigation?.navigate('MemberProfile', {userId: myUserId})
-          }>
+        <TouchableOpacity onPress={handleAvatarPress}>
           {myAvatar ? (
             <Image source={{uri: myAvatar}} style={styles.avatar} />
           ) : (

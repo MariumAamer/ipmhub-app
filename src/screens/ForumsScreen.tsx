@@ -1,21 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  TextInput,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  RefreshControl,
-  Linking,
-  Modal,
-  FlatList,
-} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Linking, Modal, FlatList} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -529,7 +514,7 @@ const ForumsScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -759,7 +744,7 @@ const ForumsScreen = ({navigation}: any) => {
       />
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 
