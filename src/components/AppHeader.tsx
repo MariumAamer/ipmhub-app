@@ -9,7 +9,7 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {View, Text, Image, TouchableOpacity, StyleSheet, Platform} from 'react-native';
+import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
 import Svg, {Path, Polygon} from 'react-native-svg';
 import * as Keychain from 'react-native-keychain';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -106,17 +106,27 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<number | null>(null);
   // Real per-device top inset (status bar height, notch/cutout, etc) from
-  // SafeAreaProvider (mounted once in AppNavigator) — replaces the old
-  // `Platform.OS === 'android' ? StatusBar.currentHeight : 0` guess, which
-  // only ever covered the status bar height and wasn't reliable across all
-  // Android status-bar/notch/display-cutout configurations.
-  // Every screen that renders AppHeader wraps it in its own SafeAreaView,
-  // which already applies the correct top inset on iOS (the core
-  // react-native SafeAreaView is a real safe-area component there, it's
-  // only a no-op on Android) — so this only needs to add extra top padding
-  // on Android, where the wrapping SafeAreaView does nothing. Applying the
-  // inset unconditionally on both platforms would double the top gap on
-  // iOS (screen's SafeAreaView inset + this component's own inset).
+  // SafeAreaProvider (mounted once in AppNavigator).
+  //
+  // FIXED (Aug 2026): this used to be applied only on Android
+  // (`Platform.OS === 'android' ? insets.top + 10 : 10`), on the theory
+  // that every screen already wraps AppHeader in its own <SafeAreaView>
+  // and that the core react-native SafeAreaView reliably supplies the top
+  // inset on iOS by itself. That assumption is what was letting the
+  // header render underneath the iOS status bar/notch/Dynamic Island
+  // (time/date/battery) on multiple screens even though each of them DID
+  // wrap AppHeader in a SafeAreaView — the core, deprecated
+  // react-native SafeAreaView does not reliably compute the safe-area
+  // inset in every navigation/screen context, so relying on it there was
+  // fragile. AppHeader now always sources its own top inset directly from
+  // react-native-safe-area-context's useSafeAreaInsets (the reliable,
+  // native-backed source used elsewhere in this app, e.g. ProfileDrawer
+  // and ForumTopicScreen), on both platforms, so the header is correctly
+  // positioned regardless of whether — or how well — the wrapping screen's
+  // own SafeAreaView applies an inset. Worst case on a screen where the
+  // wrapping SafeAreaView *does* also apply a correct inset is a few extra
+  // points of top padding, which is far preferable to content sitting
+  // under the status bar.
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -169,7 +179,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
   };
 
   return (
-    <View style={[styles.header, {paddingTop: Platform.OS === 'android' ? insets.top + 10 : 10}]}>
+    <View style={[styles.header, {paddingTop: insets.top + 10}]}>
       {/* Left — chevron (drawer) + logo (home), separate tap targets */}
       <View style={styles.logoRow}>
         <TouchableOpacity
