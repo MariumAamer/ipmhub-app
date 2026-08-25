@@ -1,6 +1,24 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Animated, Modal, FlatList, Dimensions, Linking, Alert} from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  TextInput,
+  StatusBar,
+  SafeAreaView,
+  ActivityIndicator,
+  RefreshControl,
+  Animated,
+  Modal,
+  FlatList,
+  Dimensions,
+  Linking,
+  Alert,
+} from 'react-native';
 import {WebView} from 'react-native-webview';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
@@ -9,6 +27,7 @@ import {
   getResources,
   getResourceTabs,
   getResourceCategories,
+  downloadResource,
   ResourceItem,
   ResourceTab,
   ResourceCategory,
@@ -374,14 +393,20 @@ const ResourcesScreen = ({navigation}: any) => {
     navigation?.navigate('ResourceDetail', {resource: item});
   };
 
-  // Same dependency-free approach as the Infographic viewer's Download
-  // button — opens the raw .svg URL via the OS. See InfographicViewer.tsx
-  // for the note on true native "save to device" needing react-native-fs.
+  // Routes through POST /resources/items/{post_id}/download so the CRM
+  // lead-capture side effect on the backend actually fires (see
+  // downloadResource in resourcesApi.ts). Previously this just opened
+  // item.image_url directly via Linking, which meant the CRM entry
+  // documented for this endpoint was never being created. Falls back to
+  // image_url if the endpoint call fails, so the download still works
+  // (just without the CRM logging) rather than dead-ending the user.
   const handleQuickDownload = async (item: ResourceItem) => {
-    if (!item.image_url) return;
     try {
-      const supported = await Linking.canOpenURL(item.image_url);
-      if (supported) await Linking.openURL(item.image_url);
+      const result = await downloadResource(item.id);
+      const url = result?.downloadUrl || result?.fileUrl || item.image_url;
+      if (!url) return;
+      const supported = await Linking.canOpenURL(url);
+      if (supported) await Linking.openURL(url);
       else Alert.alert('Unable to open', 'This file could not be opened.');
     } catch {
       Alert.alert('Download failed', 'Please try again.');
@@ -389,7 +414,7 @@ const ResourcesScreen = ({navigation}: any) => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
@@ -530,7 +555,7 @@ const ResourcesScreen = ({navigation}: any) => {
       />
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </View>
+    </SafeAreaView>
   );
 };
 

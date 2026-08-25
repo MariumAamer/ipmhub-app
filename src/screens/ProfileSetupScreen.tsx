@@ -1,7 +1,23 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, StatusBar, ActivityIndicator, Modal, FlatList, PermissionsAndroid, Platform, Image, Alert, Dimensions} from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import React, {useState, useEffect, useRef} from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  StatusBar,
+  SafeAreaView,
+  ActivityIndicator,
+  Modal,
+  FlatList,
+  PermissionsAndroid,
+  Platform,
+  Image,
+  Alert,
+  Dimensions,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, {Path} from 'react-native-svg';
@@ -9,7 +25,7 @@ import Geolocation from '@react-native-community/geolocation';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import {fetchCountries, Country} from '../api/countriesApi';
 import {getCachedCountries, cacheCountries} from '../api/cacheService';
-import {saveProfile, uploadAvatar, postIntroductionActivity} from '../api/profileApi';
+import {getWelcomeIntroStatus, submitWelcomeIntro, WelcomeIntroPrefill} from '../api/profileApi';
 import {getStoredUser} from '../api/authApi';
 
 const {width} = Dimensions.get('window');
@@ -152,6 +168,16 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [saving, setSaving] = useState(false);
   const [showCongrats, setShowCongrats] = useState(false);
 
+  // Welcome-intro status (drives whether the popup shows at all, and prefill)
+  const [userId, setUserId] = useState(0);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+  const [useExistingAvatar, setUseExistingAvatar] = useState(false);
+  const [prefillData, setPrefillData] = useState<WelcomeIntroPrefill | null>(null);
+  // Guards the geolocation auto-detect below from clobbering a country that
+  // already came back from the server prefill — the geolocation lookup can
+  // resolve well after the status call does.
+  const prefillCountryRef = useRef<string>('');
+
   // Step 1
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [jobTitle, setJobTitle] = useState('');
@@ -176,7 +202,62 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [introduction, setIntroduction] = useState('');
   const [showExample, setShowExample] = useState(true);
 
-  useEffect(() => { loadCountriesAndDetectLocation(); }, []);
+  useEffect(() => {
+    loadCountriesAndDetectLocation();
+    checkWelcomeIntroStatus();
+  }, []);
+
+  // Once both the country list and the server prefill are in, match the
+  // prefill's country / phone_country names against the loaded list.
+  useEffect(() => {
+    if (!prefillData || countries.length === 0) return;
+    if (prefillData.country) {
+      const match = countries.find(c => c.name === prefillData.country);
+      if (match) { setSelectedCountry(match); setDetectedCountry(match); }
+    }
+    if (prefillData.phone_country) {
+      const phoneMatch = countries.find(c => c.name === prefillData.phone_country);
+      if (phoneMatch) setSelectedPhoneCountry(phoneMatch);
+    }
+  }, [countries, prefillData]);
+
+  const checkWelcomeIntroStatus = async () => {
+    try {
+      const storedUser = await getStoredUser();
+      const uid = storedUser?.userId || 0;
+      setUserId(uid);
+      if (!uid) return;
+
+      const status = await getWelcomeIntroStatus(uid);
+      if (!status) return;
+
+      if (!status.show_popup || status.already_submitted) {
+        // Already submitted (or server says it shouldn't show) — don't make
+        // the user go through onboarding again.
+        navigation.replace('MainApp');
+        return;
+      }
+
+      if (status.can_use_existing_avatar && status.avatar_url) {
+        setUseExistingAvatar(true);
+        setPhotoUri(status.avatar_url);
+      }
+
+      if (status.prefill) {
+        prefillCountryRef.current = status.prefill.country || '';
+        setPrefillData(status.prefill);
+        if (status.prefill.job) setJobTitle(status.prefill.job);
+        if (status.prefill.company) setCompany(status.prefill.company);
+        if (status.prefill.industry) setSelectedIndustry(status.prefill.industry);
+        if (status.prefill.linkedin) setLinkedIn(status.prefill.linkedin);
+        if (status.prefill.phone) setPhoneNumber(status.prefill.phone);
+      }
+    } catch (err) {
+      console.log('checkWelcomeIntroStatus error:', err);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   const requestLocationPermission = async (): Promise<boolean> => {
     if (Platform.OS === 'android') {
@@ -203,7 +284,10 @@ const ProfileSetupScreen = ({navigation}: any) => {
             const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
             const data = await response.json();
             const found = countryList.find(c => c.code === data.countryCode);
-            if (found) { setSelectedCountry(found); setDetectedCountry(found); setSelectedPhoneCountry(found); }
+            // Skip if a server prefill country already came back — the
+            // prefill is authoritative and this geolocation lookup can
+            // resolve after it.
+            if (found && !prefillCountryRef.current) { setSelectedCountry(found); setDetectedCountry(found); setSelectedPhoneCountry(found); }
           } catch {} finally { setDetectingLocation(false); }
         },
         () => setDetectingLocation(false),
@@ -225,8 +309,8 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
   const handlePickPhoto = () => {
     Alert.alert('Profile Photo', 'Choose photo source', [
-      {text: 'Camera', onPress: () => launchCamera({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); })},
-      {text: 'Photo Library', onPress: () => launchImageLibrary({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); })},
+      {text: 'Camera', onPress: () => launchCamera({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) { setPhotoUri(res.assets[0].uri!); setUseExistingAvatar(false); } })},
+      {text: 'Photo Library', onPress: () => launchImageLibrary({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) { setPhotoUri(res.assets[0].uri!); setUseExistingAvatar(false); } })},
       {text: 'Cancel', style: 'cancel'},
     ]);
   };
@@ -250,6 +334,13 @@ const ProfileSetupScreen = ({navigation}: any) => {
         Alert.alert('Required Fields', 'Please fill in your Phone Number, LinkedIn URL, and Introduction to continue.');
         return;
       }
+      // The welcome-intro/submit endpoint requires the bio to be at least
+      // 130 characters — validate client-side so the user gets an inline
+      // reason instead of a generic server error.
+      if (introduction.trim().length < 130) {
+        Alert.alert('Introduction Too Short', `Please write at least 130 characters about yourself (currently ${introduction.trim().length}).`);
+        return;
+      }
       await handleSubmit();
     }
   };
@@ -261,44 +352,33 @@ const ProfileSetupScreen = ({navigation}: any) => {
     setSaving(true);
     try {
       const storedUser = await getStoredUser();
-      const userId = storedUser?.userId || 0;
-      if (photoUri) await uploadAvatar(photoUri);
-      await saveProfile(userId, {jobTitle, company, industry: selectedIndustry, country: selectedCountry.name, countryCode: selectedCountry.code, phone: `${selectedPhoneCountry.dialCode}${phoneNumber}`, linkedIn, introduction});
+      const uid = storedUser?.userId || userId || 0;
 
-      // Posting the introduction is a separate write from saveProfile (a
-      // different endpoint entirely — the 'introduction' CPT vs xprofile
-      // fields), so it gets its own try/catch. Previously a failure here
-      // was swallowed inside postIntroductionActivity itself (bare `catch
-      // {}`, no res.ok check), so the profile appeared to save fine and the
-      // user was taken straight to the congratulations screen even when the
-      // introduction was never actually created — which is exactly why the
-      // "about yourself" text from onboarding never showed up on the Intros
-      // screen. Now the failure surfaces: the rest of onboarding still
-      // completes (the profile info did save), but the user is told the
-      // intro post itself didn't go through, instead of it silently vanishing.
-      let introFailed = false;
-      if (introduction.trim()) {
-        try {
-          await postIntroductionActivity(introduction.trim());
-        } catch (introErr) {
-          introFailed = true;
-          console.log('postIntroductionActivity error:', introErr);
-        }
-      }
+      // Single write — Robby's welcome-intro/submit endpoint saves the
+      // profile fields AND creates the introduction post together, so there's
+      // no longer a separate step that can fail invisibly after the profile
+      // itself has already saved.
+      await submitWelcomeIntro({
+        userId: uid,
+        job: jobTitle,
+        company,
+        industry: selectedIndustry,
+        country: selectedCountry.name,
+        phone: `${selectedPhoneCountry.dialCode}${phoneNumber}`,
+        phoneCountry: selectedPhoneCountry.name,
+        linkedin: linkedIn,
+        bio: introduction.trim(),
+        photoUri: useExistingAvatar ? null : photoUri,
+        useExistingAvatar,
+      });
 
       setShowCongrats(true);
-      if (introFailed) {
-        // Fires after the congrats modal is shown rather than blocking it —
-        // the profile itself did save successfully.
-        setTimeout(() => {
-          Alert.alert(
-            'Introduction Not Posted',
-            "Your profile saved, but we couldn't publish your introduction to the Intros feed. Please try posting it again from your profile.",
-          );
-        }, 300);
-      }
-    } catch {
-      Alert.alert('Error', 'Could not save profile. Please try again.');
+    } catch (err) {
+      console.log('submitWelcomeIntro error:', err);
+      Alert.alert(
+        'Introduction Not Posted',
+        "We couldn't submit your welcome intro. Please check your details and try again.",
+      );
     } finally { setSaving(false); }
   };
 
@@ -341,6 +421,17 @@ const ProfileSetupScreen = ({navigation}: any) => {
       </SafeAreaView>
     </Modal>
   );
+
+  if (checkingStatus) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0C4D91" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

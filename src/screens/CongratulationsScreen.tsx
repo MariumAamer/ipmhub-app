@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import React, {useEffect, useRef} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView, Image, Animated} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';

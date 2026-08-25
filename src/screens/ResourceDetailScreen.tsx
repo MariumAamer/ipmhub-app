@@ -227,6 +227,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
         onClose={() => navigation.goBack()}
         title={listItem.title}
         imageUrl={listItem.image_url || ''}
+        resourceId={listItem.id}
       />
     );
   }

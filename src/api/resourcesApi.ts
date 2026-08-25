@@ -1,4 +1,5 @@
 import {getToken} from './feedApi';
+import {getUserIdFromToken} from './profileApi';
 
 // ─── Decode HTML entities ─────────────────────────────────────────────────────
 // API titles come through with encoded entities (&#038;, &#8217;, &amp;, etc.)
@@ -641,6 +642,57 @@ export const getResourceById = async (id: number | string): Promise<ResourceDeta
       is_member_only: !!r.is_member_only,
       permalink: r.permalink || '',
       tableOfContents: extractTOC(content),
+    };
+  } catch {
+    return null;
+  }
+};
+
+// ─── Download a resource (file open + CRM lead capture) ─────────────────────
+// POST /wp-json/custom/v1/resources/items/{post_id}/download
+// Auth: JWT (Authorization: Bearer <token>) — also accepts a `user_id` in
+// the body, so this sends both when available (the endpoint uses whichever
+// it can resolve the member from). Confirmed live response shape:
+// { success, message, user, resource, download: {file_url, download_url,
+// filename}, crm: {saved, module} }. Every download through this endpoint
+// also logs the user in the CRM (Leads module) on the backend, which is
+// why every resource download in the app should route through here rather
+// than opening image_url/brochure_url directly.
+export interface ResourceDownloadResult {
+  fileUrl: string;
+  downloadUrl: string;
+  filename: string;
+}
+
+export const downloadResource = async (
+  postId: number | string,
+): Promise<ResourceDownloadResult | null> => {
+  try {
+    const token = await getToken();
+    const userId = await getUserIdFromToken();
+
+    const headers: Record<string, string> = {'Content-Type': 'application/json'};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    // Neither auth path is guaranteed here (a signed-out visitor has no
+    // token or user_id) — still fire the request; the backend can reject
+    // it with a non-ok status, which the caller falls back on.
+    const body: Record<string, unknown> = {};
+    if (userId) body.user_id = userId;
+
+    const res = await fetch(`${BASE}/items/${postId}/download`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.success) return null;
+
+    return {
+      fileUrl: data?.download?.file_url || '',
+      downloadUrl: data?.download?.download_url || '',
+      filename: data?.download?.filename || data?.resource?.filename || '',
     };
   } catch {
     return null;

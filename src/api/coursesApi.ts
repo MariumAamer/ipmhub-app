@@ -1299,11 +1299,17 @@ export const getQuizResults = async (
 // caveat as above, field names not yet Postman-verified against a real
 // response.
 
+export interface StepCommentAuthor {
+  user_id: number;
+  full_name: unknown;
+  avatar: string;
+  profile_url?: string;
+}
+
 export interface StepComment {
   id: number;
-  author_name: string;
-  author_avatar: string;
-  content: string;
+  author: StepCommentAuthor;
+  content: unknown;
   date_formatted: string;
   replies?: StepComment[];
 }

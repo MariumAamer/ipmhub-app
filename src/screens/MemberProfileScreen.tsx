@@ -7,7 +7,7 @@
  *  - GET /buddyboss/v1/members/{id}          → profile header, xprofile, follow counts
  *  - GET /buddyboss/v1/members?scope=following&user_id={id}  → following list
  *  - GET /buddyboss/v1/members?scope=followers&user_id={id}  → followers list
- *  - GET /wp/v2/posts?author={id}&_embed     → activity / resources
+ *  - GET custom/v1/resources/items?tab=all   → resources (filtered client-side by author.user_id — no author param on this endpoint)
  *  - GET /buddyboss/v1/activity?user_id={id} → activity feed
  *  - GET /ldlms/v2/users/{id}/courses        → LearnDash courses
  *  - GET /buddyboss/v1/forums/topics?author={id} → forum posts
@@ -36,9 +36,10 @@ import {
 import {launchImageLibrary} from 'react-native-image-picker';
 import Svg, {Path, Rect, Mask, G, Circle, Defs, LinearGradient as SvgLinearGradient, Stop} from 'react-native-svg';
 import MaskedView from '@react-native-masked-view/masked-view';
-import {apiRequest} from '../api/apiClient';
+import {apiRequest, API} from '../api/apiClient';
 import {getUserIdFromToken, uploadAvatar} from '../api/profileApi';
 import {getThreadList} from '../api/dmApi';
+import {getResources, ResourceItem} from '../api/resourcesApi';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import LinearGradient from 'react-native-linear-gradient';
@@ -414,11 +415,16 @@ const PMsYouMayKnow = ({currentUserId, members: membersProp, navigation}: {curre
     setFollowing(prev => ({...prev, [id]: !isFlw}));
     setLoading(prev => ({...prev, [id]: true}));
     try {
-      // apiRequest(url, method, body) — method must be a plain string.
-      await apiRequest(
-        `${BASE}/buddyboss/v1/members/${id}/follow`,
-        isFlw ? 'DELETE' : 'POST',
-      );
+      // Confirmed real follow endpoint (apiClient.ts API.FOLLOW_MEMBER) —
+      // POST .../buddyboss/v1/members/action/{id} with
+      // {action: 'follow'|'unfollow'}. The old .../members/{id}/follow
+      // (DELETE/POST) route used here previously was never confirmed and
+      // doesn't actually toggle follow state server-side — see
+      // feedApi.ts's followMember/unfollowMember for the Postman-confirmed
+      // route this now matches.
+      await apiRequest(API.FOLLOW_MEMBER(id), 'POST', {
+        action: isFlw ? 'unfollow' : 'follow',
+      });
     } catch {
       // Revert on failure
       setFollowing(prev => ({...prev, [id]: isFlw}));
@@ -685,7 +691,7 @@ const ResourceEmptyCard = ({displayName, isOwn, navigation}: {displayName?: stri
 
 // ─── Activity Tab — matches web: Resources + Forums sections ─────────────────
 const ActivityTab = ({userId, isOwn, displayName, navigation, profileData}: {userId: number; isOwn?: boolean; displayName: string; navigation?: any; profileData?: any}) => {
-  const [resources, setResources] = useState<any[]>([]);
+  const [resources, setResources] = useState<ResourceItem[]>([]);
   const [loading,   setLoading]   = useState(true);
 
   // Forums and Posts now come straight from profileData.activity (the new
@@ -698,18 +704,34 @@ const ActivityTab = ({userId, isOwn, displayName, navigation, profileData}: {use
   useEffect(() => {
     const load = async () => {
       try {
-        // Resources: WP posts by this author (published articles/resources)
-        // — not part of the new consolidated endpoint yet, still a
-        // separate fetch.
-        const wpPosts = await apiRequest(
-          `${BASE}/wp/v2/posts?author=${userId}&per_page=10&_embed&status=publish`,
-        ).catch(() => []);
+        // Resources: this was previously querying /wp/v2/posts?author=,
+        // which is the WRONG content type — this app's "Resources" feature
+        // (articles/ebooks/templates/videos/cheatsheets, e.g. Paul's
+        // published articles) is a completely separate custom endpoint
+        // (custom/v1/resources — see resourcesApi.ts), not a WordPress
+        // post type at all, so wp/v2/posts always came back empty for
+        // real resource authors. That endpoint has no author-scoped
+        // filter param, so we page through the "all" tab and filter by
+        // author.user_id client-side, capped at a few pages so one
+        // member's profile doesn't walk the entire resources library.
+        const found: ResourceItem[] = [];
+        let page = 1;
+        const MAX_PAGES = 5;
+        while (page <= MAX_PAGES && found.length < 10) {
+          const {items, pagination} = await getResources('all', page).catch(
+            () => ({items: [], pagination: null} as any),
+          );
+          if (!items.length) break;
+          found.push(
+            ...items.filter(
+              (it: ResourceItem) => Number(it.author?.user_id) === Number(userId),
+            ),
+          );
+          if (!pagination?.has_more) break;
+          page++;
+        }
 
-        const wpPostsFiltered = Array.isArray(wpPosts)
-          ? wpPosts.filter((p: any) => Number(p?.author) === Number(userId))
-          : [];
-
-        setResources(wpPostsFiltered);
+        setResources(found.slice(0, 10));
       } finally {
         setLoading(false);
       }
@@ -752,23 +774,35 @@ const ActivityTab = ({userId, isOwn, displayName, navigation, profileData}: {use
               <ChevronRightCircle />
             </TouchableOpacity>
           </View>
-          {resources.map((r: any) => {
-            const img  = r?._embedded?.['wp:featuredmedia']?.[0]?.source_url;
-            const date = new Date(r.date).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
-            const tag  = decodeEntities(r?._embedded?.['wp:term']?.[0]?.[0]?.name || 'Articles');
+          {resources.map((r: ResourceItem) => {
+            const img = r.image_url || r.header_image_url;
+            const dateLabel = r.date_formatted
+              || (r.date ? new Date(r.date).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}) : '');
+            const tag = r.category_label || r.type_label || 'Articles';
             return (
-              <View key={r.id} style={s.resourceCard}>
+              <TouchableOpacity
+                key={r.id}
+                style={s.resourceCard}
+                activeOpacity={0.85}
+                // Same in-app navigation ResourcesScreen.tsx uses for every
+                // resource card (handleItemPress → navigation.navigate(
+                // 'ResourceDetail', {resource: item})) — this previously
+                // opened the permalink in an external browser via
+                // Linking.openURL instead of moving to the article inside
+                // the app.
+                onPress={() => navigation?.navigate('ResourceDetail', {resource: r})}>
                 {img
-                  ? <Image source={{uri: img}} style={s.resourceThumb} />
+                  ? <Image source={{uri: img}} style={s.resourceThumb} resizeMode="cover" />
                   : <View style={[s.resourceThumb, {backgroundColor:'#1A3A6B', alignItems:'center', justifyContent:'center'}]}>
                       <Text style={{color:'#FFF', fontSize:18}}>{'📄'}</Text>
                     </View>
                 }
                 <View style={{flex:1}}>
-                  <Text style={s.resourceTitle} numberOfLines={2}>{stripHtml(r.title?.rendered || '')}</Text>
-                  <Text style={s.resourceMeta}>{date}{'  ·  '}{tag}</Text>
+                  <Text style={s.resourceTitle} numberOfLines={2}>{r.title}</Text>
+                  <View style={s.resourceDivider} />
+                  <Text style={s.resourceMeta}>{dateLabel}{'  ·  '}{tag}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </>
@@ -1182,11 +1216,16 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
   const toggleFollow = async (memberId: number, isFollowing: boolean) => {
     setBusy(p => ({...p, [memberId]: true}));
     try {
-      // apiRequest(url, method, body) — method must be a plain string.
-      await apiRequest(
-        `${BASE}/buddyboss/v1/members/${memberId}/follow`,
-        isFollowing ? 'DELETE' : 'POST',
-      );
+      // Confirmed real follow endpoint (apiClient.ts API.FOLLOW_MEMBER) —
+      // POST .../buddyboss/v1/members/action/{id} with
+      // {action: 'follow'|'unfollow'}. This previously called
+      // .../members/{id}/follow (DELETE/POST), which was never confirmed
+      // and doesn't actually persist the follow state server-side — same
+      // fix as PMsYouMayKnow's toggle() and the header's handleFollow()
+      // above/below in this file.
+      await apiRequest(API.FOLLOW_MEMBER(memberId), 'POST', {
+        action: isFollowing ? 'unfollow' : 'follow',
+      });
       fetchAll();
     } catch {}
     finally { setBusy(p => ({...p, [memberId]: false})); }
@@ -1478,12 +1517,6 @@ const QuoteIcon = () => (
   </Svg>
 );
 
-// Offered-format icons — the four confirmed by Marium. Matched to
-// offered_formats[].title by keyword since the backend's own title
-// strings vary slightly (e.g. "1:1 Mentorship Session" vs "1:1 Session").
-// Anything that doesn't match one of these four falls back to a generic
-// icon rather than guessing — the API can return titles like "Problem-
-// Solving Support" that have no corresponding icon spec from Marium yet.
 const FormatSessionIcon = () => (
   <Svg width={32} height={26} viewBox="0 0 32 26" fill="none">
     <Path d="M19.125 8.5C19.125 9.62717 18.6772 10.7082 17.8802 11.5052C17.0832 12.3022 16.0022 12.75 14.875 12.75C13.7478 12.75 12.6668 12.3022 11.8698 11.5052C11.0728 10.7082 10.625 9.62717 10.625 8.5C10.625 7.37283 11.0728 6.29183 11.8698 5.4948C12.6668 4.69777 13.7478 4.25 14.875 4.25C16.0022 4.25 17.0832 4.69777 17.8802 5.4948C18.6772 6.29183 19.125 7.37283 19.125 8.5ZM0 3.71875C0 1.666 1.666 0 3.71875 0H26.0312C28.084 0 29.75 1.666 29.75 3.71875V4.64313C29.0795 4.35662 28.3535 4.22375 27.625 4.25425V3.71875C27.625 3.29606 27.4571 2.89068 27.1582 2.5918C26.8593 2.29291 26.4539 2.125 26.0312 2.125H3.71875C3.29606 2.125 2.89068 2.29291 2.5918 2.5918C2.29291 2.89068 2.125 3.29606 2.125 3.71875V17.5312C2.125 18.411 2.839 19.125 3.71875 19.125H8.5V17C8.5 16.4364 8.72388 15.8959 9.1224 15.4974C9.52091 15.0989 10.0614 14.875 10.625 14.875H19.125C19.5824 14.8751 20.0276 15.0228 20.3944 15.2962C20.7612 15.5695 21.0299 15.9539 21.1608 16.3923C20.4436 16.2855 19.7111 16.3577 19.0286 16.6024C18.3461 16.847 17.7346 17.2567 17.2486 17.7947L16.0905 19.0868C15.5167 19.7264 15.1491 20.4744 14.9813 21.25H3.71875C3.2304 21.25 2.74683 21.1538 2.29565 20.9669C1.84447 20.78 1.43451 20.5061 1.0892 20.1608C0.743879 19.8155 0.469958 19.4055 0.283073 18.9544C0.0961882 18.5032 0 18.0196 0 17.5312V3.71875ZM24.616 9.73462L25.2174 8.14087C25.7656 6.69587 27.4741 5.98188 28.9149 6.596L29.7394 6.94875C30.7445 7.378 31.5775 8.15575 31.7518 9.20125C32.7229 14.9919 27.6973 23.2284 21.913 25.33C20.8675 25.7083 19.7391 25.415 18.8424 24.8072L18.1071 24.3079C17.8053 24.1045 17.5511 23.8382 17.3622 23.5271C17.1733 23.216 17.0541 22.8676 17.0129 22.506C16.9717 22.1444 17.0094 21.7781 17.1235 21.4325C17.2376 21.0869 17.4253 20.7702 17.6736 20.5041L18.8318 19.2142C19.1038 18.9147 19.4508 18.6931 19.8371 18.5725C20.2234 18.4518 20.6348 18.4364 21.029 18.5279L23.6321 19.1441C25.6962 17.855 26.8026 16.0416 26.9514 13.7041L25.0856 11.8766C24.807 11.6043 24.614 11.2564 24.5306 10.8758C24.4472 10.4952 24.4768 10.0986 24.616 9.73462Z" fill="#0C4D91"/>
@@ -2047,10 +2080,16 @@ const MemberProfileScreen = ({navigation, route}: any) => {
     const next = !following;
     setFollowing(next);
     try {
-      // apiRequest(url, method, body) — method must be a plain string, not
-      // an options object (that's the exact bug that crashed Save buttons
-      // earlier — same mistake was made here too).
-      await apiRequest(`${BASE}/buddyboss/v1/members/${targetId}/follow`, next ? 'POST' : 'DELETE');
+      // Confirmed real follow endpoint (apiClient.ts API.FOLLOW_MEMBER) —
+      // POST .../buddyboss/v1/members/action/{id} with
+      // {action: 'follow'|'unfollow'}. This previously called
+      // .../members/{targetId}/follow (POST/DELETE), which was never
+      // confirmed and doesn't actually toggle follow state server-side —
+      // same class of bug (and same fix) as PMsYouMayKnow's toggle() and
+      // ConnectionsTab's toggleFollow() above in this file.
+      await apiRequest(API.FOLLOW_MEMBER(targetId!), 'POST', {
+        action: next ? 'follow' : 'unfollow',
+      });
     } catch { setFollowing(!next); }
   };
 
@@ -2262,10 +2301,33 @@ const s = StyleSheet.create({
   viewDetailsText:  {fontSize:12, fontFamily:'Runda-Medium', color:'#0C4D91'},
 
   // Activity
-  resourceCard: {flexDirection:'row', gap:12, marginBottom:14, paddingBottom:14, borderBottomWidth:1, borderBottomColor:'#F0F0F0'},
-  resourceThumb: {width:80, height:72, borderRadius:8, backgroundColor:'#E0E0E0'},
-  resourceTitle: {fontSize:13, fontWeight:'600', color:'#1A1A1A', lineHeight:18, marginBottom:6},
-  resourceMeta:  {fontSize:11, color:'#AAA'},
+  // Figma spec: width 358, padding 16, gap 16, radius 5, white bg, drop
+  // shadow "Boxes" (0 0 10.023px -1.822px rgba(0,0,0,0.15)) — RN has no
+  // negative-spread shadow, so approximated with a soft shadowRadius/
+  // shadowOpacity pairing that reads the same at this card size.
+  resourceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    padding: 16,
+    borderRadius: 5,
+    backgroundColor: '#FFFFFF',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  resourceThumb: {width: 144.906, height: 75, borderRadius: 4, backgroundColor: '#E0E0E0'},
+  resourceTitle: {
+    fontSize: 14, fontWeight: '500', color: '#192546', fontFamily: 'Runda',
+    marginBottom: 6,
+  },
+  resourceDivider: {width: 27, height: 1, backgroundColor: '#46B0E3', marginBottom: 6},
+  resourceMeta: {
+    fontSize: 10, fontWeight: '400', color: '#71727A', fontFamily: 'Runda', lineHeight: 14,
+  },
 
   // Generic "nothing here yet" card for a visitor on someone else's profile
   // (Resources/Forums/Posts) — exact spec from Marium: white card, radius 5,

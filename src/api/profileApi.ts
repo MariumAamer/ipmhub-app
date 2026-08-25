@@ -177,62 +177,126 @@ export const uploadAvatar = async (
   }
 };
 
-// ─── Post introduction (creates the actual Introductions CPT entry) ──────────
-// Confirmed via the site's own /wp-json/ route index (2026-08-08): there is
-// NO create route on /custom/v1/introductions (GET only) — but /wp/v2/introduction
-// is a standard WordPress custom post type with full core REST support,
-// including POST. This IS the real creation endpoint.
-//
-// Previously this posted to /buddyboss/v1/activity instead, which is why
-// intros were showing up on the Feed screen instead of the Intros screen —
-// that was always the wrong endpoint, not a display bug.
-//
-// title is intentionally omitted — confirmed not required by the route
-// schema, and IntrosScreen/getIntroductions never reads a title field, only
-// content.
-//
-// THE ACTUAL BUG (found 2026-08-18): this function never checked res.ok and
-// wrapped everything in a bare `catch {}`. fetch() resolves normally on a
-// 4xx/5xx — it only rejects on a network-level failure — so ANY server-side
-// rejection of the POST (most likely: the authenticated member's WP role
-// lacks publish_posts/edit_posts capability for the 'introduction' CPT,
-// since most community-site members are Subscribers, not Authors/Editors —
-// a very plausible reason status:'publish' would be silently rejected here)
-// resolved as if it had succeeded. The onboarding flow then proceeded straight
-// to the congratulations screen with no error, which is exactly the reported
-// symptom: profile info saves fine, but the "About yourself" introduction
-// never shows up on the Intros screen. Now this throws with the response
-// status + body on any non-OK response, so the caller can actually see (and
-// the user can be told) that the post failed, instead of it vanishing
-// silently. If server logs/Postman confirm this is in fact a capability
-// (403) issue, the real fix is granting the 'introduction' CPT's publish
-// capability to the member role on the WordPress side — this client-side
-// change only makes that failure visible instead of hidden.
-export const postIntroductionActivity = async (
-  content: string,
+// ─── Welcome popup + introduction (replaces the old saveProfile +
+// uploadAvatar + postIntroductionActivity flow) ───────────────────────────
+// ROOT CAUSE (found 2026-08-18, confirmed by Robby 2026-08-24): the old flow
+// posted the intro to /wp/v2/introduction, which most members' WP role
+// (Subscriber) doesn't have publish_posts capability for — that write was
+// silently rejected. Robby replaced the whole onboarding write path with a
+// single dedicated pair of custom endpoints that handle permissions
+// server-side:
+//   GET  /custom/v1/welcome-intro/status  — whether to show the popup at all,
+//        plus prefill values and whether the member already has an avatar
+//        BuddyBoss can reuse.
+//   POST /custom/v1/welcome-intro/submit  — one multipart write that saves
+//        the profile fields AND creates the introduction post together, so
+//        there's no longer a separate "did the intro actually post" step
+//        that can fail independently of the profile save.
+
+export interface WelcomeIntroPrefill {
+  job: string;
+  company: string;
+  industry: string;
+  country: string;
+  phone: string;
+  phone_country: string;
+  linkedin: string;
+}
+
+export interface WelcomeIntroStatus {
+  success: boolean;
+  user_id: number;
+  show_popup: boolean;
+  already_submitted: boolean;
+  can_use_existing_avatar: boolean;
+  avatar_url: string;
+  prefill: WelcomeIntroPrefill;
+}
+
+// ─── Check whether the welcome/intro popup should be shown ──────────────────
+export const getWelcomeIntroStatus = async (
+  userId: number,
+): Promise<WelcomeIntroStatus | null> => {
+  try {
+    const token = await getToken();
+    if (!token) {
+      throw new Error('getWelcomeIntroStatus: no auth token available');
+    }
+    const res = await fetch(
+      `${BASE}/custom/v1/welcome-intro/status?user_id=${userId}`,
+      {headers: {Authorization: `Bearer ${token}`}},
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`welcome-intro/status failed (${res.status}): ${body}`);
+    }
+    return res.json();
+  } catch (err) {
+    console.log('getWelcomeIntroStatus error:', err);
+    return null;
+  }
+};
+
+export interface WelcomeIntroSubmitData {
+  userId: number;
+  job: string;
+  company: string;
+  industry: string;
+  country: string;
+  phone: string;
+  phoneCountry: string;
+  linkedin: string;
+  bio: string;
+  // Either photoUri (new upload) or useExistingAvatar (author reusing
+  // avatar_url from the status call) should be set, not both.
+  photoUri?: string | null;
+  useExistingAvatar?: boolean;
+}
+
+// ─── Submit the welcome popup — saves the profile AND creates the
+// introduction post in one write. Throws on any non-OK response so a
+// caller-side failure (bad field, permission issue, etc.) is visible instead
+// of silently vanishing like the old separate calls used to.
+export const submitWelcomeIntro = async (
+  data: WelcomeIntroSubmitData,
 ): Promise<void> => {
   const token = await getToken();
   if (!token) {
-    throw new Error('postIntroductionActivity: no auth token available');
+    throw new Error('submitWelcomeIntro: no auth token available');
   }
-  const res = await fetch(`${BASE}/wp/v2/introduction`, {
+
+  const formData = new FormData();
+  formData.append('user_id', String(data.userId));
+  formData.append('job', data.job);
+  formData.append('company', data.company);
+  formData.append('industry', data.industry);
+  formData.append('country', data.country);
+  formData.append('phone', data.phone);
+  formData.append('phone_country', data.phoneCountry);
+  formData.append('linkedin', data.linkedin);
+  formData.append('bio', data.bio);
+
+  if (data.useExistingAvatar) {
+    formData.append('use_existing_avatar', '1');
+  } else if (data.photoUri) {
+    formData.append('file', {
+      uri: data.photoUri,
+      type: 'image/jpeg',
+      name: 'profile.jpg',
+    } as any);
+  }
+
+  // Do NOT set Content-Type manually — RN's fetch needs to generate the
+  // multipart boundary itself from the FormData body.
+  const res = await fetch(`${BASE}/custom/v1/welcome-intro/submit`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      content,
-      status: 'publish',
-    }),
+    headers: {Authorization: `Bearer ${token}`},
+    body: formData,
   });
+
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    console.log(`postIntroductionActivity failed (${res.status}):`, body);
-    throw new Error(
-      `Could not publish introduction (${res.status}). This usually means the ` +
-        `signed-in member's role doesn't have permission to publish the ` +
-        `'introduction' post type on the server.`,
-    );
+    console.log(`submitWelcomeIntro failed (${res.status}):`, body);
+    throw new Error(`Could not submit welcome intro (${res.status}): ${body}`);
   }
 };

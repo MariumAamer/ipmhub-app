@@ -216,8 +216,33 @@ const safeTitleText = (value: unknown): string => {
   return '';
 };
 
+// Comment content comes back as WP post HTML (e.g. "<p>Hi there</p><p>Second
+// paragraph</p>"), same raw markup WP stores for post_content generally —
+// confirmed live (Aug 2026) via the comments endpoint rendering literal
+// "<p>...</p>" tags on screen. safeTitleText() only decodes entities, it
+// doesn't touch tags, so it's not enough here on its own. This strips tags
+// while turning block boundaries (</p>, <br>, </div>) into newlines first,
+// so multi-paragraph comments don't get squashed into one run-on line.
+const safeCommentText = (value: unknown): string => {
+  const withTags = typeof value === 'string'
+    ? value
+    : value && typeof value === 'object' && typeof (value as any).rendered === 'string'
+      ? (value as any).rendered
+      : value && typeof value === 'object' && typeof (value as any).raw === 'string'
+        ? (value as any).raw
+        : '';
+  const withBreaks = withTags
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  return decodeEntities(withBreaks).trim();
+};
+
 const StepContentScreen = ({route, navigation}: any) => {
   const {courseId, stepId, lessonId} = route?.params || {};
+  // TEMP DEBUG — remove after grabbing IDs for Postman
+  console.log('IDs:', courseId, stepId);
   const [activity, setActivity] = useState<CourseActivityResponse | null>(null);
   const [stepContent, setStepContent] = useState<StepContentResponseStep | null>(null);
   const [loading, setLoading] = useState(true);
@@ -615,27 +640,24 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
   <View>
     <View style={styles.commentCard}>
       <View style={styles.commentAuthorRow}>
-        {comment.author_avatar ? (
-          <Image source={{uri: comment.author_avatar}} style={styles.commentAvatar} />
+        {comment.author?.avatar ? (
+          <Image source={{uri: comment.author.avatar}} style={styles.commentAvatar} />
         ) : (
           <View style={[styles.commentAvatar, {backgroundColor: '#E8E9F1'}]} />
         )}
         <View>
-          {/* author_name/content/date_formatted come from the same
-              WP-backed comments endpoint as everything else in this app —
-              previously rendered completely raw here, so a commenter name
-              or comment body containing an entity (e.g. an apostrophe in
-              "can't") showed up as literal "&#039;" text. CONFIRMED live
-              crash fix (Aug 2026): these fields aren't guaranteed to be
-              plain strings either — decodeEntities() now coerces safely
-              instead of assuming, so a non-string value here renders as
-              empty rather than crashing the screen. */}
-          <Text style={styles.commentAuthorName}>{decodeEntities(comment.author_name)}</Text>
+          {/* CONFIRMED via Postman (Aug 2026): the comments endpoint nests
+              author under an `author` object ({user_id, full_name, avatar,
+              profile_url}), not flat author_name/author_avatar fields as
+              previously assumed — that's why names/avatars weren't
+              showing. safeTitleText() still needed since full_name comes
+              through the same WP entity-encoding as everything else. */}
+          <Text style={styles.commentAuthorName}>{safeTitleText(comment.author?.full_name)}</Text>
           <Text style={styles.commentDate}>{decodeEntities(comment.date_formatted)}</Text>
         </View>
       </View>
       <View style={styles.commentBody}>
-        <Text style={styles.commentText}>{decodeEntities(comment.content)}</Text>
+        <Text style={styles.commentText}>{safeCommentText(comment.content)}</Text>
         <TouchableOpacity onPress={onReply}>
           <Text style={styles.commentReplyText}>{'Reply'}</Text>
         </TouchableOpacity>

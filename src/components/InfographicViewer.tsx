@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import Svg, {Path} from 'react-native-svg';
+import {downloadResource} from '../api/resourcesApi';
 
 const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = Dimensions.get('window');
 const IMAGE_BOX_WIDTH = SCREEN_WIDTH * 0.92;
@@ -41,6 +42,11 @@ export interface InfographicViewerProps {
   onClose: () => void;
   title: string;
   imageUrl: string;
+  // Post ID for the resources/items/{id}/download endpoint — needed to
+  // route the download through the CRM-logging endpoint rather than just
+  // opening the raw asset URL. Optional so callers that only have the
+  // image (no numeric post id available) still fall back gracefully.
+  resourceId?: number | string;
 }
 
 // Popup viewer for Cheat Sheets / Infographics — slides up as a sheet
@@ -57,7 +63,7 @@ export interface InfographicViewerProps {
 // already confirmed rendering correctly there. Worth a proper debugging
 // pass later (e.g. compare actual device logs during load) to bring
 // back the true in-app zoomable viewer this was meant to be.
-const InfographicViewer = ({visible, onClose, title, imageUrl}: InfographicViewerProps) => {
+const InfographicViewer = ({visible, onClose, title, imageUrl, resourceId}: InfographicViewerProps) => {
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   useEffect(() => {
@@ -69,10 +75,9 @@ const InfographicViewer = ({visible, onClose, title, imageUrl}: InfographicViewe
     }).start();
   }, [visible]);
 
-  // Same dependency-free approach used elsewhere in Resources — opens
-  // the raw .svg URL via the OS. A true native "save to device" would
-  // need react-native-fs or react-native-blob-util, neither of which is
-  // in the project yet.
+  // "Tap to view" — just opens the raw .svg for viewing, no CRM logging.
+  // A true native "save to device" would need react-native-fs or
+  // react-native-blob-util, neither of which is in the project yet.
   const handleOpen = async () => {
     try {
       const supported = await Linking.canOpenURL(imageUrl);
@@ -83,6 +88,30 @@ const InfographicViewer = ({visible, onClose, title, imageUrl}: InfographicViewe
       }
     } catch {
       Alert.alert('Something went wrong', 'Please try again.');
+    }
+  };
+
+  // Real "Download" button — routes through
+  // POST /resources/items/{post_id}/download so the CRM lead-capture
+  // side effect actually fires (see resourcesApi.ts downloadResource).
+  // Falls back to the raw imageUrl if the endpoint call fails or no
+  // resourceId was passed in, so download still works either way.
+  const handleDownload = async () => {
+    try {
+      const result = resourceId ? await downloadResource(resourceId) : null;
+      const url = result?.downloadUrl || result?.fileUrl || imageUrl;
+      if (!url) {
+        Alert.alert('Unable to open', 'This file could not be opened.');
+        return;
+      }
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Unable to open', 'This file could not be opened.');
+      }
+    } catch {
+      Alert.alert('Download failed', 'Please try again.');
     }
   };
 
@@ -109,7 +138,7 @@ const InfographicViewer = ({visible, onClose, title, imageUrl}: InfographicViewe
             <Text style={ig.previewLabel}>{'Tap to view this infographic'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={ig.downloadBtn} onPress={handleOpen} activeOpacity={0.85}>
+          <TouchableOpacity style={ig.downloadBtn} onPress={handleDownload} activeOpacity={0.85}>
             <DownloadIcon />
             <Text style={ig.downloadText}>{'Download'}</Text>
           </TouchableOpacity>
