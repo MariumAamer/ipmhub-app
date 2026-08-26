@@ -537,7 +537,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
             frame spec (390×694, padding 0 16, column, space-between). */}
         {activeTab === 'login' && (
           <View style={styles.loginWrap}>
-          <View>
+          <View style={styles.loginFieldsBlock}>
             <Text style={styles.sectionHeading}>{'Login Information'}</Text>
             <Text style={styles.fieldLabel}>{'Account Email'}</Text>
             {loadingEmail ? (
@@ -757,20 +757,28 @@ const styles = StyleSheet.create({
   tabText: {fontSize: 11, fontWeight: '600', color: NAVY},
   tabTextActive: {color: '#FFFFFF'},
   scroll: {flex: 1},
-  scrollContent: {flexGrow: 1, padding: 16},
+  scrollContent: {flexGrow: 1, paddingVertical: 16},
   // Notification Settings tab keeps its bordered card look.
   formCard: {
     backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20,
     borderWidth: 1, borderColor: '#EBEBEB',
+    marginHorizontal: 16,
   },
   // Login Information tab — one continuous layout, no card border, fields
   // at top and account actions pinned to the bottom (space-between), per
-  // the Figma frame spec (390×694, padding 0 16, column, space-between).
+  // the Figma frame spec (node 1502-21386: 390×694, padding 0 16, column,
+  // space-between). paddingHorizontal now lives here (not on scrollContent)
+  // so this frame's white background spans the full device width edge to
+  // edge — previously scrollContent's own padding:16 boxed it in on both
+  // sides, leaving visible grey gutters down the left/right of the screen.
   loginWrap: {
     flex: 1,
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
     backgroundColor: '#FFFFFF',
   },
+  loginFieldsBlock: {alignSelf: 'stretch'},
   sectionHeading: {fontSize: 15, fontWeight: '700', color: NAVY, marginBottom: 6},
   notifSubtitle: {fontSize: 12, color: '#888', lineHeight: 17, marginBottom: 16},
 

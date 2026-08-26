@@ -389,7 +389,6 @@ const NotificationsScreen = ({navigation}: any) => {
     <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
-      <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
 
       <View style={s.titleWrap}>
         <Text style={s.pageTitle}>Notifications</Text>
@@ -482,6 +481,8 @@ const NotificationsScreen = ({navigation}: any) => {
         onClose={() => setSortModalVisible(false)}
         onSelect={handleSortSelect}
       />
+
+      <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
     </View>
   );
 };

@@ -141,6 +141,14 @@ interface ApiEarnMoreBadge {
   locked: boolean;
   status: string;
   unlock_hint: string | null;
+  // Optional — not on the endpoint yet (being added). When present, the
+  // card shows a filled progress bar + a "current/unlock" points pill
+  // (e.g. "10/100") instead of the flat grey "Locked" pill. Naming
+  // mirrors ApiProgress's current_points/unlock_points above for
+  // consistency. Absent or 0 current_points falls back to the plain
+  // "Locked" state.
+  current_points?: number;
+  unlock_points?: number;
 }
 
 interface ApiEarnMoreBadges {
@@ -328,7 +336,15 @@ const ActivityRow = ({
 
 const EarnedBadgeCard = ({badge}: {badge: ApiEarnedBadge}) => (
   <View style={styles.earnedCard}>
-    <Image source={{uri: badge.image}} style={styles.earnedImage} resizeMode="cover" />
+    {/* resizeMode="contain" (not "cover") — badge art comes in different
+        natural shapes (wide landscape cards, tall hexagon/shield badges,
+        etc). "cover" forces every badge into this box's 163:94 landscape
+        ratio and crops whatever doesn't fit — that's why tall/non-landscape
+        badges were losing their top and bottom. PublicBadgeCard already
+        uses "contain" for the same badge.image field; this just brings
+        EarnedBadgeCard in line with it so nothing ever gets cropped,
+        letterboxing into the existing #D9D9D9 background instead. */}
+    <Image source={{uri: badge.image}} style={styles.earnedImage} resizeMode="contain" />
     <Text style={styles.earnedTitle}>{badge.label}</Text>
     <Text style={styles.earnedDesc}>{badge.description}</Text>
     <View style={styles.earnedBtnRow}>
@@ -371,6 +387,16 @@ const EarnMoreBadgeCard = ({badge}: {badge: ApiEarnMoreBadge}) => {
     ? require('../assets/images/ipmbadge1.png')
     : {uri: badge.image};
 
+  // Once current_points/unlock_points come through from the API, a badge
+  // with some points already earned shows the filled bar + blue "x/y"
+  // pill (screenshot 1); anything with no points yet (or the fields
+  // simply aren't in the response yet) falls back to the flat grey
+  // "Locked" pill + empty bar (screenshot 2).
+  const hasProgress = !!badge.current_points && !!badge.unlock_points;
+  const pct = hasProgress
+    ? Math.min(badge.current_points! / badge.unlock_points!, 1)
+    : 0;
+
   return (
   <View style={styles.lockedCard}>
     <View style={styles.lockedImageWrap}>
@@ -389,10 +415,22 @@ const EarnMoreBadgeCard = ({badge}: {badge: ApiEarnMoreBadge}) => {
     <Text style={styles.lockedTitle}>{badge.label}</Text>
     <Text style={styles.lockedDesc}>{badge.description}</Text>
     <View style={styles.lockedProgressRow}>
-      <View style={styles.lockedProgressBg} />
-      <View style={styles.lockedPill}>
-        <Text style={styles.lockedPillText}>Locked</Text>
+      <View style={styles.lockedProgressBg}>
+        {hasProgress && (
+          <View style={[styles.lockedProgressFill, {width: `${pct * 100}%`}]} />
+        )}
       </View>
+      {hasProgress ? (
+        <View style={styles.progressPill}>
+          <Text style={styles.progressPillText}>
+            {badge.current_points}/{badge.unlock_points}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.lockedPill}>
+          <Text style={styles.lockedPillText}>Locked</Text>
+        </View>
+      )}
     </View>
     {badge.unlock_hint ? <Text style={styles.lockedHint}>{badge.unlock_hint}</Text> : null}
   </View>
@@ -756,9 +794,16 @@ const styles = StyleSheet.create({
   },
 
   // ── Earned badge card ──
+  // Per Figma spec: height 385, padding 16, flex column, align-items
+  // flex-start, gap 24, align-self stretch, flex-shrink 0. Switched from
+  // per-element marginBottom to an explicit container gap for the same
+  // reason as lockedCard above — one source of truth for the rhythm
+  // instead of margins that can drift out of sync.
   earnedCard: {
     backgroundColor: '#FFF', borderRadius: 5,
     padding: 16, height: 385,
+    flexDirection: 'column', alignItems: 'flex-start', gap: 24,
+    alignSelf: 'stretch', flexShrink: 0,
     shadowColor: '#000', shadowOffset: {width: 0, height: 0},
     shadowOpacity: 0.15, shadowRadius: 10.023, elevation: 3,
     marginBottom: 24,
@@ -766,11 +811,10 @@ const styles = StyleSheet.create({
   earnedImage: {
     width: '100%', aspectRatio: 163 / 94,
     borderRadius: 8, backgroundColor: '#D9D9D9',
-    marginBottom: 24,
   },
-  earnedTitle: {fontFamily: 'Runda', fontWeight: '700', fontSize: 16, color: '#192546', marginBottom: 24},
-  earnedDesc: {fontFamily: 'Runda', fontWeight: '400', fontSize: 12, color: '#192546', lineHeight: 16, marginBottom: 24},
-  earnedBtnRow: {flexDirection: 'row', gap: 8, marginTop: 4},
+  earnedTitle: {fontFamily: 'Runda', fontWeight: '700', fontSize: 16, color: '#192546'},
+  earnedDesc: {fontFamily: 'Runda', fontWeight: '400', fontSize: 12, color: '#192546', lineHeight: 16},
+  earnedBtnRow: {flexDirection: 'row', gap: 8, alignSelf: 'stretch'},
   downloadBtn: {
     flex: 1, height: 36, paddingHorizontal: 16, borderRadius: 100, backgroundColor: '#0C4D91',
     justifyContent: 'center', alignItems: 'center',
@@ -858,9 +902,16 @@ const styles = StyleSheet.create({
   },
 
   // ── Locked / "earn more" badge card ──
+  // Per updated Figma spec: card radius 5 (was 10), height 423, and a single
+  // flex gap:24 between the direct children (image/title/desc/progress row/
+  // hint) instead of the old per-element marginBottom values — those had
+  // drifted out of sync (a stray marginBottom:8 on the progress row was
+  // fighting the 24px rhythm everywhere else, which is why the hint text
+  // sat too close to the progress bar).
   lockedCard: {
-    backgroundColor: '#FFF', borderRadius: 10,
-    padding: 16, height: 422,
+    backgroundColor: '#FFF', borderRadius: 5,
+    padding: 16, height: 423,
+    flexDirection: 'column', alignItems: 'flex-start', gap: 24,
     shadowColor: '#000', shadowOffset: {width: 0, height: 0},
     shadowOpacity: 0.15, shadowRadius: 10, elevation: 3,
     marginBottom: 24,
@@ -869,7 +920,6 @@ const styles = StyleSheet.create({
     width: '100%', aspectRatio: 163 / 94,
     borderRadius: 10, overflow: 'hidden',
     backgroundColor: '#D9D9D9',
-    marginBottom: 24,
   },
   lockedImage: {
     width: '100%', height: '100%',
@@ -877,15 +927,28 @@ const styles = StyleSheet.create({
   lockIconCenter: {
     ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center',
   },
-  lockedTitle: {fontFamily: 'Runda', fontWeight: '700', fontSize: 16, color: '#192546', marginBottom: 24},
+  lockedTitle: {fontFamily: 'Runda', fontWeight: '700', fontSize: 16, color: '#192546'},
   lockedDesc: {
     fontFamily: 'Runda', fontWeight: '400', fontSize: 12,
     color: '#192546', lineHeight: 16,
-    alignSelf: 'stretch', marginBottom: 24,
+    alignSelf: 'stretch',
   },
-  lockedProgressRow: {flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8},
-  lockedProgressBg: {flex: 1, height: 6, backgroundColor: '#E8E9F1', borderRadius: 20, overflow: 'hidden'},
-  lockedProgressFill: {height: 6, borderRadius: 20},
+  // "progress and btn" row per spec: gap:12, align-self:stretch (no more
+  // separate marginBottom — spacing to the hint below now comes from the
+  // parent's gap:24).
+  lockedProgressRow: {flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'stretch'},
+  // Track: height 10 (was 6), fully pill-rounded (rx=5 on a 10px-tall bar
+  // == fully round, matches the spec svg).
+  lockedProgressBg: {flex: 1, height: 10, backgroundColor: '#E8E9F1', borderRadius: 5, overflow: 'hidden'},
+  // Fill: square on the left, rounded only on the right ("0 20px 20px 0" in
+  // the spec) so it reads as filling into the track rather than a floating
+  // pill — previously this used a uniform borderRadius:20 which rounded
+  // all four corners.
+  lockedProgressFill: {
+    height: 10,
+    borderTopLeftRadius: 0, borderBottomLeftRadius: 0,
+    borderTopRightRadius: 20, borderBottomRightRadius: 20,
+  },
   lockedPill: {
     paddingHorizontal: 14, height: 28, borderRadius: 100,
     backgroundColor: '#E8E9F1', justifyContent: 'center', alignItems: 'center',

@@ -28,7 +28,6 @@ import {
   Image,
   TouchableOpacity,
   StatusBar,
-  SafeAreaView,
   ActivityIndicator,
   Linking,
   Alert,
@@ -980,14 +979,14 @@ const ExperienceTab = ({userId, isOwn, navigation, displayName, profileData}: {u
           self-contained per Figma. Edit affordance deferred (empty-state
           '+' only) — TODO: add an edit entry point for populated state. */}
       {specialities.length > 0 ? (
-        <>
+        <View style={s.specialitiesSection}>
           <Text style={s.sectionTitle}>{'Specialities'}</Text>
           <View style={s.tagsRow}>
             {specialities.map((sp, i) => (
               <View key={i} style={s.tag}><Text style={s.tagText}>{sp}</Text></View>
             ))}
           </View>
-        </>
+        </View>
       ) : (
         <View style={s.infoCard}>
           <View style={s.infoCardRow}>
@@ -1189,10 +1188,31 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
     is_following: m.is_following ?? false,
   }));
 
+  // The backend's is_following flag on the *followers* list has been seen
+  // to come back false/stale for people the viewer does in fact follow
+  // (confirmed: a followed member still showed "Follow" instead of
+  // "Message"). The same response also carries the viewer's own following
+  // list, so self-correct — anyone in followers whose id also appears in
+  // following is, by definition, someone the viewer follows — rather than
+  // trusting the followers payload's flag alone.
+  const reconcileConnections = (rawFollowers: any[], rawFollowing: any[]) => {
+    const followingList = normalize(rawFollowing);
+    const followingIds = new Set(followingList.map(f => f.id));
+    const followersList = normalize(rawFollowers).map(f => ({
+      ...f,
+      is_following: f.is_following || followingIds.has(f.id),
+    }));
+    return {followersList, followingList};
+  };
+
   useEffect(() => {
     if (profileData?.connections) {
-      setFollowers(normalize(profileData.connections.followers));
-      setFollowing(normalize(profileData.connections.following));
+      const {followersList, followingList} = reconcileConnections(
+        profileData.connections.followers,
+        profileData.connections.following,
+      );
+      setFollowers(followersList);
+      setFollowing(followingList);
       setLoading(false);
     } else {
       fetchAll();
@@ -1206,8 +1226,12 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
     setLoading(true);
     try {
       const mp = await apiRequest(`${BASE}/custom/v1/member-profile/${userId}`).catch(() => null);
-      setFollowers(normalize(mp?.connections?.followers));
-      setFollowing(normalize(mp?.connections?.following));
+      const {followersList, followingList} = reconcileConnections(
+        mp?.connections?.followers,
+        mp?.connections?.following,
+      );
+      setFollowers(followersList);
+      setFollowing(followingList);
     } finally {
       setLoading(false);
     }
@@ -1268,12 +1292,16 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
       <TouchableOpacity
         style={s.connRow}
         activeOpacity={0.7}
-        // Tapping the row toggles follow/unfollow — Instagram-style: not
-        // yet following → follow; already following → unfollow. Uses the
-        // same toggleFollow as the button below (which the button's own
-        // nested TouchableOpacity intercepts, so a button tap never
-        // double-fires this).
-        onPress={() => toggleFollow(item.id, isFlw)}>
+        // Followers tab: tapping the row toggles follow/unfollow —
+        // Instagram-style: not yet following → follow; already following →
+        // unfollow. Uses the same toggleFollow as the button below (which
+        // the button's own nested TouchableOpacity intercepts, so a button
+        // tap never double-fires this).
+        // Following tab: everyone here is already followed, so the row
+        // must NOT toggle follow (that would silently unfollow someone on
+        // a stray tap) — it opens the same DM thread as the Message button
+        // instead, keeping row-tap and button-tap consistent.
+        onPress={() => (isFollowingList ? openDM(item) : toggleFollow(item.id, isFlw))}>
         {/* Avatar is its own nested touchable so a tap on the photo opens
             that member's profile instead of toggling follow — the row's
             own onPress above only fires when the tap lands outside this
@@ -1304,8 +1332,10 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
           onPress={() => (isFollowingList ? openDM(item) : toggleFollow(item.id, isFlw))}
           disabled={busy[item.id]}>
           {busy[item.id]
-            ? <ActivityIndicator size="small" color={(isFollowingList || isFlw) ? '#888' : '#192546'} />
-            : <Text style={[s.connBtnText, (isFollowingList || isFlw) && s.connBtnTextActive]}>
+            ? <ActivityIndicator size="small" color={(isFollowingList || isFlw) ? '#0C4D91' : '#FFF'} />
+            : <Text
+                style={[s.connBtnText, (isFollowingList || isFlw) && s.connBtnTextActive]}
+                numberOfLines={1}>
                 {/* Following tab: always "Message". Followers tab: "Follow"
                     until you follow them back, then "Message". */}
                 {isFollowingList ? 'Message' : (isFlw ? 'Message' : 'Follow')}
@@ -2094,7 +2124,7 @@ const MemberProfileScreen = ({navigation, route}: any) => {
   };
 
   return (
-    <SafeAreaView style={s.container}>
+    <View style={s.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -2113,16 +2143,18 @@ const MemberProfileScreen = ({navigation, route}: any) => {
 
         {/* Tab bar */}
         <View style={s.tabBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{flexDirection:'row'}}>
-              {tabs.map((tab) => (
-                <TouchableOpacity key={tab.key} style={s.tabItem} onPress={() => setActiveTab(tab.key)}>
-                  <Text style={[s.tabLabel, activeTab===tab.key && s.tabLabelActive]}>{tab.label}</Text>
-                  {activeTab===tab.key && <View style={s.tabUnderline} />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+          <View style={s.tabBarInner}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{flexDirection:'row', gap:12}}>
+                {tabs.map((tab) => (
+                  <TouchableOpacity key={tab.key} style={s.tabItem} onPress={() => setActiveTab(tab.key)}>
+                    <Text style={[s.tabLabel, activeTab===tab.key && s.tabLabelActive]}>{tab.label}</Text>
+                    {activeTab===tab.key && <View style={s.tabUnderline} />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
         </View>
 
         {/* Tab content */}
@@ -2146,7 +2178,7 @@ const MemberProfileScreen = ({navigation, route}: any) => {
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -2238,14 +2270,39 @@ const s = StyleSheet.create({
   linkedInBtnText: {color:'#0C4D91', fontSize:14, fontWeight:'500'},
   linkedInBtnDisabled: {opacity:0.4},
 
-  // Tab bar — Figma exact
-  tabBar: {backgroundColor:'#FFF', borderBottomWidth:1, borderBottomColor:'#EBEBEB', marginBottom:8},
-  tabItem: {paddingHorizontal:12, paddingVertical:14, position:'relative', alignItems:'center'},
+  // Tab bar — Figma exact: outer 58px column frame (gap 10, stretch) wraps
+  // the 45px white tab row (padding 0 16, gap 12, drop-shadow 0 5 12 rgba(0,0,0,.10))
+  tabBar: {
+    height:58,
+    flexDirection:'column',
+    alignItems:'flex-start',
+    gap:10,
+    alignSelf:'stretch',
+    backgroundColor:'#FFF',
+  },
+  tabBarInner: {
+    height:45,
+    paddingHorizontal:16,
+    flexDirection:'row',
+    alignItems:'flex-start',
+    alignSelf:'stretch',
+    backgroundColor:'#FFF',
+    shadowColor:'#000',
+    shadowOffset:{width:0, height:5},
+    shadowOpacity:0.10,
+    shadowRadius:12,
+    elevation:6,
+  },
+  tabItem: {paddingTop:12, position:'relative', alignItems:'center'},
   tabLabel: {fontSize:14, color:'#192546', fontWeight:'500', lineHeight:18},
-  tabLabelActive: {color:'#192546', fontWeight:'700'},
+  // Selected tab — Figma spec: same weight/size/color as inactive, the
+  // only visual difference is the underline below (drawn as a separate
+  // View since RN's native text-decoration can't carry a custom
+  // thickness/offset/color independent of the text itself).
+  tabLabelActive: {color:'#192546', fontWeight:'500'},
   tabUnderline: {
-    position:'absolute', bottom:0, left:12, right:12,
-    height:2, backgroundColor:'#084D92', borderRadius:1,
+    position:'absolute', bottom:-10, left:0, right:0,
+    height:2.5, backgroundColor:'#084D92', borderRadius:1,
   },
 
   // Tab content
@@ -2254,7 +2311,7 @@ const s = StyleSheet.create({
   // Marium's spec (replaces generic tabContent for this tab specifically).
   experienceFrame: {
     backgroundColor:'#FFF',
-    paddingHorizontal:16, paddingBottom:16, paddingTop:0,
+    paddingHorizontal:16, paddingBottom:16, paddingTop:16,
     flexDirection:'column', alignItems:'stretch', gap:24, alignSelf:'stretch',
   },
   sectionRow: {flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:12},
@@ -2262,26 +2319,70 @@ const s = StyleSheet.create({
   divider: {height:1, backgroundColor:'#F0F0F0', marginVertical:16},
   dividerFlat: {height:1, backgroundColor:'#F0F0F0'},
 
-  // Tags
-  tagsRow: {flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12},
-  tag:     {backgroundColor:'#E8F1FF', borderRadius:20, paddingHorizontal:12, paddingVertical:6},
-  tagText: {fontSize:12, color:'#0C4D91', fontWeight:'500'},
-  tagSmall: {borderWidth:1, borderColor:'#DDD', borderRadius:20, paddingHorizontal:10, paddingVertical:4},
-  tagSmallText: {fontSize:11, color:'#555'},
+  // Specialities section — Figma spec (node 1652-24058): column, flex-start,
+  // gap 16 between title and tags, stretched full width. The 16px horizontal
+  // inset from the spec is already provided by the parent experienceFrame
+  // (shared across every section in this tab), so it isn't repeated here.
+  specialitiesSection: {
+    flexDirection:'column',
+    alignItems:'flex-start',
+    gap:16,
+    alignSelf:'stretch',
+  },
 
-  // Project card
+  // Tags — Specialities pill (Figma spec: filled light-blue, fully
+  // rounded, centered content, white body-S text).
+  tagsRow: {flexDirection:'row', flexWrap:'wrap', gap:8},
+  tag: {
+    paddingVertical:6, paddingHorizontal:10,
+    justifyContent:'center', alignItems:'center',
+    borderRadius:100,
+    backgroundColor:'#46B0E3',
+  },
+  tagText: {fontFamily:'Runda-Normal', fontSize:12, fontWeight:'400', lineHeight:16, color:'#FFF'},
+  // Project specialities pill — Figma spec: filled light-blue, fully
+  // rounded, centered content.
+  tagSmall: {
+    paddingVertical:6, paddingHorizontal:10,
+    justifyContent:'center', alignItems:'center',
+    borderRadius:100,
+    backgroundColor:'#46B0E3',
+  },
+  tagSmallText: {fontSize:12, color:'#FFF', fontWeight:'500'},
+
+  // Project card — Figma spec: padding 16, gap 16 (image↔text), flex-start,
+  // stretch, radius 5, white bg, drop-shadow (no border).
   projectCard: {
-    flexDirection:'row', gap:12,
-    borderWidth:1, borderColor:'#EBEBEB', borderRadius:10, padding:12,
-    marginBottom:8,
+    flexDirection:'row', alignItems:'flex-start', gap:16,
+    alignSelf:'stretch',
+    padding:16, borderRadius:5,
+    backgroundColor:'#FFF',
+    shadowColor:'#000',
+    shadowOffset:{width:0, height:0},
+    shadowOpacity:0.15,
+    shadowRadius:9,
+    elevation:4,
   },
   projectThumb: {
-    width:72, height:72, borderRadius:8,
+    width:80, height:80, borderRadius:8,
     backgroundColor:'#EFF3FF', alignItems:'center', justifyContent:'center',
   },
-  projectTitle: {fontSize:14, fontWeight:'700', color:'#1A1A1A', marginBottom:3},
-  projectRole:  {fontSize:12, color:'#0C4D91', fontWeight:'600', marginBottom:4},
-  projectDesc:  {fontSize:12, color:'#555', lineHeight:17, marginBottom:8},
+  // Title — Heading/H4: navy, 14px, medium weight, normal line-height.
+  projectTitle: {
+    fontFamily:'Runda-Medium', fontSize:14, fontWeight:'500',
+    color:'#192546', marginBottom:4,
+  },
+  // Designation (role/organisation) — Body/Body S: light blue, 12px,
+  // normal weight, 16px line-height.
+  projectRole: {
+    fontFamily:'Runda-Normal', fontSize:12, fontWeight:'400', lineHeight:16,
+    color:'#46B0E3', marginBottom:2,
+  },
+  // Description — Body/Body S: navy, 12px, normal weight, 16px line-height.
+  projectDesc: {
+    fontFamily:'Runda-Normal', fontSize:12, fontWeight:'400', lineHeight:16,
+    color:'#192546', marginBottom:8,
+  },
 
   // Timeline entries (Experience / Education / Credential — shared style)
   timelineRow:  {flexDirection:'row', gap:12},
@@ -2397,14 +2498,38 @@ const s = StyleSheet.create({
   connName:    {fontSize:14, fontWeight:'700', color:'#1A1A1A', marginBottom:2},
   connMeta:    {fontSize:12, color:'#555'},
   connCountry: {fontSize:11, color:'#888'},
+  // Follow (default) — Figma spec: 83x36 filled pill, dark blue bg, no border.
   connBtn: {
-    borderWidth:1.5, borderColor:'#192546', borderRadius:20,
-    paddingHorizontal:14, paddingVertical:7, minWidth:82, alignItems:'center',
-    backgroundColor:'#FFF',
+    flexDirection:'row', width:83, height:36,
+    // paddingVertical:12 with a fixed height:36 leaves only 12px of inner
+    // room for the label — RN clips content to the rounded-corner bounds
+    // whenever borderRadius + a background/border is present, so the text
+    // was getting visibly cropped. 8px vertical padding leaves 20px of
+    // room, comfortably fitting a 12px label at its line-height.
+    paddingVertical:8, paddingHorizontal:16,
+    justifyContent:'center', alignItems:'center', gap:8,
+    borderRadius:50, borderWidth:0,
+    backgroundColor:'#0C4D91',
   },
-  connBtnActive:     {backgroundColor:'#192546', borderColor:'#192546'},
-  connBtnText:       {fontSize:12, color:'#192546', fontWeight:'600'},
-  connBtnTextActive: {color:'#FFF'},
+  // Message (mutual-follow / already-following state) — Figma spec:
+  // outline-only pill, dark blue 1px border, transparent fill, width
+  // sized to its (longer) label rather than the fixed 83px Follow width —
+  // width:undefined here unsets connBtn's fixed width when merged.
+  connBtnActive: {
+    width:undefined,
+    backgroundColor:'transparent',
+    borderWidth:1,
+    borderColor:'#0C4D91',
+  },
+  connBtnText: {
+    fontFamily:'Runda-Medium',
+    fontSize:12,
+    lineHeight:16,
+    color:'#FFF',
+    fontWeight:'500',
+    textAlign:'center',
+  },
+  connBtnTextActive: {color:'#0C4D91'},
 
   // Courses & Certifications — per Marium's Figma spec
   coursesFrame: {

@@ -662,6 +662,13 @@ export interface ResourceDownloadResult {
   fileUrl: string;
   downloadUrl: string;
   filename: string;
+  // Surfaced so callers/debuggers can tell whether the backend actually
+  // wrote the CRM lead — previously these were read from the response and
+  // then discarded, so a silent CRM-save failure looked identical to a
+  // success from the app's point of view (the file still opened either
+  // way, since file_url/download_url come back regardless of crm.saved).
+  crmSaved: boolean | null;
+  crmModule: string | null;
 }
 
 export const downloadResource = async (
@@ -689,10 +696,26 @@ export const downloadResource = async (
     const data = await res.json();
     if (!data?.success) return null;
 
+    // data.crm.saved reflects whether the backend's WP -> CRM (Leads
+    // module) write actually succeeded — that's a server-side integration
+    // step, entirely separate from whether the file opened. A user
+    // reporting "download works but CRM isn't syncing" means this is
+    // false (or the crm object itself is missing) even though success
+    // is true — log it loudly here so it shows up in Metro/device logs
+    // without needing to add ad-hoc debugging every time this comes up.
+    if (data?.crm?.saved !== true) {
+      console.warn(
+        `[resourcesApi] downloadResource(${postId}): CRM save did not report success`,
+        data?.crm,
+      );
+    }
+
     return {
       fileUrl: data?.download?.file_url || '',
       downloadUrl: data?.download?.download_url || '',
       filename: data?.download?.filename || data?.resource?.filename || '',
+      crmSaved: typeof data?.crm?.saved === 'boolean' ? data.crm.saved : null,
+      crmModule: data?.crm?.module ?? null,
     };
   } catch {
     return null;

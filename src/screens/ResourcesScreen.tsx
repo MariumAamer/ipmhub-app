@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   TextInput,
   StatusBar,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
   Animated,
@@ -414,7 +413,7 @@ const ResourcesScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
@@ -555,7 +554,7 @@ const ResourcesScreen = ({navigation}: any) => {
       />
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 

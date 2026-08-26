@@ -12,7 +12,6 @@ import {
   Animated,
   Platform,
   Linking,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
 import Svg, { Path, Mask, Rect, G } from 'react-native-svg';
@@ -655,20 +654,13 @@ export default function StoreScreen({ navigation }: any) {
   const MAIN_TABS: MainTab[] = ['All', 'Courses', 'Certifications', 'PM Softwares'];
 
   return (
-    // FIXED (Aug 2026): was a plain <View>, with no SafeAreaView anywhere in
-    // this screen. AppHeader only adds its own safe-area top inset on
-    // Android (see the comment in AppHeader.tsx) — on iOS it relies
-    // entirely on the screen wrapping it in a SafeAreaView, since the core
-    // react-native SafeAreaView is a real safe-area component there. Every
-    // other AppHeader screen (Feed, MemberProfile, Forums, Resources,
-    // Intros, Notifications, Courses, Events, Mentors, etc.) already wraps
-    // AppHeader in <SafeAreaView> — this was the one screen that didn't,
-    // which is why only Store rendered its header underneath the iOS
-    // status bar/notch (time/date/battery) while everything else was fine.
-    <SafeAreaView style={styles.container}>
+    // AppHeader applies the real device top inset itself (useSafeAreaInsets,
+    // works on both iOS and Android) — it doesn't need a SafeAreaView
+    // wrapper. Every other AppHeader screen uses a plain View for this
+    // reason; wrapping it here too was doubling the space above the header.
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
-      <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
 
       {/* Main tab bar */}
       <View style={styles.mainTabBar}>
@@ -699,7 +691,9 @@ export default function StoreScreen({ navigation }: any) {
             preloadedPagination={swData.pagination} onBack={() => setActiveTab('All')} />
         )}
       </View>
-    </SafeAreaView>
+
+      <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
+    </View>
   );
 }
 

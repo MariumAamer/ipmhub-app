@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   TextInput,
   StatusBar,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
   Alert,
@@ -1241,7 +1240,7 @@ const FeedScreen = ({navigation}: any) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <AppHeader
@@ -1385,7 +1384,7 @@ const FeedScreen = ({navigation}: any) => {
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
       <FabMenu visible={fabMenuOpen} onClose={() => setFabMenuOpen(false)} navigation={navigation} />
-    </SafeAreaView>
+    </View>
   );
 };
 
