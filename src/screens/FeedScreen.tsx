@@ -18,6 +18,7 @@ import {
   Dimensions,
   Linking,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import * as Keychain from 'react-native-keychain';
 import {
@@ -38,8 +39,11 @@ import {
   FeedPost,
   Member,
 } from '../api/feedApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ProfileDrawer from '../components/ProfileDrawer';
 import FabMenu from '../components/FabMenu';
+import NotificationPermissionModal from '../components/NotificationPermissionModal';
+import {requestUserPermissionAndRegister} from '../api/pushNotifications';
 import {getUserIdFromToken} from '../api/profileApi';
 import {getTopicTagsAndVoices} from '../api/forumsApi';
 import Svg, {Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Ellipse, Rect} from 'react-native-svg';
@@ -47,6 +51,8 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import AppHeader from '../components/AppHeader';
 
 const {width: W} = Dimensions.get('window');
+
+const NOTIF_PROMPT_SEEN_KEY = 'ipm_notif_prompt_seen';
 
 // ─── Report issues ────────────────────────────────────────────────────────────
 const REPORT_ISSUES = [
@@ -999,10 +1005,43 @@ const FeedScreen = ({navigation}: any) => {
   const [muteToastVisible, setMuteToastVisible] = useState(false);
   const [muteToastMuted, setMuteToastMuted] = useState(false);
 
+  // First-run / reinstall notification permission prompt
+  const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+
   useEffect(() => {
     initUser();
     loadInitialData();
+    checkNotifPrompt();
   }, []);
+
+  const checkNotifPrompt = async () => {
+    try {
+      const seen = await AsyncStorage.getItem(NOTIF_PROMPT_SEEN_KEY);
+      if (!seen) {
+        // Small delay so it doesn't flash in before the feed has rendered.
+        setTimeout(() => setShowNotifPrompt(true), 800);
+      }
+    } catch {
+      // If AsyncStorage read fails, don't block the feed on it — just skip
+      // showing the prompt this session rather than crashing.
+    }
+  };
+
+  const dismissNotifPrompt = async () => {
+    setShowNotifPrompt(false);
+    try {
+      await AsyncStorage.setItem(NOTIF_PROMPT_SEEN_KEY, '1');
+    } catch {}
+  };
+
+  const handleAllowNotifications = async () => {
+    try {
+      await requestUserPermissionAndRegister();
+    } catch (err) {
+      console.log('[FeedScreen] handleAllowNotifications error:', err);
+    }
+    dismissNotifPrompt();
+  };
 
   const initUser = async () => {
      const creds = await Keychain.getGenericPassword();
@@ -1240,7 +1279,7 @@ const FeedScreen = ({navigation}: any) => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <AppHeader
@@ -1382,9 +1421,16 @@ const FeedScreen = ({navigation}: any) => {
       {/* Mute Toast */}
       <MuteToast visible={muteToastVisible} muted={muteToastMuted} />
 
+      {/* First-run / reinstall notification permission prompt */}
+      <NotificationPermissionModal
+        visible={showNotifPrompt}
+        onAllow={handleAllowNotifications}
+        onSkip={dismissNotifPrompt}
+      />
+
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
       <FabMenu visible={fabMenuOpen} onClose={() => setFabMenuOpen(false)} navigation={navigation} />
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -1559,12 +1605,11 @@ const styles = StyleSheet.create({
   // Figma: Heading/H3
   postTitle: {
     fontSize: 16,
-    fontWeight: '500',
     color: '#192647',
     lineHeight: 20,
     letterSpacing: 0.08,
     marginBottom: 6,
-    fontFamily: 'Runda',
+    fontFamily: 'Runda-Bold',
   },
   // Figma: Body/Body M
   postContent: {
@@ -1640,9 +1685,8 @@ const styles = StyleSheet.create({
   peopleInvolvedGroup: {flexDirection: 'row', alignItems: 'center', gap: 6},
   peopleInvolvedText: {
     color: '#192647',
-    fontFamily: 'Runda',
+    fontFamily: 'Runda-Bold',
     fontSize: 12,
-    fontWeight: '500',
   },
 
   joinDiscussionWrap: {marginBottom: 14, borderRadius: 10, overflow: 'hidden'},

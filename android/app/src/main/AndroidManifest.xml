@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -30,6 +31,16 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!--
+      Required for push notifications (Firebase Cloud Messaging) on
+      Android 13+ (API 33+). Before API 33, notifications were shown
+      without an explicit runtime permission — on 13+, the app must both
+      declare this AND request it at runtime (via PermissionsAndroid or
+      the Firebase messaging service) or notifications are silently
+      dropped, no error, no crash, they just never show.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <queries>
         <package android:name="com.google.android.youtube" />
         <intent>
@@ -45,6 +56,28 @@
       android:roundIcon="@mipmap/ic_launcher_round"
       android:allowBackup="false"
       android:theme="@style/AppTheme">
+
+      <!--
+        Default notification channel for FCM. Android 8+ (API 26+) requires
+        every notification to belong to a channel; if none is specified,
+        FCM falls back to a channel called "Miscellaneous" with default
+        (low-attention) importance. Declaring this ourselves means
+        notifications land in a channel named "default" that we control —
+        matters for consistent behavior and if we want to fine-tune
+        importance/sound later without a bigger Notifee integration.
+      -->
+      <!--
+        tools:replace is required here — @react-native-firebase/messaging
+        ships its own empty version of this exact meta-data tag in its
+        library AndroidManifest.xml, which conflicts with ours during
+        manifest merge (confirmed by the "processDebugMainManifest" build
+        error). This tells the merger to keep our value instead of theirs.
+      -->
+      <meta-data
+          android:name="com.google.firebase.messaging.default_notification_channel_id"
+          android:value="default"
+          tools:replace="android:value" />
+
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"
@@ -59,15 +92,29 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
 
-        <!-- Deep links from email verification -->
-        <intent-filter android:autoVerify="true">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data
-                android:scheme="https"
-                android:host="hub.instituteprojectmanagement.com" />
-        </intent-filter>
+        <!--
+          Removed 2026-08-28: a broad, unscoped https autoVerify intent-filter
+          (scheme=https, host=hub.instituteprojectmanagement.com, no
+          pathPrefix) used to sit here. Because it had no path restriction it
+          claimed EVERY link on the domain, including /activated/?key=... —
+          so tapping the email activation link opened the app directly and
+          never let the real WordPress endpoint that processes ?key= and
+          flips the account active actually run. VerifyEmailScreen.tsx then
+          just pattern-matched "activate" in the URL and showed a false
+          "Account verified!" success screen, while the account was never
+          actually activated server-side (confirmed: login right after threw
+          the real "account not activated" error).
+
+          Removing this filter means /activated/ links now open in a normal
+          browser and genuinely hit WordPress, so activation actually works.
+          The trade-off is the app no longer auto-returns afterward — to get
+          that back properly, Robby needs to build a bounce page for
+          /activated/ (same pattern as /linkedin-callback-app below: process
+          the key server-side FIRST, then show a tappable link to a custom
+          ipmhub:// scheme). Once that exists, re-add a SCOPED intent-filter
+          here with android:pathPrefix set to only that specific path — never
+          re-add it unscoped like this.
+        -->
 
         <!--
           Custom-scheme deep link for the LinkedIn OAuth redirect and for

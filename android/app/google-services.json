@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "351297696871",
+    "project_id": "ipm-hub-app",
+    "storage_bucket": "ipm-hub-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:351297696871:android:6ca70e2b689b544565d0c2",
+        "android_client_info": {
+          "package_name": "com.ipmmobileapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIjH6hmwCZ25QClISy1wys2cjK5Uhoj98"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

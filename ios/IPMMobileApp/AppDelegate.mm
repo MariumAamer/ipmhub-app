@@ -1,5 +1,6 @@
 #import "AppDelegate.h"
 
+#import <Firebase.h>
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTLinkingManager.h>
 
@@ -11,6 +12,16 @@
   // You can add your custom initial props in the dictionary below.
   // They will be passed down to the ViewController used by React Native.
   self.initialProps = @{};
+
+  // Initializes Firebase (Messaging, etc.) using GoogleService-Info.plist.
+  // Must run before super's didFinishLaunchingWithOptions so RN's own
+  // startup doesn't race with Firebase setup. Note: React Native Firebase
+  // registers for remote notifications and bridges the APNs device token
+  // to Firebase automatically via method swizzling (enabled by default) —
+  // no manual didRegisterForRemoteNotificationsWithDeviceToken: override
+  // needed here unless swizzling gets explicitly disabled later via
+  // FirebaseAppDelegateProxyEnabled in Info.plist.
+  [FIRApp configure];
 
   return [super application:application didFinishLaunchingWithOptions:launchOptions];
 }

@@ -11,13 +11,19 @@
  *     onSkip={() => setShowNotifPrompt(false)}
  *   />
  *
- * NOTE(Marium): "Allow Notifications" only fires onAllow — it does not call
- * any OS permission API itself. There's no push notification library
- * (Firebase/Notifee/react-native-permissions) confirmed anywhere in the
- * project yet, and the backend push-token endpoint (POST /ipm/v1/push-token)
- * is still pending from Robby per the project notes. Wire the real
- * "request permission + register push token" flow into onAllow once both
- * of those land — this component only handles the UI/copy.
+ * NOTE(Marium, updated): "Allow Notifications" now calls
+ * requestUserPermissionAndRegister() from src/api/pushNotifications.ts
+ * before firing the parent's onAllow — this requests the OS permission
+ * (Android 13+ runtime permission / iOS native prompt), gets the FCM
+ * token, and attempts to register it with the backend. The backend
+ * register-device endpoint is still pending from Robby, so that specific
+ * network call currently fails gracefully (logged, not thrown) until his
+ * endpoint lands — but permission request + token generation work now.
+ *
+ * onAllow (the prop) still fires regardless of whether permission was
+ * granted or the backend call succeeded — it's meant for UI concerns like
+ * closing the modal / setting the "don't show again" flag, not for
+ * gating on permission result.
  *
  * Also worth deciding: where this gets triggered from (once, on first
  * successful login after signup — likely CongratulationsScreen or the
@@ -28,6 +34,7 @@
 import React from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, Modal} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
+import {requestUserPermissionAndRegister} from '../api/pushNotifications';
 
 const NAVY = '#192546';
 const DARK_BLUE = '#0C4D91';
@@ -139,54 +146,68 @@ const NotificationPermissionModal = ({
   visible,
   onAllow,
   onSkip,
-}: NotificationPermissionModalProps) => (
-  <Modal transparent animationType="slide" visible={visible} onRequestClose={onSkip}>
-    <View style={s.overlay}>
-      <View style={s.sheet}>
-        {/* ── Header ── */}
-        <View style={s.header}>
-          <Text style={s.headerTitle}>Notifications</Text>
-        </View>
+}: NotificationPermissionModalProps) => {
+  // Requests OS permission, gets the FCM token, and attempts backend
+  // registration — then always fires the parent's onAllow so the modal
+  // can close / set its "seen" flag regardless of permission outcome.
+  const handleAllow = async () => {
+    try {
+      await requestUserPermissionAndRegister();
+    } catch (err) {
+      console.log('[NotificationPermissionModal] handleAllow error:', err);
+    }
+    onAllow();
+  };
 
-        {/* ── Hero + copy + row list ── */}
-        <View style={s.content}>
-          <BellHero />
-          <Text style={s.title}>Stay connected with IPM Hub</Text>
-          <Text style={s.subtitle}>
-            Turn on notifications to never miss messages, likes and comments
-          </Text>
+  return (
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onSkip}>
+      <View style={s.overlay}>
+        <View style={s.sheet}>
+          {/* ── Header ── */}
+          <View style={s.header}>
+            <Text style={s.headerTitle}>Notifications</Text>
+          </View>
 
-          <View style={s.rowList}>
-            {ROWS.map(row => {
-              const Icon = row.icon;
-              return (
-                <View key={row.key} style={s.row}>
-                  <View style={s.iconFrame}>
-                    <Icon />
+          {/* ── Hero + copy + row list ── */}
+          <View style={s.content}>
+            <BellHero />
+            <Text style={s.title}>Stay connected with IPM Hub</Text>
+            <Text style={s.subtitle}>
+              Turn on notifications to never miss messages, likes and comments
+            </Text>
+
+            <View style={s.rowList}>
+              {ROWS.map(row => {
+                const Icon = row.icon;
+                return (
+                  <View key={row.key} style={s.row}>
+                    <View style={s.iconFrame}>
+                      <Icon />
+                    </View>
+                    <View style={s.rowText}>
+                      <Text style={s.rowHeading}>{row.heading}</Text>
+                      <Text style={s.rowDetail}>{row.detail}</Text>
+                    </View>
                   </View>
-                  <View style={s.rowText}>
-                    <Text style={s.rowHeading}>{row.heading}</Text>
-                    <Text style={s.rowDetail}>{row.detail}</Text>
-                  </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
+          </View>
+
+          {/* ── Buttons ── */}
+          <View style={s.btnGroup}>
+            <TouchableOpacity style={s.allowBtn} onPress={handleAllow} activeOpacity={0.85}>
+              <Text style={s.allowBtnText}>Allow Notifications</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.skipBtn} onPress={onSkip} activeOpacity={0.7}>
+              <Text style={s.skipBtnText}>Skip for Now</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        {/* ── Buttons ── */}
-        <View style={s.btnGroup}>
-          <TouchableOpacity style={s.allowBtn} onPress={onAllow} activeOpacity={0.85}>
-            <Text style={s.allowBtnText}>Allow Notifications</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.skipBtn} onPress={onSkip} activeOpacity={0.7}>
-            <Text style={s.skipBtnText}>Skip for Now</Text>
-          </TouchableOpacity>
-        </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({

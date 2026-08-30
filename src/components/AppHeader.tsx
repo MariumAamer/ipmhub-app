@@ -15,6 +15,8 @@ import * as Keychain from 'react-native-keychain';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {apiRequest} from '../api/apiClient';
 import {getUserIdFromToken} from '../api/profileApi';
+import {getNotifications} from '../api/notificationsApi';
+import {getThreadList} from '../api/dmApi';
 
 interface AppHeaderProps {
   navigation: any;
@@ -68,6 +70,20 @@ const BellIcon = () => (
   </Svg>
 );
 
+// Small red count pill overlaid on the envelope/bell icons. Caps the
+// displayed label at "99+" so a large count never blows out the badge —
+// matches the pattern used for the design's notification badge.
+const CountBadge = ({count}: {count: number}) => {
+  if (!count || count <= 0) return null;
+  return (
+    <View style={styles.badge}>
+      <Text style={styles.badgeText} numberOfLines={1}>
+        {count > 99 ? '99+' : String(count)}
+      </Text>
+    </View>
+  );
+};
+
 const Logo = () => (
   <Svg width={100} height={41} viewBox="5 321 1070 438">
     <Polygon points="550.63,469.68 538.24,469.68 538.24,400.37 550.63,400.37" fill="#004C96" />
@@ -105,6 +121,8 @@ const Logo = () => (
 const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<number | null>(null);
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   // Real per-device top inset (status bar height, notch/cutout, etc) from
   // SafeAreaProvider (mounted once in AppNavigator).
   //
@@ -131,7 +149,31 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
 
   useEffect(() => {
     loadMyProfile();
+    loadUnreadCounts();
   }, []);
+
+  // No dedicated "unread totals" endpoint exists on either the notifications
+  // or messages APIs, so this pulls a generous single page of each (unread
+  // notifications; all message threads) and derives the counts client-side —
+  // items.length for notifications, and the sum of each thread's
+  // unread_count for messages. Fine for badge purposes since CountBadge caps
+  // the displayed label at "99+" regardless.
+  const loadUnreadCounts = async () => {
+    try {
+      const [notifRes, threads] = await Promise.all([
+        getNotifications('unread', 1, 100),
+        getThreadList(1),
+      ]);
+      setUnreadNotifCount(notifRes.items.length);
+      const totalMsgs = (threads || []).reduce(
+        (sum, t) => sum + (t?.unread_count || 0),
+        0,
+      );
+      setUnreadMsgCount(totalMsgs);
+    } catch {
+      // Fail silently — badges just stay hidden.
+    }
+  };
 
   const loadMyProfile = async () => {
     try {
@@ -202,6 +244,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
           onPress={() => navigation?.navigate('DMList')}
           hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
           <EnvelopeIcon />
+          <CountBadge count={unreadMsgCount} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -209,6 +252,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
           onPress={() => navigation?.navigate('Notifications')}
           hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
           <BellIcon />
+          <CountBadge count={unreadNotifCount} />
         </TouchableOpacity>
 
         <TouchableOpacity onPress={handleAvatarPress}>
@@ -256,7 +300,27 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   icons: {flexDirection: 'row', alignItems: 'center'},
-  iconBtn: {padding: 2, marginRight: 18},
+  iconBtn: {padding: 2, marginRight: 18, position: 'relative'},
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ED3241',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 12,
+  },
   avatar: {
     width: 36,
     height: 36,

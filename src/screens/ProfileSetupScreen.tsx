@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,7 @@ import Geolocation from '@react-native-community/geolocation';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import {fetchCountries, Country} from '../api/countriesApi';
 import {getCachedCountries, cacheCountries} from '../api/cacheService';
-import {getWelcomeIntroStatus, submitWelcomeIntro, WelcomeIntroPrefill} from '../api/profileApi';
+import {submitWelcomeIntro, resolveCountryForSubmission} from '../api/profileApi';
 import {getStoredUser} from '../api/authApi';
 
 const {width} = Dimensions.get('window');
@@ -73,20 +73,21 @@ const GradientText = ({text, style}: {text: string; style?: any}) => (
 
 // ─── Static industry list ─────────────────────────────────────────────────────
 const INDUSTRIES = [
-  {icon: '🚀', name: 'Aerospace & Defense'},
-  {icon: '🏗️', name: 'Construction & Engineering'},
+  {icon: '🚀', name: 'Aerospace and Defense'},
+  {icon: '🏗️', name: 'Construction and Engineering'},
   {icon: '📚', name: 'Education & Research'},
+  {icon: '🎬', name: 'Media & Entertainment'},
   {icon: '⚡', name: 'Energy & Infrastructure'},
   {icon: '💰', name: 'Financial Services'},
   {icon: '🏛️', name: 'Government & Public Sector'},
-  {icon: '🏥', name: 'Healthcare & Pharmaceuticals'},
   {icon: '🏨', name: 'Hospitality & Tourism'},
+  {icon: '💻', name: 'Technology & Telecommunications'},
   {icon: '🏭', name: 'Manufacturing & Production'},
-  {icon: '🎬', name: 'Media & Entertainment'},
-  {icon: '🤝', name: 'Nonprofit Organisations'},
+  {icon: '🤝', name: 'Nonprofit Organizations'},
+  {icon: '🏥', name: 'Healthcare & Pharmaceuticals'},
+  {icon: '🛍️', name: 'Retail & Consumer Goods'},
   {icon: '🏠', name: 'Real Estate & Property'},
-  {icon: '💻', name: 'Technology & Software'},
-  {icon: '🚛', name: 'Transportation & Logistics'},
+  {icon: '🚛', name: 'Transportation and Logistics'},
 ];
 
 const DEFAULT_COUNTRY: Country = {
@@ -168,16 +169,6 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [saving, setSaving] = useState(false);
   const [showCongrats, setShowCongrats] = useState(false);
 
-  // Welcome-intro status (drives whether the popup shows at all, and prefill)
-  const [userId, setUserId] = useState(0);
-  const [checkingStatus, setCheckingStatus] = useState(true);
-  const [useExistingAvatar, setUseExistingAvatar] = useState(false);
-  const [prefillData, setPrefillData] = useState<WelcomeIntroPrefill | null>(null);
-  // Guards the geolocation auto-detect below from clobbering a country that
-  // already came back from the server prefill — the geolocation lookup can
-  // resolve well after the status call does.
-  const prefillCountryRef = useRef<string>('');
-
   // Step 1
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [jobTitle, setJobTitle] = useState('');
@@ -202,62 +193,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [introduction, setIntroduction] = useState('');
   const [showExample, setShowExample] = useState(true);
 
-  useEffect(() => {
-    loadCountriesAndDetectLocation();
-    checkWelcomeIntroStatus();
-  }, []);
-
-  // Once both the country list and the server prefill are in, match the
-  // prefill's country / phone_country names against the loaded list.
-  useEffect(() => {
-    if (!prefillData || countries.length === 0) return;
-    if (prefillData.country) {
-      const match = countries.find(c => c.name === prefillData.country);
-      if (match) { setSelectedCountry(match); setDetectedCountry(match); }
-    }
-    if (prefillData.phone_country) {
-      const phoneMatch = countries.find(c => c.name === prefillData.phone_country);
-      if (phoneMatch) setSelectedPhoneCountry(phoneMatch);
-    }
-  }, [countries, prefillData]);
-
-  const checkWelcomeIntroStatus = async () => {
-    try {
-      const storedUser = await getStoredUser();
-      const uid = storedUser?.userId || 0;
-      setUserId(uid);
-      if (!uid) return;
-
-      const status = await getWelcomeIntroStatus(uid);
-      if (!status) return;
-
-      if (!status.show_popup || status.already_submitted) {
-        // Already submitted (or server says it shouldn't show) — don't make
-        // the user go through onboarding again.
-        navigation.replace('MainApp');
-        return;
-      }
-
-      if (status.can_use_existing_avatar && status.avatar_url) {
-        setUseExistingAvatar(true);
-        setPhotoUri(status.avatar_url);
-      }
-
-      if (status.prefill) {
-        prefillCountryRef.current = status.prefill.country || '';
-        setPrefillData(status.prefill);
-        if (status.prefill.job) setJobTitle(status.prefill.job);
-        if (status.prefill.company) setCompany(status.prefill.company);
-        if (status.prefill.industry) setSelectedIndustry(status.prefill.industry);
-        if (status.prefill.linkedin) setLinkedIn(status.prefill.linkedin);
-        if (status.prefill.phone) setPhoneNumber(status.prefill.phone);
-      }
-    } catch (err) {
-      console.log('checkWelcomeIntroStatus error:', err);
-    } finally {
-      setCheckingStatus(false);
-    }
-  };
+  useEffect(() => { loadCountriesAndDetectLocation(); }, []);
 
   const requestLocationPermission = async (): Promise<boolean> => {
     if (Platform.OS === 'android') {
@@ -284,10 +220,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
             const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
             const data = await response.json();
             const found = countryList.find(c => c.code === data.countryCode);
-            // Skip if a server prefill country already came back — the
-            // prefill is authoritative and this geolocation lookup can
-            // resolve after it.
-            if (found && !prefillCountryRef.current) { setSelectedCountry(found); setDetectedCountry(found); setSelectedPhoneCountry(found); }
+            if (found) { setSelectedCountry(found); setDetectedCountry(found); setSelectedPhoneCountry(found); }
           } catch {} finally { setDetectingLocation(false); }
         },
         () => setDetectingLocation(false),
@@ -309,8 +242,8 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
   const handlePickPhoto = () => {
     Alert.alert('Profile Photo', 'Choose photo source', [
-      {text: 'Camera', onPress: () => launchCamera({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) { setPhotoUri(res.assets[0].uri!); setUseExistingAvatar(false); } })},
-      {text: 'Photo Library', onPress: () => launchImageLibrary({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) { setPhotoUri(res.assets[0].uri!); setUseExistingAvatar(false); } })},
+      {text: 'Camera', onPress: () => launchCamera({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); })},
+      {text: 'Photo Library', onPress: () => launchImageLibrary({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); })},
       {text: 'Cancel', style: 'cancel'},
     ]);
   };
@@ -334,13 +267,6 @@ const ProfileSetupScreen = ({navigation}: any) => {
         Alert.alert('Required Fields', 'Please fill in your Phone Number, LinkedIn URL, and Introduction to continue.');
         return;
       }
-      // The welcome-intro/submit endpoint requires the bio to be at least
-      // 130 characters — validate client-side so the user gets an inline
-      // reason instead of a generic server error.
-      if (introduction.trim().length < 130) {
-        Alert.alert('Introduction Too Short', `Please write at least 130 characters about yourself (currently ${introduction.trim().length}).`);
-        return;
-      }
       await handleSubmit();
     }
   };
@@ -348,37 +274,35 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const isStep3Valid = !!phoneNumber.trim() && !!linkedIn.trim() && !!introduction.trim();
   const isStep1Valid = !!photoUri && !!jobTitle.trim() && !!company.trim();
 
+  // Replaced 2026-08-28: this used to be 3 separate calls (uploadAvatar +
+  // saveProfile + postIntroductionActivity), any of which could fail
+  // independently — which is exactly how the "couldn't submit your welcome
+  // intro" bug happened (the introduction write failing silently while the
+  // rest of the profile saved). Robby replaced the backend with a single
+  // atomic multipart endpoint, so this is now one call that either fully
+  // succeeds or fully fails — no more partial-save states to handle.
   const handleSubmit = async () => {
     setSaving(true);
     try {
       const storedUser = await getStoredUser();
-      const uid = storedUser?.userId || userId || 0;
+      const userId = storedUser?.userId || 0;
 
-      // Single write — Robby's welcome-intro/submit endpoint saves the
-      // profile fields AND creates the introduction post together, so there's
-      // no longer a separate step that can fail invisibly after the profile
-      // itself has already saved.
-      await submitWelcomeIntro({
-        userId: uid,
+      await submitWelcomeIntro(userId, {
         job: jobTitle,
         company,
         industry: selectedIndustry,
-        country: selectedCountry.name,
+        country: resolveCountryForSubmission(selectedCountry.name),
         phone: `${selectedPhoneCountry.dialCode}${phoneNumber}`,
         phoneCountry: selectedPhoneCountry.name,
-        linkedin: linkedIn,
-        bio: introduction.trim(),
-        photoUri: useExistingAvatar ? null : photoUri,
-        useExistingAvatar,
+        linkedIn,
+        bio: introduction,
+        photoUri,
       });
 
       setShowCongrats(true);
     } catch (err) {
       console.log('submitWelcomeIntro error:', err);
-      Alert.alert(
-        'Introduction Not Posted',
-        "We couldn't submit your welcome intro. Please check your details and try again.",
-      );
+      Alert.alert('Error', 'Could not save profile. Please try again.');
     } finally { setSaving(false); }
   };
 
@@ -421,17 +345,6 @@ const ProfileSetupScreen = ({navigation}: any) => {
       </SafeAreaView>
     </Modal>
   );
-
-  if (checkingStatus) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#0C4D91" />
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>

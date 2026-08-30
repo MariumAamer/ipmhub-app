@@ -8,11 +8,16 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
+# React Native Firebase (Messaging) requires static frameworks since
+# firebase-ios-sdk v9+ / RNFB v15+ — without this, `pod install` fails
+# trying to resolve Firebase/Messaging. Setting this unconditionally
+# (rather than relying on the USE_FRAMEWORKS env var below, which
+# Codemagic doesn't set by default) so it works the same locally and in CI.
+$RNFirebaseAsStaticFramework = true
+
+linkage = ENV['USE_FRAMEWORKS'] || 'static'
+Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+use_frameworks! :linkage => linkage.to_sym
 
 target 'IPMMobileApp' do
   pod 'GoogleUtilities', :modular_headers => true
