@@ -5,7 +5,14 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+# Firebase iOS SDK (used by @react-native-firebase) requires iOS 15.0 as
+# of the version pinned in this project — React Native's own default
+# (min_ios_version_supported, currently 13.4) is too low and causes
+# CocoaPods to fail resolving RNFBApp/RNFBMessaging with "required a
+# higher minimum deployment target". Hardcoding 15.0 here instead of
+# using RN's default. Must stay in sync with IPHONEOS_DEPLOYMENT_TARGET
+# in project.pbxproj (also set to 15.0).
+platform :ios, '15.0'
 prepare_react_native_project!
 
 # React Native Firebase (Messaging) requires static frameworks since
