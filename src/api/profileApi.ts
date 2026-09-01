@@ -29,6 +29,29 @@ export interface ProfileData {
   introduction: string;
 }
 
+// ─── Hermes-safe base64 decode (atob not available in React Native) ───────────
+// Mirrors the helper in authApi.ts — kept local rather than imported so this
+// file has no cross-dependency on authApi.ts for something this small.
+const b64decode = (str: string): string => {
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let output = '';
+  const s = str.replace(/[^A-Za-z0-9+/=]/g, '');
+  for (let i = 0; i < s.length; ) {
+    const e1 = chars.indexOf(s[i++]),
+      e2 = chars.indexOf(s[i++]);
+    const e3 = chars.indexOf(s[i++]),
+      e4 = chars.indexOf(s[i++]);
+    const c1 = (e1 << 2) | (e2 >> 4);
+    const c2 = ((e2 & 15) << 4) | (e3 >> 2);
+    const c3 = ((e3 & 3) << 6) | e4;
+    output += String.fromCharCode(c1);
+    if (e3 !== 64) output += String.fromCharCode(c2);
+    if (e4 !== 64) output += String.fromCharCode(c3);
+  }
+  return output;
+};
+
 // ─── Get user ID from stored token ───────────────────────────────────────────
 // Decodes JWT payload to extract user ID (no library needed)
 export const getUserIdFromToken = async (): Promise<number | null> => {
@@ -40,10 +63,15 @@ export const getUserIdFromToken = async (): Promise<number | null> => {
     // If we stored userId directly
     if (stored?.userId) return Number(stored.userId);
 
-    // Decode JWT payload to get user ID
+    // Decode JWT payload to get user ID. atob() is not available under
+    // Hermes, so this uses the same b64decode() + base64url normalization
+    // (- / _ swapped back, then re-padded to a multiple of 4) as
+    // extractUserIdFromToken() in authApi.ts.
     const token = stored?.token;
     if (!token) return null;
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const payload = JSON.parse(b64decode(padded));
     return Number(payload?.data?.user?.id) || null;
   } catch {
     return null;

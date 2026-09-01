@@ -72,6 +72,8 @@ import NewDiscussionScreen from '../screens/NewDiscussionScreen';
 import OptionPickerScreen from '../screens/OptionPickerScreen';
 import LikedByScreen from '../screens/LikedByScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import PDUsTrackerScreen from '../screens/PDUsTrackerScreen';
+import AddEditCPDRecordScreen from '../screens/AddEditCPDRecordScreen';
 
 
 
@@ -194,6 +196,8 @@ const AppNavigator = () => {
   <Stack.Screen name="OptionPicker" component={OptionPickerScreen} />
   <Stack.Screen name="LikedBy" component={LikedByScreen} />
   <Stack.Screen name="Notifications" component={NotificationsScreen} options={{headerShown: false}} />
+  <Stack.Screen name="PDUsTracker" component={PDUsTrackerScreen} />
+<Stack.Screen name="AddEditCPDRecord" component={AddEditCPDRecordScreen} />
 
   </Stack.Navigator>
       </NavigationContainer>

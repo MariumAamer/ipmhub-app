@@ -34,7 +34,6 @@ import {
   unmuteActivity,
   reportActivity,
   getMemberProfile,
-  getMembersBatch,
   resolveFullName,
   countryFlag,
   FeedPost,
@@ -1074,26 +1073,25 @@ const FeedScreen = ({navigation}: any) => {
     try {
       const data = await getFeed(pageNum);
 
-      // Enrich author data with member profiles (designation + country flag).
-      // Was previously one getMemberProfile() call per post (15 requests per
-      // page, all fired in parallel but each doing its own Keychain read +
-      // round trip) — this is exactly the N+1 pattern getMembersBatch() was
-      // built to fix. Now it's a single request for the whole page's authors.
-      const authorIds = data.map(post => post.author.id);
-      const profiles = await getMembersBatch(authorIds);
-      const enriched = data.map(post => {
-        const profile = profiles.get(post.author.id);
-        if (!profile) return post;
-        const fullName = resolveFullName(profile, post.author.name);
-        const groups = profile?.xprofile?.groups?.['1']?.fields;
-        const title = groups?.['1097']?.value?.raw || '';
-        const country = groups?.['1099']?.value?.raw || '';
-        const flag = countryFlag(country);
-        return {
-          ...post,
-          author: {...post.author, name: fullName, title, flag, country},
-        };
-      });
+      // Enrich author data with member profiles (designation + country flag)
+      const enriched = await Promise.all(
+        data.map(async post => {
+          try {
+            const profile = await getMemberProfile(post.author.id);
+            const fullName = resolveFullName(profile, post.author.name);
+            const groups = profile?.xprofile?.groups?.['1']?.fields;
+            const title = groups?.['1097']?.value?.raw || '';
+            const country = groups?.['1099']?.value?.raw || '';
+            const flag = countryFlag(country);
+            return {
+              ...post,
+              author: {...post.author, name: fullName, title, flag, country},
+            };
+          } catch {
+            return post;
+          }
+        }),
+      );
 
       // Enrich forum-type posts with their real tags + "People Involved"
       // count. Feed's own activity endpoint doesn't carry topic_tags or

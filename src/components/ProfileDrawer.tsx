@@ -200,7 +200,7 @@ const MENU_ITEMS = [
   {key: 'Certifications', Icon: CertificationsIcon, screen: 'Certifications'},
   {key: 'Membership',     Icon: MembershipIcon,     screen: 'Feed'},
   {key: 'Events',         Icon: EventsIcon,         screen: 'Events'},
- // {key: "PDU's",          Icon: PDUsIcon,           screen: 'PDUs'},
+  {key: "PDU's",          Icon: PDUsIcon,           screen: 'PDUsTracker'},
   {key: 'Badges',         Icon: BadgesMenuIcon,     screen: 'Badges'},
   {key: 'Store',          Icon: StoreIcon,          screen: 'Store'},
   {key: 'Setting',        Icon: SettingIcon,        screen: 'Settings'},

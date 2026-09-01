@@ -15,8 +15,8 @@ import * as Keychain from 'react-native-keychain';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {apiRequest} from '../api/apiClient';
 import {getUserIdFromToken} from '../api/profileApi';
-import {getNotifications} from '../api/notificationsApi';
-import {getThreadList} from '../api/dmApi';
+import {getUnreadNotificationCount} from '../api/notificationsApi';
+import {getUnreadMessageCount} from '../api/dmApi';
 
 interface AppHeaderProps {
   navigation: any;
@@ -152,24 +152,18 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
     loadUnreadCounts();
   }, []);
 
-  // No dedicated "unread totals" endpoint exists on either the notifications
-  // or messages APIs, so this pulls a generous single page of each (unread
-  // notifications; all message threads) and derives the counts client-side —
-  // items.length for notifications, and the sum of each thread's
-  // unread_count for messages. Fine for badge purposes since CountBadge caps
-  // the displayed label at "99+" regardless.
+  // Per Robby: both endpoints return the real total in a response header
+  // (X-WP-Total, or bbp-unread-messages for messages) off a single
+  // per_page=1 request, so no client-side paging/summing needed.
   const loadUnreadCounts = async () => {
     try {
-      const [notifRes, threads] = await Promise.all([
-        getNotifications('unread', 1, 100),
-        getThreadList(1),
+      const userId = await getUserIdFromToken();
+      const [notifCount, msgCount] = await Promise.all([
+        getUnreadNotificationCount(),
+        userId ? getUnreadMessageCount(userId) : Promise.resolve(0),
       ]);
-      setUnreadNotifCount(notifRes.items.length);
-      const totalMsgs = (threads || []).reduce(
-        (sum, t) => sum + (t?.unread_count || 0),
-        0,
-      );
-      setUnreadMsgCount(totalMsgs);
+      setUnreadNotifCount(notifCount);
+      setUnreadMsgCount(msgCount);
     } catch {
       // Fail silently — badges just stay hidden.
     }

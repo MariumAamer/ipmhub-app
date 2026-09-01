@@ -11,14 +11,16 @@
  *     onSkip={() => setShowNotifPrompt(false)}
  *   />
  *
- * NOTE(Marium, updated): "Allow Notifications" now calls
- * requestUserPermissionAndRegister() from src/api/pushNotifications.ts
- * before firing the parent's onAllow — this requests the OS permission
- * (Android 13+ runtime permission / iOS native prompt), gets the FCM
- * token, and attempts to register it with the backend. The backend
- * register-device endpoint is still pending from Robby, so that specific
- * network call currently fails gracefully (logged, not thrown) until his
- * endpoint lands — but permission request + token generation work now.
+ * NOTE(Marium, updated): "Allow Notifications" dismisses the modal
+ * immediately, then FeedScreen's handleAllowNotifications (the onAllow
+ * prop) calls requestUserPermissionAndRegister() from
+ * src/api/pushNotifications.ts in the background — this requests the OS
+ * permission (Android 13+ runtime permission / iOS native prompt), gets
+ * the FCM token, and registers it with the backend. Deliberately NOT
+ * awaited before dismissing: on iOS, messaging().getToken() called right
+ * after a fresh permission grant can hang waiting on the APNs device
+ * token, which previously left the modal stuck open. The backend
+ * register-device endpoint is live and confirmed working (Robby, 2026-08).
  *
  * onAllow (the prop) still fires regardless of whether permission was
  * granted or the backend call succeeded — it's meant for UI concerns like
@@ -34,7 +36,6 @@
 import React from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, Modal} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
-import {requestUserPermissionAndRegister} from '../api/pushNotifications';
 
 const NAVY = '#192546';
 const DARK_BLUE = '#0C4D91';
@@ -147,15 +148,18 @@ const NotificationPermissionModal = ({
   onAllow,
   onSkip,
 }: NotificationPermissionModalProps) => {
-  // Requests OS permission, gets the FCM token, and attempts backend
-  // registration — then always fires the parent's onAllow so the modal
-  // can close / set its "seen" flag regardless of permission outcome.
-  const handleAllow = async () => {
-    try {
-      await requestUserPermissionAndRegister();
-    } catch (err) {
-      console.log('[NotificationPermissionModal] handleAllow error:', err);
-    }
+  // Fires the parent's onAllow immediately so the modal closes right away,
+  // regardless of how long permission/token registration takes underneath.
+  //
+  // IMPORTANT(iOS): previously this awaited requestUserPermissionAndRegister()
+  // before calling onAllow(), which also runs the same call again itself
+  // (see FeedScreen's handleAllowNotifications). On iOS, messaging().getToken()
+  // called right after a fresh permission grant can hang for a while waiting
+  // on the APNs device token to finish registering — since dismissal was
+  // chained behind that await, the modal would appear stuck open. Dismissing
+  // first and letting the parent's registration run in the background fixes
+  // this without losing any functionality.
+  const handleAllow = () => {
     onAllow();
   };
 

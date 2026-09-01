@@ -82,6 +82,23 @@ const parseNotification = (n: any): AppNotification => {
   };
 };
 
+// ─── Unread count (header-based) ──────────────────────────────────────────────
+// Per Robby: GET .../notifications?is_new=true&per_page=1 → X-WP-Total header
+// carries the real total match count (not just what's on this page), so a
+// single lightweight request gives an accurate unread count without paging
+// through everything. Distinct from getNotifications() above, which returns
+// the parsed list for the Notifications screen itself.
+export const getUnreadNotificationCount = async (): Promise<number> => {
+  const headers = await authHeaders();
+  const res = await fetch(
+    `${BASE}/buddyboss/v1/notifications?is_new=true&per_page=1`,
+    {headers},
+  );
+  if (!res.ok) return 0;
+  const total = res.headers.get('X-WP-Total');
+  return total ? parseInt(total, 10) || 0 : 0;
+};
+
 // ─── Fetch notifications ──────────────────────────────────────────────────────
 export type NotificationFilter = 'all' | 'unread' | 'read';
 
