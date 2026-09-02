@@ -79,3 +79,6 @@ android/gradle.properties
 
 android/cert_key
 android/cert_key.pub
+
+check.apk
+apk_check/

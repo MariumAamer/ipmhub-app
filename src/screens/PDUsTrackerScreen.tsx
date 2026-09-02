@@ -37,7 +37,7 @@ import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import {getUserIdFromToken} from '../api/profileApi';
 import {
-  getMyPdus, deletePduRecord, MyPdusResponse, PduRecord,
+  getMyPdus, deletePduRecord, MyPdusResponse, PduRecord, PduSummary,
 } from '../api/pdusApi';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
@@ -181,8 +181,115 @@ const NoRecordsIcon = () => (
   </Svg>
 );
 
-// ─── Filter sheet (Activity Type / Year) — bottom sheet, per Figma. Title
-// bar spec: height 56, title text H3 16px/500 dark blue centered, close X
+const DeadlineIcon = () => (
+  <Svg width={18} height={18} viewBox="0 0 23 23" fill="none">
+    <Path fillRule="evenodd" clipRule="evenodd" d="M17.6971 3.36332H16.2108V1.87695H15.2204V3.36332H7.29755V1.87695H6.3072V3.36332H4.82249C3.45746 3.36332 2.3457 4.47417 2.3457 5.84012V17.23C2.3457 18.5951 3.45655 19.7068 4.82249 19.7068H17.6972C19.0623 19.7068 20.174 18.596 20.174 17.23L20.1732 8.31522V5.83842C20.1724 4.47339 19.0615 3.36332 17.6973 3.36332H17.6971ZM19.1822 17.2287C19.1822 18.0474 18.5162 18.7134 17.6975 18.7134H4.82273C4.00239 18.7134 3.33636 18.0474 3.33636 17.2287V8.31536H19.1821L19.1822 17.2287ZM3.33636 7.32548H19.1821L19.1821 5.83908C19.1821 5.01957 18.5161 4.35438 17.6974 4.35438H16.211V5.34474H15.2207V4.35438H7.29781V5.34309H6.3091V4.35274H4.82273C4.00237 4.35274 3.33636 5.01959 3.33636 5.83911V7.32548Z" fill={C.blueDark} />
+  </Svg>
+);
+
+// Simple circular progress ring (percentage-based) for the IPMA "PDU
+// Required vs PDU Completed" summary. No exact colors/dimensions were
+// given for this — using the existing design tokens (blueDark for
+// progress, a light neutral track) at a size that fits comfortably next
+// to the legend text. Adjust if Marium shares exact Figma values later.
+// Layered donut, scaled from Marium's exact SVG measurements:
+//   outer track ring:  diameter 160.657, strokeWidth 25.9835, #E8E9F1
+//   base "required" ring (full circle): diameter 131.447, strokeWidth 15.3523, #0C4D91
+//   "completed" progress arc: same radius/strokeWidth as the base ring, #46B0E3,
+//     drawn as a percentage-driven arc on top (rounded cap, starting at 12 o'clock)
+const DONUT_SIZE = 140;
+const DONUT_SCALE = DONUT_SIZE / 160.657;
+const OUTER_BOUNDARY_R = 80.3286 * DONUT_SCALE;
+const OUTER_STROKE = 25.9835 * DONUT_SCALE;
+const OUTER_CENTERLINE_R = OUTER_BOUNDARY_R - OUTER_STROKE / 2;
+const BASE_BOUNDARY_R = 65.7234 * DONUT_SCALE;
+const BASE_STROKE = 15.3523 * DONUT_SCALE;
+const BASE_CENTERLINE_R = BASE_BOUNDARY_R - BASE_STROKE / 2;
+
+const DonutChart = ({percentage, centerValue}: {percentage: number; centerValue: number}) => {
+  const clamped = Math.max(0, Math.min(100, percentage));
+  const outerCircumference = 2 * Math.PI * OUTER_CENTERLINE_R;
+  const progressLength = (clamped / 100) * outerCircumference;
+
+  return (
+    <View style={{width: DONUT_SIZE, height: DONUT_SIZE, alignItems: 'center', justifyContent: 'center'}}>
+      <Svg width={DONUT_SIZE} height={DONUT_SIZE} viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}>
+        {/* outer track — the actual progress ring */}
+        <Circle
+          cx={DONUT_SIZE / 2} cy={DONUT_SIZE / 2} r={OUTER_CENTERLINE_R}
+          stroke={C.lightBlueBg} strokeWidth={OUTER_STROKE} fill="none"
+        />
+        {clamped > 0 && (
+          <Circle
+            cx={DONUT_SIZE / 2} cy={DONUT_SIZE / 2} r={OUTER_CENTERLINE_R}
+            stroke={C.blue} strokeWidth={OUTER_STROKE} fill="none"
+            strokeDasharray={`${progressLength}, ${outerCircumference}`}
+            strokeLinecap="round"
+            rotation={-90}
+            origin={`${DONUT_SIZE / 2}, ${DONUT_SIZE / 2}`}
+          />
+        )}
+        {/* inner ring — static "required" baseline, always fully drawn */}
+        <Circle
+          cx={DONUT_SIZE / 2} cy={DONUT_SIZE / 2} r={BASE_CENTERLINE_R}
+          stroke={C.blueDark} strokeWidth={BASE_STROKE} fill="none"
+        />
+      </Svg>
+      <View style={{position: 'absolute', alignItems: 'center'}}>
+        <Text style={{color: C.blueDark, fontFamily: 'Runda-Black', fontSize: 22}}>{centerValue}</Text>
+        <Text style={{color: C.navyLighterText, fontFamily: 'Runda-Normal', fontSize: 11}}>{'Hours Completed'}</Text>
+      </View>
+    </View>
+  );
+};
+
+// ─── IPMA "CPD Requirements" block — shown when summary.type === 'IPMA'.
+// Typography and donut geometry per Marium's Figma spec; only the card
+// container itself (padding/border/shadow) is still my own reasonable
+// default, since that wasn't given. ─────────────────────────────────────
+const IpmaRequirementsCard = ({summary}: {summary: PduSummary}) => {
+  if (!summary.ipma) return null;
+  return (
+    <View style={ipma.card}>
+      <Text style={ipma.title}>{summary.ipma.title}</Text>
+      {summary.ipma.description.map((para, i) => (
+        <Text key={i} style={ipma.paragraph}>{para}</Text>
+      ))}
+
+      {!!summary.recertification_deadline && (
+        <View style={ipma.deadlineRow}>
+          <DeadlineIcon />
+          <Text style={ipma.deadlineLabel}>{'Recertification Deadline:'}</Text>
+          <Text style={ipma.deadlineValue}>{summary.recertification_deadline}</Text>
+        </View>
+      )}
+
+      <View style={ipma.progressRow}>
+        <DonutChart percentage={summary.percentage} centerValue={summary.hours_earned} />
+        <View style={{flex: 1, gap: 8}}>
+          <View style={ipma.legendRow}>
+            <View style={[ipma.legendDot, {backgroundColor: C.blueDark}]} />
+            <Text style={ipma.legendLabel}>
+              {'Total CPD Required: '}
+              <Text style={ipma.legendValueRequired}>{`${summary.hours_required} Hours`}</Text>
+            </Text>
+          </View>
+          <View style={ipma.legendRow}>
+            <View style={[ipma.legendDot, {backgroundColor: C.blue}]} />
+            <Text style={ipma.legendLabel}>
+              {'CPD Completed: '}
+              <Text style={ipma.legendValueCompleted}>{`${summary.hours_earned} Hours`}</Text>
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {!!summary.ipma.footer && <Text style={ipma.footer}>{summary.ipma.footer}</Text>}
+    </View>
+  );
+};
+
+
 // on the right. Options list: 16px horizontal padding, 6px gap, 41px row
 // height. ─────────────────────────────────────────────────────────────────
 const FilterSheet = ({
@@ -404,6 +511,8 @@ const PDUsTrackerScreen = ({navigation}: any) => {
           </View>
         </View>
 
+        {summary?.type === 'IPMA' && <IpmaRequirementsCard summary={summary} />}
+
         {/* CPD Records section */}
         <View style={s.recordsSection}>
           <Text style={s.sectionTitle}>{summary?.records_heading || 'Your CPD Records'}</Text>
@@ -585,6 +694,27 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   downloadBtnText: {color: C.blueDark, fontFamily: 'Runda-Medium', fontSize: 14},
+});
+
+const ipma = StyleSheet.create({
+  card: {
+    gap: 12, padding: 16, borderRadius: 8, backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: C.border,
+    shadowColor: '#000', shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.1, shadowRadius: 8, elevation: 1,
+  },
+  title: {color: C.blueDark, fontFamily: 'Runda-Bold', fontSize: 18, letterSpacing: 0.09},
+  paragraph: {color: C.navy, fontFamily: 'Runda-Normal', fontSize: 12, lineHeight: 16},
+  deadlineRow: {flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap'},
+  deadlineLabel: {color: C.navy, fontFamily: 'Runda-Medium', fontSize: 10, lineHeight: 14},
+  deadlineValue: {color: C.blue, fontFamily: 'Runda-Medium', fontSize: 10, lineHeight: 14},
+  progressRow: {flexDirection: 'row', alignItems: 'center', gap: 16, marginVertical: 4},
+  legendRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  legendDot: {width: 12.65, height: 12.65, borderRadius: 2.53},
+  legendLabel: {color: C.navy, fontFamily: 'Runda-Normal', fontSize: 10, lineHeight: 14},
+  legendValueRequired: {color: C.blueDark, fontFamily: 'Runda-Medium', fontSize: 10, lineHeight: 14},
+  legendValueCompleted: {color: C.blue, fontFamily: 'Runda-Medium', fontSize: 10, lineHeight: 14},
+  footer: {color: C.navyLighterText, fontFamily: 'Runda-Normal', fontSize: 11, lineHeight: 16},
 });
 
 const rc = StyleSheet.create({

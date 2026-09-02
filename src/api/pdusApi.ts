@@ -44,13 +44,16 @@
  * file, without re-picking a new file" as a real risk of wiping the
  * attachment — flag this to Robby.
  *
- * ⚠️ The "PDUs Tracker – IPMA Version" mockup (donut chart + CPD
- * Requirements / recertification deadline block) is NOT implemented here.
- * summary.type is confirmed to come back as "NON-IPMA" for the current
- * test user, with summary.ipma: null — the IPMA variant is presumably
- * summary.type: "IPMA" with summary.ipma populated instead. Scope/trigger
- * for that variant hasn't been confirmed yet, so PDUsTrackerScreen below
- * only renders the NON-IPMA header. Revisit once that's clarified.
+ * The "PDUs Tracker – IPMA Version" header (CPD Requirements block +
+ * progress donut) is now implemented in PDUsTrackerScreen.tsx, driven by
+ * summary.type === 'IPMA' and summary.ipma. Confirmed via a real IPMA
+ * test account (user_id 13447) — summary.ipma has {title, description[]
+ * (3 paragraphs), footer}, and recertification_deadline is populated as
+ * "DD/M/YYYY" (single-digit months have no leading zero — confirmed as
+ * "08/2/2032" — displayed as-is rather than reformatted, since no other
+ * format convention was given). Trigger: users holding any of the 5
+ * IPMA certifications (per Aulia/Robby) — the app doesn't need to check
+ * this client-side, it's already reflected in summary.type from the API.
  */
 import {getToken} from './apiClient';
 
@@ -97,6 +100,12 @@ export interface PduRecord {
   can_edit: boolean;
 }
 
+export interface PduIpmaInfo {
+  title: string;
+  description: string[];
+  footer: string;
+}
+
 export interface PduSummary {
   type: 'NON-IPMA' | 'IPMA' | string;
   title: string;
@@ -109,7 +118,7 @@ export interface PduSummary {
   records_heading: string;
   records_help: string;
   add_record_label: string;
-  ipma: null | Record<string, any>;
+  ipma: PduIpmaInfo | null;
 }
 
 export interface MyPdusResponse {
