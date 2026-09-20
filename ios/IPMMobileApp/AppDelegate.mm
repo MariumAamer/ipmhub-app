@@ -3,6 +3,7 @@
 #import <Firebase.h>
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTLinkingManager.h>
+#import <GoogleSignIn/GoogleSignIn.h>
 
 @implementation AppDelegate
 
@@ -38,6 +39,16 @@
    openURL:(NSURL *)url
    options:(NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options
 {
+  // Google Sign-In returns to the app through the reversed-client-ID URL
+  // scheme registered in Info.plist (com.googleusercontent.apps.…). That URL
+  // MUST be handed to the Google SDK, otherwise the sign-in browser sheet
+  // never completes and the user is left in the browser instead of being
+  // brought back to the app. handleURL returns NO for any URL that isn't a
+  // Google Sign-In redirect, so ipmhub:// links fall through to React
+  // Native's Linking below exactly as before.
+  if ([GIDSignIn.sharedInstance handleURL:url]) {
+    return YES;
+  }
   return [RCTLinkingManager application:application openURL:url options:options];
 }
 

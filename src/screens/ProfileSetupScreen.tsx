@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -118,9 +118,15 @@ const ProgressHeader = ({step, totalSteps, title}: any) => (
 );
 
 // ─── Congratulations Modal ────────────────────────────────────────────────────
-const CongratulationsModal = ({visible, onDiscover}: {visible: boolean; onDiscover: () => void}) => (
-  <Modal visible={visible} transparent animationType="slide">
-    <View style={styles.modalOverlay}>
+// Rendered as a plain in-screen overlay instead of a native <Modal>. On iOS,
+// presenting/dismissing a native Modal while state updates and a
+// navigation.replace() are in flight (right after the profile save finishes)
+// crashed or froze the app. An absolutely-positioned View has no native
+// presentation step, so there is nothing to race with.
+const CongratulationsModal = ({visible, onDiscover}: {visible: boolean; onDiscover: () => void}) => {
+  if (!visible) return null;
+  return (
+    <View style={[styles.modalOverlay, styles.congratsOverlayAbsolute]}>
       <View style={styles.congratsCard}>
         {/* Title */}
         <Text style={styles.congratsTitle}>{'Congratulations!'}</Text>
@@ -159,8 +165,8 @@ const CongratulationsModal = ({visible, onDiscover}: {visible: boolean; onDiscov
         </TouchableOpacity>
       </View>
     </View>
-  </Modal>
-);
+  );
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const ProfileSetupScreen = ({navigation}: any) => {
@@ -168,6 +174,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [step2Tab, setStep2Tab] = useState<'industry' | 'country'>('industry');
   const [saving, setSaving] = useState(false);
   const [showCongrats, setShowCongrats] = useState(false);
+  const navigatedRef = useRef(false);
 
   // Step 1
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -316,7 +323,12 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const filteredCountries = countries.filter(c => c.name.toLowerCase().includes(countrySearch.toLowerCase()));
   const filteredPhoneCountries = countries.filter(c => c.name.toLowerCase().includes(phoneSearch.toLowerCase()));
 
-  const PhoneCountryModal = () => (
+  // A plain render function, NOT a component: it used to be declared as
+  // `const PhoneCountryModal = () => ...` and used as <PhoneCountryModal />.
+  // A component defined inside another component gets a brand-new identity on
+  // every render, so React unmounted and remounted this whole native Modal
+  // (and its autoFocus search box) on every keystroke and state change.
+  const renderPhoneCountryModal = () => (
     <Modal visible={showPhoneModal} animationType="slide" onRequestClose={() => setShowPhoneModal(false)}>
       <SafeAreaView style={styles.phoneModalContainer}>
         <View style={styles.phoneModalHeader}>
@@ -349,17 +361,16 @@ const ProfileSetupScreen = ({navigation}: any) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <PhoneCountryModal />
+      {renderPhoneCountryModal()}
 
-      {/* Congratulations popup */}
+      {/* Congratulations popup — plain overlay, see CongratulationsModal */}
       <CongratulationsModal
         visible={showCongrats}
-        // On iOS, replacing the screen while the Modal is still animating out
-        // can freeze the app or leave a blocking overlay. Let the dismiss
-        // animation finish before navigating.
         onDiscover={() => {
-          setShowCongrats(false);
-          setTimeout(() => navigation.replace('MainApp'), Platform.OS === 'ios' ? 500 : 0);
+          // Guard against a double tap firing two navigation.replace() calls.
+          if (navigatedRef.current) return;
+          navigatedRef.current = true;
+          navigation.replace('MainApp');
         }}
       />
 
@@ -827,6 +838,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
+  },
+  // Makes the congrats overlay cover the whole screen, above everything else.
+  congratsOverlayAbsolute: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
+    elevation: 999,
   },
   congratsCard: {
     backgroundColor: '#FFFFFF',

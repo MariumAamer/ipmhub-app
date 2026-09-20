@@ -100,7 +100,11 @@ const handleDeepLink = (url: string | null) => {
   // SignInScreen already supports route.params.verified (shows the
   // "✓ Account verified!" banner) — it just never had anything wiring a
   // real link to it before now.
-  if (url.includes('/activated')) {
+  // Matches https://…/activated/?key=… AND the custom-scheme hand-off from the
+  // website's bounce page (ipmhub://activated, ipmhub://activate,
+  // ipmhub://verified). Only the part before "?" is checked so an unrelated
+  // deep link's query string (e.g. a LinkedIn code) can never match by accident.
+  if (/activat|verified/i.test(url.split('?')[0])) {
     navigationRef.navigate('SignIn' as never, {verified: true} as never);
     return;
   }
