@@ -3,6 +3,7 @@ import React, {useState, useRef} from 'react';
 import {View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, StatusBar, Modal, FlatList, Dimensions, Animated, Alert, ActivityIndicator} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
+import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import {TIMEZONES, submitMentorApplication} from '../api/mentorApplicationApi';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
@@ -351,9 +352,8 @@ const MentorApplicationScreen = ({navigation}: any) => {
 
   const handlePickCv = async () => {
     try {
-      const DocumentPicker = require('react-native-document-picker').default;
-      const result = await DocumentPicker.pickSingle({
-        type: [DocumentPicker.types.pdf, DocumentPicker.types.doc, DocumentPicker.types.docx],
+      const [result] = await pick({
+        type: [types.pdf, types.doc, types.docx],
       });
       if (result.size && result.size > 5 * 1024 * 1024) {
         Alert.alert('File too large', 'Please choose a file under 5MB.');
@@ -361,7 +361,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
       }
       setCv(result);
     } catch (err: any) {
-      if (!err?.toString?.()?.includes('cancel')) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         Alert.alert('Error', 'Could not select file. Please try again.');
       }
     }

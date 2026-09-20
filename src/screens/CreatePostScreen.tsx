@@ -213,15 +213,29 @@ const CreatePostScreen = ({navigation, route}: any) => {
         const formData = new FormData();
         formData.append('file', {uri: img.uri, type: img.type, name: img.fileName} as any);
         formData.append('upload_privacy', 'public');
-        const res = await fetch(`${BASE}/buddyboss/v1/media`, {
+        // Upload-only endpoint (per Robby, 2026-09): the old
+        // /buddyboss/v1/media endpoint created its own activity entry as a
+        // side effect of the upload, which is why a single post with a
+        // photo was showing up on the Feed as two separate posts (a
+        // text-only one from this screen's /activity call below, plus a
+        // photo-only one spawned by the upload itself). /media/upload just
+        // stores the file and returns its id — no activity is created
+        // until that id is attached to the /activity call in handlePost.
+        const res = await fetch(`${BASE}/buddyboss/v1/media/upload`, {
           method: 'POST',
           headers: {Authorization: `Bearer ${token}`},
           body: formData,
         });
         if (res.ok) {
           const data = await res.json();
-          if (data?.id) {
-            ids.push(data.id);
+          // Confirmed via device log, 2026-09-16: /media/upload's success
+          // response shape is {upload_id, upload, upload_thumb, name} — no
+          // `id` field at all. The old /media endpoint returned `id`, so
+          // this check was written for that shape and never matched here,
+          // silently marking every successful upload as failed.
+          const uploadId = data?.upload_id ?? data?.id;
+          if (uploadId) {
+            ids.push(uploadId);
           } else {
             failed++;
             console.log('uploadImages: no media id in response', img.fileName, data);

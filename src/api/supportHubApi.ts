@@ -1,27 +1,37 @@
 import {getToken} from './feedApi';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Confirmed endpoints (Marium, 2026-08-16):
+// Confirmed endpoints (Marium/Robby, 2026-09-15, verified via Postman):
 //   Home/tab data:  GET /wp-json/custom/v1/support-hub
-//                   — also returns "tabs" (all 5 sections, each with its
-//                     own "endpoint" to call when switching category) and
-//                     "page" (hero copy — title/banner_title/search
+//                   — also returns "tabs" (legacy — superseded by
+//                     /support-hub/categories below for the filter modal)
+//                     and "page" (hero copy — title/banner_title/search
 //                     placeholder/etc).
-//   Search:         GET /wp-json/custom/v1/support-hub/search?q=<query>
-//                   — returns FAQ stubs only (id/title/slug/permalink/
-//                     categories) — NO content_html/content_text. To show
-//                     an answer for a search hit we resolve it against
-//                     whichever category tab we've already cached, falling
-//                     back to fetching that tab if we haven't visited it.
-//   Glossary has its own "type": "glossary" tab with a "glossary" array
-//   (term/definition) instead of "faqs" — search does not cover it
-//   (confirmed empty faqs/total:0 for a glossary-only query), so glossary
-//   search is done client-side against the already-loaded term list.
+//   Categories:     GET /wp-json/custom/v1/support-hub/categories
+//                   — clean category list for the filter modal: each entry
+//                     has id/slug/name/count/is_default/faqs_endpoint
+//                     (already a full term_id-scoped URL, ready to fetch).
+//   FAQs by category: GET /wp-json/custom/v1/support-hub/faqs?term_id=<id>
+//                   — same shape as the category's own faqs_endpoint above.
+//   Keyword search: GET /wp-json/custom/v1/support-hub/faqs?sf=<query>
+//                   — NOT /support-hub/search?q= (that was the wrong
+//                     endpoint/param — confirmed via Postman 2026-09-15).
+//                     Returns full faqs (content_html/content_text included,
+//                     not just stubs) plus "total".
+//   Glossary has its own "type": "glossary" tab with a flat "terms" array
+//   (NOT "glossary" — confirmed via Postman 2026-09-15) alongside "sections"
+//   (grouped by letter) and "alphabet" (has_terms per letter). Both
+//   ?letter= and ?sf= filtering are server-side but scope the "alphabet"
+//   has_terms flags to only the current filter (e.g. ?letter=A makes every
+//   OTHER letter show has_terms:false), which would break our full A–Z
+//   active-state grid — so glossary letter-jump and search stay client-side
+//   against the one full 466-term fetch instead of using those params.
 // ─────────────────────────────────────────────────────────────────────────
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json/custom/v1';
 const DEFAULT_ENDPOINT = `${BASE}/support-hub`;
-const SEARCH_ENDPOINT = `${BASE}/support-hub/search`;
+const CATEGORIES_ENDPOINT = `${BASE}/support-hub/categories`;
+const SEARCH_ENDPOINT = `${BASE}/support-hub/faqs`;
 
 const authHeaders = async (): Promise<Record<string, string>> => {
   const token = await getToken();
@@ -50,6 +60,17 @@ export interface FaqCategory {
   id: number;
   slug: string;
   name: string;
+}
+
+// Category list from /support-hub/categories — used for the filter modal.
+// faqs_endpoint is a ready-to-fetch, full term_id-scoped URL.
+export interface SupportCategory {
+  id: number;
+  slug: string;
+  name: string;
+  count: number;
+  is_default: boolean;
+  faqs_endpoint: string;
 }
 
 export interface Faq {
@@ -85,14 +106,26 @@ export interface HubTab {
   search_placeholder: string;
 }
 
+export interface HubContactMethod {
+  label: string;
+  display: string;
+  href: string;
+  icon_url: string;
+}
+
 export interface HubPage {
   title: string;
   heading: string;
   banner_title: string;
+  banner_subtitle?: string;
   search_placeholder: string;
   search_endpoint: string;
   image_url: string;
   glossary_heading: string;
+  contact?: {
+    call: HubContactMethod;
+    email: HubContactMethod;
+  };
 }
 
 interface TabResponse {
@@ -141,7 +174,18 @@ export const getSupportHubTab = async (endpoint: string = DEFAULT_ENDPOINT): Pro
       tabs: data.tabs,
       section: data.section,
       faqs: Array.isArray(data.faqs) ? data.faqs.map(mapFaq) : undefined,
-      glossary: Array.isArray(data.glossary) ? data.glossary.map(mapGlossaryTerm) : undefined,
+      // Confirmed live response (2026-09-15): the glossary-dictionary endpoint
+      // returns a flat `terms` array (466 items), NOT `glossary` as originally
+      // assumed. It also returns `sections` (grouped by letter) and `alphabet`
+      // (which letters have entries) — the flat `terms` array is simplest for
+      // our client-side grouping/filtering, so that's what we use here. Each
+      // term's own fields (id/title/letter/content_html/content_text) already
+      // match GlossaryTerm, so no per-item mapping changes are needed.
+      glossary: Array.isArray(data.terms)
+        ? data.terms.map(mapGlossaryTerm)
+        : Array.isArray(data.glossary)
+        ? data.glossary.map(mapGlossaryTerm)
+        : undefined,
     };
 
     mapped.faqs?.forEach(f => faqCache.set(f.id, f));
@@ -166,7 +210,24 @@ export const getHubTabs = async (): Promise<HubTab[]> => {
   return data?.tabs ?? [];
 };
 
-// ─── Search (Support tab only covers FAQs — glossary handled separately) ────
+// ─── Categories (preferred source for the filter modal over getHubTabs) ────
+let categoriesCache: SupportCategory[] | null = null;
+export const getSupportCategories = async (): Promise<SupportCategory[]> => {
+  if (categoriesCache) return categoriesCache;
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(CATEGORIES_ENDPOINT, {headers});
+    if (!res.ok) return [];
+    const data = await res.json();
+    const cats: SupportCategory[] = Array.isArray(data.categories) ? data.categories : [];
+    categoriesCache = cats;
+    return cats;
+  } catch {
+    return [];
+  }
+};
+
+// ─── Search — full FAQs (content included), not just stubs ─────────────────
 export const searchSupportHub = async (
   query: string,
 ): Promise<{search: string; faqs: Faq[]; total: number}> => {
@@ -174,11 +235,12 @@ export const searchSupportHub = async (
   if (!q) return {search: '', faqs: [], total: 0};
   try {
     const headers = await authHeaders();
-    const res = await fetch(`${SEARCH_ENDPOINT}?q=${encodeURIComponent(q)}`, {headers});
+    const res = await fetch(`${SEARCH_ENDPOINT}?sf=${encodeURIComponent(q)}`, {headers});
     if (!res.ok) return {search: q, faqs: [], total: 0};
     const data = await res.json();
     const faqs: Faq[] = Array.isArray(data.faqs) ? data.faqs.map(mapFaq) : [];
-    // Merge in any content we already have cached from a visited tab.
+    // Merge in any content we already have cached from a visited category,
+    // though the search response already includes full content_html/text.
     const merged = faqs.map(f => {
       const cached = faqCache.get(f.id);
       return cached?.content_html ? {...f, ...cached} : f;
@@ -287,6 +349,7 @@ export const resetSupportHubCache = () => {
   tabsCache = null;
   pageCache = null;
   glossaryCache = null;
+  categoriesCache = null;
   faqCache.clear();
   tabDataCache.clear();
 };

@@ -74,7 +74,7 @@ import LikedByScreen from '../screens/LikedByScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import PDUsTrackerScreen from '../screens/PDUsTrackerScreen';
 import AddEditCPDRecordScreen from '../screens/AddEditCPDRecordScreen';
-
+import GlossaryScreen from '../screens/GlossaryScreen'
 
 
 const Stack = createNativeStackNavigator();
@@ -198,6 +198,8 @@ const AppNavigator = () => {
   <Stack.Screen name="Notifications" component={NotificationsScreen} options={{headerShown: false}} />
   <Stack.Screen name="PDUsTracker" component={PDUsTrackerScreen} />
 <Stack.Screen name="AddEditCPDRecord" component={AddEditCPDRecordScreen} />
+<Stack.Screen name="Glossary" component={GlossaryScreen} />
+
 
   </Stack.Navigator>
       </NavigationContainer>

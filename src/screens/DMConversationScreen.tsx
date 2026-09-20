@@ -4,6 +4,7 @@ import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Image, St
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle, G, Mask, Rect} from 'react-native-svg';
 import {launchImageLibrary} from 'react-native-image-picker';
+import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import BackButton from '../components/BackButton';
@@ -428,10 +429,9 @@ const DMConversationScreen = ({route, navigation}: any) => {
 
   const handlePickFile = async () => {
     try {
-      const DocumentPicker = require('react-native-document-picker').default;
-      const results = await DocumentPicker.pick({
+      const results = await pick({
         allowMultiSelection: true,
-        type: [DocumentPicker.types.allFiles],
+        type: [types.allFiles],
       });
       const picked = results
         .filter((r: any) => r.uri)
@@ -442,7 +442,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
         }));
       setAttachments(prev => [...prev, ...picked]);
     } catch (err: any) {
-      if (!err?.toString?.()?.includes('cancel')) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         Alert.alert('Error', 'Could not pick file. Please try again.');
       }
     }

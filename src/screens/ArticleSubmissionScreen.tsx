@@ -17,6 +17,7 @@ import {
 // the real cross-platform SafeAreaView, matching ResourceDetailScreen etc.
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
+import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import {submitArticle} from '../api/resourcesApi';
 import BackButton from '../components/BackButton';
 
@@ -86,14 +87,13 @@ const ArticleSubmissionScreen = ({navigation}: any) => {
 
   const handlePickFile = async () => {
     try {
-      const DocumentPicker = require('react-native-document-picker').default;
-      const result = await DocumentPicker.pickSingle({
-        type: [DocumentPicker.types.pdf, DocumentPicker.types.docx, DocumentPicker.types.doc],
+      const [result] = await pick({
+        type: [types.pdf, types.docx, types.doc],
       });
       setFile(result);
       setErrors(e => ({...e, file: ''}));
     } catch (err: any) {
-      if (!err?.toString?.()?.includes('cancel')) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         Alert.alert('Error', 'Could not pick file. Please try again.');
       }
     }
@@ -101,14 +101,13 @@ const ArticleSubmissionScreen = ({navigation}: any) => {
 
   const handlePickProfilePicture = async () => {
     try {
-      const DocumentPicker = require('react-native-document-picker').default;
-      const result = await DocumentPicker.pickSingle({
-        type: [DocumentPicker.types.images],
+      const [result] = await pick({
+        type: [types.images],
       });
       setProfilePicture(result);
       setErrors(e => ({...e, profilePicture: ''}));
     } catch (err: any) {
-      if (!err?.toString?.()?.includes('cancel')) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         Alert.alert('Error', 'Could not pick image. Please try again.');
       }
     }

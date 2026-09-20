@@ -90,6 +90,7 @@ export const loginUser = async (
     username: data.user_nicename,
     userId,
   };
+  console.log('AUTH TOKEN:', user.token); // TEMP — remove before commit
   await saveUser(user);
   return user;
 };
@@ -172,6 +173,7 @@ const buildSocialAuthUser = async (data: any): Promise<AuthUser> => {
     username,
     userId: data.user_id || extractUserIdFromToken(data.token),
   };
+  console.log('AUTH TOKEN:', user.token); // TEMP — remove before commit
   await saveUser(user);
   return user;
 };

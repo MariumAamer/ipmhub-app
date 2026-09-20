@@ -354,7 +354,13 @@ const ProfileSetupScreen = ({navigation}: any) => {
       {/* Congratulations popup */}
       <CongratulationsModal
         visible={showCongrats}
-        onDiscover={() => { setShowCongrats(false); navigation.replace('MainApp'); }}
+        // On iOS, replacing the screen while the Modal is still animating out
+        // can freeze the app or leave a blocking overlay. Let the dismiss
+        // animation finish before navigating.
+        onDiscover={() => {
+          setShowCongrats(false);
+          setTimeout(() => navigation.replace('MainApp'), Platform.OS === 'ios' ? 500 : 0);
+        }}
       />
 
       <ProgressHeader step={step} totalSteps={3} title={getStepTitle()} />

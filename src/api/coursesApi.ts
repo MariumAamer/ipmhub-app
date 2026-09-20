@@ -393,7 +393,9 @@ export interface EnrolledCourse {
     updated_at: CourseActivityStamp | null;
     last_activity: CourseActivityStamp | null;
   };
-  access: {from: string | null; expires: string | null};
+  access: {from: CourseActivityStamp | null; expires: CourseActivityStamp | null}; // CORRECTED (Sep 2026): real data has nested {timestamp, iso8601, display} objects here, not plain strings — can also both be null (seen on older completions with no defined access window)
+  // CONFIRMED null on a completed course (Sep 2026) — no "current step" once
+  // a course is finished. Always guard before use.
   current_step: {
     lesson_id: number;
     lesson_title: string;
@@ -401,14 +403,14 @@ export interface EnrolledCourse {
     step_title: string;
     step_type: string;
     permalink: string;
-  };
+  } | null;
   curriculum: {
     content_label: string;
     progression_enabled: boolean;
     totals: CourseCurriculumTotals;
   };
   section: string;
-  card_status: string; // e.g. "In-Progress"
+  card_status: string; // e.g. "In-Progress" (in-progress) / "Completed" (completed)
   format_label: string; // e.g. "On-Demand (Anytime)"
   is_academy: boolean;
   logo: string;
@@ -419,6 +421,37 @@ export interface EnrolledCourse {
     expires: string | null;
     date_display: string;
   };
+  // ─── Completed-course-only fields ──────────────────────────────────────
+  // CONFIRMED via Postman (Sep 2026, user_id=418 — real completed courses
+  // with an actual certificate, closing the earlier "wk_completed" empty-
+  // sample gap). All optional here since getMyCourses() (in-progress) does
+  // NOT return these — only getCompletedCourses() does.
+  source?: string; // e.g. "learndash"
+  type?: string; // e.g. "ondemand"
+  date_range?: {start_date: string; completed_date: string; display: string}; // completed-course equivalent of enrollment.date_display, e.g. "07 Apr - 28 May 2024"
+  revisit_url?: string;
+  certificate_url?: string; // empty string if no certificate issued yet
+  is_access_expired?: boolean; // drives the "Expired Course" card state — backend-sent, not derived client-side
+  /** Full list of recommended follow-on courses/diplomas. Marium confirmed
+   * the card should use primary_recommended below instead of looping this. */
+  recommended?: {
+    title: string;
+    certificate?: string;
+    link: string | null;
+    course_link?: string | null;
+    logo?: string;
+  }[];
+  /** The single recommended-course pill shown on the Completed card
+   * ("Certified Project Management Diploma →" etc.) — CONFIRMED (Sep 2026)
+   * as the field to use, in place of looping `recommended` above. */
+  primary_recommended?: {
+    title: string;
+    label: string;
+    link: string | null;
+    logo?: string;
+  };
+  progress_pct?: number; // duplicate of progress.percentage, flattened
+  cta_label?: string; // e.g. "Revisit Course"
 }
 
 export interface MyCoursesResponse {
@@ -427,6 +460,22 @@ export interface MyCoursesResponse {
   count: number;
   courses: EnrolledCourse[];
 }
+
+/** Expired state for a completed course. is_access_expired is the confirmed
+ * backend field and CompletedCourseCard reads it directly — this helper is a
+ * defensive fallback (comparing access.expires against now) for the rare case
+ * where an older/cached response is missing that field entirely.
+ */
+export const isCourseExpired = (course: EnrolledCourse): boolean => {
+  if (typeof course.is_access_expired === 'boolean') return course.is_access_expired;
+  const expiresTs = course.access?.expires?.timestamp;
+  if (!expiresTs) return false;
+  return expiresTs * 1000 < Date.now();
+};
+
+/** CTA button label for a completed course card, with the expired-fallback above baked in. */
+export const getCourseCtaLabel = (course: EnrolledCourse): string =>
+  isCourseExpired(course) ? 'Expired Course' : course.cta_label ?? 'Revisit Course';
 
 /** GET custom/v1/my-courses/in-progress?user_id={userId} — confirmed endpoint (July 2026) */
 export const getMyCourses = async (userId: number): Promise<MyCoursesResponse> => {
@@ -448,13 +497,15 @@ export const getMyCourses = async (userId: number): Promise<MyCoursesResponse> =
   }
 };
 
-/** GET custom/v1/my-courses/completed?user_id={userId} — envelope shape CONFIRMED
- * (user_id, section: "wk_completed", count, courses). Note the section slug differs
- * from in-progress ("wk_completed" vs "ld-inprogress"). The individual course-object
- * fields are still UNCONFIRMED — the sample response had count: 0 / courses: [], so
- * we have no real completed course to check field names against yet (e.g. may include
- * a completion date or certificate link that in-progress doesn't). Reusing the
- * EnrolledCourse shape as a best guess until a real completed course is seen.
+/** GET custom/v1/my-courses/completed?user_id={userId} — envelope AND
+ * course-object shape both CONFIRMED via Postman (Sep 2026, user_id=418 —
+ * real completed courses with certificates, closing the earlier
+ * "wk_completed" empty-sample gap). Section slug is "wk_completed" (differs
+ * from in-progress's "ld-inprogress"). See the completed-course-only fields
+ * added to EnrolledCourse above (certificate_url, is_access_expired,
+ * date_range, primary_recommended, etc.) — decodeEntities is applied to
+ * every title-bearing field here since WordPress entity-encodes them the
+ * same way it does elsewhere in this file (e.g. "&amp;" -> "&").
  */
 export const getCompletedCourses = async (userId: number): Promise<MyCoursesResponse> => {
   const empty: MyCoursesResponse = {user_id: userId, section: 'wk_completed', count: 0, courses: []};
@@ -466,11 +517,213 @@ export const getCompletedCourses = async (userId: number): Promise<MyCoursesResp
       section: json?.section ?? 'wk_completed',
       count: json?.count ?? 0,
       courses: Array.isArray(json?.courses)
-        ? json.courses.map((c: EnrolledCourse) => ({...c, title: decodeEntities(c.title)}))
+        ? json.courses.map((c: EnrolledCourse) => ({
+            ...c,
+            title: decodeEntities(c.title),
+            recommended: Array.isArray(c.recommended)
+              ? c.recommended.map(r => ({...r, title: decodeEntities(r.title)}))
+              : c.recommended,
+            primary_recommended: c.primary_recommended
+              ? {
+                  ...c.primary_recommended,
+                  title: decodeEntities(c.primary_recommended.title),
+                  label: decodeEntities(c.primary_recommended.label),
+                }
+              : c.primary_recommended,
+          }))
         : [],
     };
   } catch (err) {
     console.error('[coursesApi] getCompletedCourses', err);
+    return empty;
+  }
+};
+
+// ─── Resume banner (My Courses page top banner) ────────────────────────────
+// CONFIRMED via Postman (Sep 2026) — real response with an active in-progress
+// course. step_line comes through HTML-entity-encoded (e.g. "&#8211;" for the
+// en dash) same as course titles elsewhere — decode before display.
+
+export interface ResumeBanner {
+  course_id: number;
+  title: string;
+  first_name: string;
+  progress: number; // percentage, e.g. 27
+  step_line: string; // e.g. "Module 2 – Setting up a PMO · Topic: Setting up a PMO – Assessment"
+  step_id: number; // CONFIRMED (Sep 2026) — added by Robby per request, enables deep-linking Resume to the exact step instead of the course overview
+  lesson_id: number; // CONFIRMED (Sep 2026)
+  step_type: string; // CONFIRMED (Sep 2026) — e.g. "quiz" or "topic"; use to decide StepContent vs Quiz navigation, same as CourseDetailScreen's openStep()
+  step_title: string; // CONFIRMED (Sep 2026)
+  resume_url: string;
+  last_visited_at: number; // unix timestamp
+  last_visited: string; // e.g. "Last visited 24 days ago"
+  logo: string; // course thumbnail — CONFIRMED (Sep 2026): this is the course's own thumbnail asset, which for some courses is a stock photo of a person rather than a generic icon graphic
+  icon_class: string;
+}
+
+export interface ResumeBannerResponse {
+  user_id: number;
+  banner: ResumeBanner | null;
+}
+
+/** GET custom/v1/my-courses/resume-banner?user_id={userId} — CONFIRMED via Postman
+ * (Sep 2026). Only tested against a user WITH an active course — the
+ * no-active-course case (banner: null vs banner omitted vs {}) is NOT confirmed,
+ * so treat any falsy/missing `banner` as "don't render the banner" rather than
+ * assuming a specific empty shape.
+ */
+export const getResumeBanner = async (userId: number): Promise<ResumeBannerResponse> => {
+  const empty: ResumeBannerResponse = {user_id: userId, banner: null};
+  if (!userId) return empty;
+  try {
+    const json = await apiFetch(`/custom/v1/my-courses/resume-banner?user_id=${userId}`);
+    if (!json?.banner) return {user_id: json?.user_id ?? userId, banner: null};
+    return {
+      user_id: json.user_id ?? userId,
+      banner: {
+        ...json.banner,
+        title: decodeEntities(json.banner.title),
+        step_line: decodeEntities(json.banner.step_line),
+        step_title: decodeEntities(json.banner.step_title),
+      },
+    };
+  } catch (err) {
+    console.error('[coursesApi] getResumeBanner', err);
+    return empty;
+  }
+};
+
+// ─── CRM Online courses (in-progress / completed) ──────────────────────────
+// UNCONFIRMED course-object shape — both online-in-progress and
+// online-completed have only come back count: 0 / courses: [] in Postman so
+// far. Only the envelope (user_id, section, count, courses) is confirmed.
+// CRM Online is a different course system from LearnDash On-Demand, so the
+// per-course fields (progress, curriculum, current_step, etc. from
+// EnrolledCourse) should NOT be assumed to apply — do not map course fields
+// into UI until a real non-empty response is captured.
+//
+// FLAG (still open): the online-in-progress Postman response once came back
+// with section: "wk_completed" — identical to the /completed endpoint's
+// section slug. Confirm with Robby whether that was a one-off copy/paste of
+// the wrong response or a real backend bug before trusting this envelope.
+
+export interface OnlineCourse {
+  // UNCONFIRMED — no real course object seen yet. Placeholder only.
+  [key: string]: unknown;
+}
+
+export interface OnlineCoursesResponse {
+  user_id: number;
+  section: string;
+  count: number;
+  courses: OnlineCourse[];
+}
+
+/** GET custom/v1/my-courses/online-in-progress?user_id={userId} — envelope
+ * UNCONFIRMED (see flag above re: section slug collision with /completed).
+ * Course-object shape entirely unconfirmed (empty sample only).
+ */
+export const getOnlineInProgressCourses = async (userId: number): Promise<OnlineCoursesResponse> => {
+  const empty: OnlineCoursesResponse = {user_id: userId, section: 'online-in-progress', count: 0, courses: []};
+  if (!userId) return empty;
+  try {
+    const json = await apiFetch(`/custom/v1/my-courses/online-in-progress?user_id=${userId}`);
+    return {
+      user_id: json?.user_id ?? userId,
+      section: json?.section ?? 'online-in-progress',
+      count: json?.count ?? 0,
+      courses: Array.isArray(json?.courses) ? json.courses : [],
+    };
+  } catch (err) {
+    console.error('[coursesApi] getOnlineInProgressCourses', err);
+    return empty;
+  }
+};
+
+/** GET custom/v1/my-courses/online-completed?user_id={userId} — envelope
+ * CONFIRMED (user_id, section: "online-completed", count, courses). Course-object
+ * shape entirely unconfirmed (empty sample only) — do not map fields until a
+ * real completed CRM Online course is seen.
+ */
+export const getOnlineCompletedCourses = async (userId: number): Promise<OnlineCoursesResponse> => {
+  const empty: OnlineCoursesResponse = {user_id: userId, section: 'online-completed', count: 0, courses: []};
+  if (!userId) return empty;
+  try {
+    const json = await apiFetch(`/custom/v1/my-courses/online-completed?user_id=${userId}`);
+    return {
+      user_id: json?.user_id ?? userId,
+      section: json?.section ?? 'online-completed',
+      count: json?.count ?? 0,
+      courses: Array.isArray(json?.courses) ? json.courses : [],
+    };
+  } catch (err) {
+    console.error('[coursesApi] getOnlineCompletedCourses', err);
+    return empty;
+  }
+};
+
+// ─── Course completers (who completed a given course) ─────────────────────
+// CONFIRMED via Robby (Sep 2026): endpoint is public (__return_true, same
+// auth-exemption as /courses/upcoming) — no login required. Pagination reuses
+// the same shape as upcoming courses (see Pagination interface above).
+// Live-tested (Sep 2026) against course_id=22814 — real completers returned.
+
+export interface CourseCompleter {
+  user_id: number;
+  name: string;
+  avatar: string;
+  job_title: string;
+  country: string;
+  profile_url: string;
+  completion_date: string; // Y-m-d
+  completion_display: string; // e.g. "Completed Aug 14, 2026"
+  completion_timestamp: number; // unix timestamp — present in real response, not in original Robby spec; useful for sorting
+}
+
+export interface CourseCompletersResponse {
+  course_id: number;
+  course_title: string;
+  total_completed: number;
+  completers: CourseCompleter[];
+  pagination: Pagination;
+}
+
+/** GET /custom/v1/courses/completed-by?course_id=...&page=...&per_page=...
+ * CONFIRMED via Robby + live Postman test (Sep 2026). Public endpoint, no auth required.
+ */
+export const getCourseCompleters = async (
+  courseId: number,
+  page: number = 1,
+  perPage: number = 10,
+): Promise<CourseCompletersResponse> => {
+  const empty: CourseCompletersResponse = {
+    course_id: courseId,
+    course_title: '',
+    total_completed: 0,
+    completers: [],
+    pagination: {
+      total: 0, page, per_page: perPage, total_pages: 0,
+      showing_start: 0, showing_end: 0, has_more: false,
+      show_load_more: false, load_more_label: 'Show More',
+      load_more_step: perPage, next_page: null,
+    },
+  };
+  if (!courseId) return empty;
+  try {
+    const json = await apiFetch(
+      `/custom/v1/courses/completed-by?course_id=${courseId}&page=${page}&per_page=${perPage}`,
+    );
+    return {
+      course_id: json?.course_id ?? courseId,
+      course_title: decodeEntities(json?.course_title ?? ''),
+      total_completed: json?.total_completed ?? 0,
+      completers: Array.isArray(json?.completers)
+        ? json.completers.map((c: CourseCompleter) => ({...c, name: decodeEntities(c.name)}))
+        : [],
+      pagination: json?.pagination ?? empty.pagination,
+    };
+  } catch (err) {
+    console.error('[coursesApi] getCourseCompleters', err);
     return empty;
   }
 };
@@ -1299,17 +1552,11 @@ export const getQuizResults = async (
 // caveat as above, field names not yet Postman-verified against a real
 // response.
 
-export interface StepCommentAuthor {
-  user_id: number;
-  full_name: unknown;
-  avatar: string;
-  profile_url?: string;
-}
-
 export interface StepComment {
   id: number;
-  author: StepCommentAuthor;
-  content: unknown;
+  author_name: string;
+  author_avatar: string;
+  content: string;
   date_formatted: string;
   replies?: StepComment[];
 }

@@ -23,7 +23,8 @@ import {
 // cross-platform SafeAreaView and removed the now-redundant hack.
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
-import Svg, {Path, G, Mask, Rect} from 'react-native-svg';
+import Svg, {Path, G, Mask, Rect, Circle} from 'react-native-svg';
+import {launchImageLibrary} from 'react-native-image-picker';
 import BackButton from '../components/BackButton';
 import {searchMembers, sendMessage, stripHtml, MemberSearchResult, searchGifs, GiphyGif} from '../api/dmApi';
 
@@ -88,6 +89,13 @@ const GifIcon = () => (
 const EmojiIcon = () => (
   <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
     <Path fillRule="evenodd" clipRule="evenodd" d="M10 4a6 6 0 110 12A6 6 0 0110 4zm2.861 7.404a.5.5 0 00-.707.07A2.43 2.43 0 019.875 12.304a2.43 2.43 0 01-1.78-.83.5.5 0 00-.756.656A3.43 3.43 0 009.875 13.304a3.43 3.43 0 002.536-1.174.5.5 0 00-.55-.726zM7.625 7.5c-.345 0-.625.392-.625.875s.28.875.625.875.625-.392.625-.875S7.97 7.5 7.625 7.5zm4.75 0c-.345 0-.625.392-.625.875s.28.875.625.875.625-.392.625-.875S12.72 7.5 12.375 7.5z" fill="#192546" />
+  </Svg>
+);
+
+const RemoveIcon = () => (
+  <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+    <Circle cx="7" cy="7" r="7" fill="#192546" />
+    <Path d="M4.8 4.8L9.2 9.2M9.2 4.8L4.8 9.2" stroke="#FFFFFF" strokeWidth="1.4" strokeLinecap="round" />
   </Svg>
 );
 
@@ -215,6 +223,11 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
   const [gifResults, setGifResults] = useState<GiphyGif[]>([]);
   const [gifLoading, setGifLoading] = useState(false);
   const [textSelection, setTextSelection] = useState({start: 0, end: 0});
+  // Attachment state — same shape as DMConversationScreen, so both compose
+  // bars behave identically.
+  const [attachments, setAttachments] = useState<
+    {uri: string; type: 'image' | 'video' | 'file'; name: string}[]
+  >([]);
 
   useEffect(() => { doSearch(''); }, []);
 
@@ -297,11 +310,98 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
     setShowGifPicker(false);
   };
 
+  const toggleBold = () => {
+    const {start, end} = textSelection;
+    if (start === end) {
+      const before = messageText.slice(0, start);
+      const after = messageText.slice(start);
+      setMessageText(`${before}****${after}`);
+      const cursor = start + 2;
+      setTextSelection({start: cursor, end: cursor});
+      return;
+    }
+    const before = messageText.slice(0, start);
+    const selected = messageText.slice(start, end);
+    const after = messageText.slice(end);
+    setMessageText(`${before}**${selected}**${after}`);
+  };
+
+  const handlePickPhoto = () => {
+    launchImageLibrary({mediaType: 'photo', selectionLimit: 4, quality: 0.8}, res => {
+      if (res.didCancel || res.errorCode) return;
+      const picked = (res.assets || [])
+        .filter(a => a.uri)
+        .map(a => ({
+          uri: a.uri as string,
+          type: 'image' as const,
+          name: a.fileName || 'photo.jpg',
+        }));
+      setAttachments(prev => [...prev, ...picked]);
+    });
+  };
+
+  const handlePickVideo = () => {
+    launchImageLibrary({mediaType: 'video', selectionLimit: 1, quality: 0.8}, res => {
+      if (res.didCancel || res.errorCode) return;
+      const picked = (res.assets || [])
+        .filter(a => a.uri)
+        .map(a => ({
+          uri: a.uri as string,
+          type: 'video' as const,
+          name: a.fileName || 'video.mp4',
+        }));
+      setAttachments(prev => [...prev, ...picked]);
+    });
+  };
+
+  const handlePickFile = async () => {
+    try {
+      const DocumentPicker = require('react-native-document-picker').default;
+      const results = await DocumentPicker.pick({
+        allowMultiSelection: true,
+        type: [DocumentPicker.types.allFiles],
+      });
+      const picked = results
+        .filter((r: any) => r.uri)
+        .map((r: any) => ({
+          uri: r.uri as string,
+          type: 'file' as const,
+          name: r.name || 'file',
+        }));
+      setAttachments(prev => [...prev, ...picked]);
+    } catch (err: any) {
+      if (!err?.toString?.()?.includes('cancel')) {
+        Alert.alert('Error', 'Could not pick file. Please try again.');
+      }
+    }
+  };
+
+  const removeAttachment = (uri: string) => {
+    setAttachments(prev => prev.filter(a => a.uri !== uri));
+  };
+
   const handleSend = async () => {
-    if (!selected.length || !messageText.trim()) return;
+    if (!selected.length || (!messageText.trim() && !attachments.length)) return;
+
+    // Attachment upload isn't wired to the backend yet — same limitation as
+    // DMConversationScreen's handleSend (see its comment). Once that's
+    // resolved there, mirror the fix here too.
+    if (attachments.length) {
+      Alert.alert(
+        'Attachments not sent',
+        'Photo/video/file sending isn’t connected to the server yet — only your text will be sent for now.',
+      );
+    }
+
+    if (!messageText.trim()) {
+      setAttachments([]);
+      return;
+    }
+
     setSending(true);
     try {
       const res = await sendMessage(null, selected.map(m => m.id), messageText.trim());
+      setAttachments([]);
       navigation.replace('DMConversation', {
         threadId: res.id ?? res.thread_id,
         recipientName: selected.length === 1 ? selected[0].name : `${selected.length} people`,
@@ -402,6 +502,33 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
         {/* Compose box - same as conversation screen */}
         {selected.length > 0 && (
           <View style={n.composeOuter}>
+            {attachments.length > 0 && (
+              <View style={n.attachmentsStrip}>
+                {attachments.map(att => (
+                  <View key={att.uri} style={n.attachmentThumbWrap}>
+                    {att.type === 'file' ? (
+                      <View style={n.attachmentFileChip}>
+                        <Text style={n.attachmentFileName} numberOfLines={1}>
+                          {att.name}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Image source={{uri: att.uri}} style={n.attachmentThumb} />
+                    )}
+                    {att.type === 'video' && (
+                      <View style={n.attachmentVideoBadge}>
+                        <Text style={n.attachmentVideoBadgeText}>▶</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={n.attachmentRemoveBtn}
+                      onPress={() => removeAttachment(att.uri)}>
+                      <RemoveIcon />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
             <TextInput
               style={n.composeInput}
               placeholder="Hi!"
@@ -414,14 +541,16 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
             />
             <View style={n.composeActionsRow}>
               <View style={n.iconsFrame}>
-                <TouchableOpacity><AaIcon /></TouchableOpacity>
-                <TouchableOpacity><CameraIcon /></TouchableOpacity>
-                <TouchableOpacity><VideoIcon /></TouchableOpacity>
-                <TouchableOpacity><AttachIcon /></TouchableOpacity>
+                <TouchableOpacity onPress={toggleBold}><AaIcon /></TouchableOpacity>
+                <TouchableOpacity onPress={handlePickPhoto}><CameraIcon /></TouchableOpacity>
+                <TouchableOpacity onPress={handlePickVideo}><VideoIcon /></TouchableOpacity>
+                <TouchableOpacity onPress={handlePickFile}><AttachIcon /></TouchableOpacity>
                 <TouchableOpacity onPress={() => { setGifQuery(''); setShowGifPicker(true); }}><GifIcon /></TouchableOpacity>
                 <TouchableOpacity onPress={() => setShowEmojiPicker(prev => !prev)}><EmojiIcon /></TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={handleSend} disabled={!messageText.trim() || sending}>
+              <TouchableOpacity
+                onPress={handleSend}
+                disabled={(!messageText.trim() && !attachments.length) || sending}>
                 <LinearGradient
                   colors={['#E257E4', '#084D92']}
                   start={{x: 0, y: 0}}
@@ -687,6 +816,65 @@ const n = StyleSheet.create({
     fontFamily: 'Runda',
     fontSize: 14,
     fontWeight: '500',
+  },
+
+  // Attachment previews — same as DMConversationScreen
+  attachmentsStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+  },
+  attachmentThumbWrap: {
+    width: 56,
+    height: 56,
+    marginRight: 8,
+    marginBottom: 8,
+    borderRadius: 6,
+    overflow: 'visible',
+  },
+  attachmentThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 6,
+    backgroundColor: '#C5C6CC',
+  },
+  attachmentFileChip: {
+    width: 56,
+    height: 56,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#C5C6CC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  attachmentFileName: {
+    fontFamily: 'Runda',
+    fontSize: 9,
+    color: '#192546',
+    textAlign: 'center',
+  },
+  attachmentVideoBadge: {
+    position: 'absolute',
+    bottom: 2,
+    left: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  attachmentVideoBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+  },
+  attachmentRemoveBtn: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
   },
 
   // Emoji picker — same styling as DMConversationScreen

@@ -11,11 +11,13 @@ import {
   Dimensions,
   TouchableWithoutFeedback,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path} from 'react-native-svg';
 import * as Keychain from 'react-native-keychain';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {logoutUser} from '../api/authApi';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.85;
@@ -194,6 +196,29 @@ const HelpIcon = () => (
   </Svg>
 );
 
+// ─── Log Out / Privacy Policy row icons — 15x15, per Figma spec ──────────────
+const LogoutIcon = () => (
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path
+      d="M7.5 1.875C7.99728 1.875 8.47405 2.07269 8.82568 2.42432C9.17731 2.77595 9.375 3.25272 9.375 3.75V5C9.375 5.34518 9.09518 5.625 8.75 5.625C8.40482 5.625 8.125 5.34518 8.125 5V3.75C8.125 3.58424 8.0591 3.42532 7.94189 3.30811C7.82468 3.1909 7.66576 3.125 7.5 3.125H3.125C2.95924 3.125 2.80032 3.1909 2.68311 3.30811C2.5659 3.42532 2.5 3.58424 2.5 3.75V11.25C2.5 11.4158 2.5659 11.5747 2.68311 11.6919C2.80032 11.8091 2.95924 11.875 3.125 11.875H7.5C7.66576 11.875 7.82468 11.8091 7.94189 11.6919C8.0591 11.5747 8.125 11.4158 8.125 11.25V10C8.125 9.65482 8.40482 9.375 8.75 9.375C9.09518 9.375 9.375 9.65482 9.375 10V11.25C9.375 11.7473 9.17731 12.2241 8.82568 12.5757C8.47405 12.9273 7.99728 13.125 7.5 13.125H3.125C2.62772 13.125 2.15095 12.9273 1.79932 12.5757C1.44769 12.2241 1.25 11.7473 1.25 11.25V3.75C1.25 3.25272 1.44769 2.77595 1.79932 2.42432C2.15095 2.07269 2.62772 1.875 3.125 1.875H7.5Z"
+      fill="#192546"
+    />
+    <Path
+      d="M10.8081 5.18311C11.0522 4.93903 11.4478 4.93903 11.6919 5.18311L13.5669 7.05811C13.811 7.30218 13.811 7.69782 13.5669 7.94189L11.6919 9.81689C11.4478 10.061 11.0522 10.061 10.8081 9.81689C10.564 9.57282 10.564 9.17718 10.8081 8.93311L11.6162 8.125H5.625C5.27982 8.125 5 7.84518 5 7.5C5 7.15482 5.27982 6.875 5.625 6.875H11.6162L10.8081 6.06689C10.564 5.82282 10.564 5.42718 10.8081 5.18311Z"
+      fill="#192546"
+    />
+  </Svg>
+);
+
+const PrivacyIcon = () => (
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path
+      d="M3.75 13.75H11.25C11.9375 13.75 12.5 13.1875 12.5 12.5V6.875C12.5 6.1875 11.9375 5.625 11.25 5.625H10.625V4.375C10.625 2.65 9.225 1.25 7.5 1.25C5.775 1.25 4.375 2.65 4.375 4.375V5.625H3.75C3.0625 5.625 2.5 6.1875 2.5 6.875V12.5C2.5 13.1875 3.0625 13.75 3.75 13.75ZM5.625 4.375C5.625 3.34375 6.46875 2.5 7.5 2.5C8.53125 2.5 9.375 3.34375 9.375 4.375V5.625H5.625V4.375ZM3.75 6.875H11.25V12.5H3.75V6.875Z"
+      fill="#192546"
+    />
+  </Svg>
+);
+
 // ─── Menu items config ────────────────────────────────────────────────────────
 const MENU_ITEMS = [
   {key: 'Courses',        Icon: CourseIcon,         screen: 'Courses'},
@@ -233,6 +258,8 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
     percentage: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  // Logged-in user's account email — shown next to Log Out, right-aligned.
+  const [email, setEmail] = useState('');
 
   // ── Animate open / close ──────────────────────────────────────────────────
   useEffect(() => {
@@ -252,7 +279,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
 
   const loadAll = async () => {
     setLoading(true);
-    await Promise.allSettled([loadProfile(), loadActiveMembers(), loadBadgeProgress()]);
+    await Promise.allSettled([loadProfile(), loadActiveMembers(), loadBadgeProgress(), loadEmail()]);
     setLoading(false);
   };
 
@@ -334,9 +361,58 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
     } catch {}
   };
 
+  // ── Logged-in account email ─────────────────────────────────────────────
+  // WordPress core only serializes `email` on /wp/v2/users/me under
+  // context=edit — under the default `view` context the field is stripped
+  // as PII, which is why this was coming back blank even though the token
+  // and every other endpoint (profile, badges, members) worked fine.
+  // context=edit falls back to the plain call in case a given account's
+  // capabilities reject the edit context outright.
+  const loadEmail = async () => {
+    try {
+      const token = await getSavedToken();
+      if (!token) return;
+      const headers = {Authorization: `Bearer ${token}`};
+
+      let res = await fetch(`${BASE}/wp/v2/users/me?context=edit`, {headers});
+      if (!res.ok) {
+        res = await fetch(`${BASE}/wp/v2/users/me`, {headers});
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (__DEV__ && !data?.email) {
+          console.log('[ProfileDrawer] /wp/v2/users/me returned no email field:', data);
+        }
+        setEmail(data?.email || '');
+      } else if (__DEV__) {
+        console.log('[ProfileDrawer] loadEmail request failed:', res.status);
+      }
+    } catch (e) {
+      if (__DEV__) console.log('[ProfileDrawer] loadEmail error:', e);
+    }
+  };
+
   const handleNavItem = (screen: string) => {
     onClose();
     setTimeout(() => navigation?.navigate(screen), 300);
+  };
+
+  // ── Log out — same confirm-then-logout flow as AccountSettingsScreen ───────
+  const handleLogout = () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      {text: 'Cancel', style: 'cancel'},
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          onClose();
+          await logoutUser();
+          // TODO(Marium): confirm this matches the actual Auth-stack screen
+          // name registered in AppNavigator — using 'SignIn' as a placeholder.
+          navigation?.reset?.({index: 0, routes: [{name: 'SignIn'}]});
+        },
+      },
+    ]);
   };
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -522,6 +598,30 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
               <Text style={styles.menuLabel}>{item.key}</Text>
             </TouchableOpacity>
           ))}
+
+          {/* ── Log Out / Privacy Policy — Figma frame: column, gap 24,
+              paddingBottom 24, self-stretch; a 1px #E8E9F1 divider sits
+              above Log Out. gap is unreliable on Android/Hermes in this
+              codebase, so the 24px rhythm is done with explicit
+              marginBottom instead. ── */}
+          <View style={styles.actionsFrame}>
+            <View style={styles.actionsDividerLine} />
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={handleLogout}
+              activeOpacity={0.7}>
+              <LogoutIcon />
+              <Text style={styles.actionLabel}>{'Log Out'}</Text>
+              <Text style={styles.actionEmail} numberOfLines={1}>{email}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionRow, styles.actionRowLast]}
+              onPress={() => handleNavItem('PrivacyPolicy')}
+              activeOpacity={0.7}>
+              <PrivacyIcon />
+              <Text style={styles.actionLabel}>{'Privacy Policy'}</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Bottom safe-area padding so the last menu item never sits
               behind the Android gesture bar / home indicator. */}
@@ -767,6 +867,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#192546',
+  },
+
+  // ── Log Out / Privacy Policy — Figma frame ──────────────────────────────────
+  // display:flex; padding-bottom:24; flex-direction:column;
+  // align-items:flex-start; gap:24; align-self:stretch;
+  actionsFrame: {
+    paddingTop: 8,
+    paddingBottom: 24,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
+  },
+  // Line above Log Out: height:1px; align-self:stretch; background:#E8E9F1.
+  // marginBottom stands in for the frame's 24px gap (gap is unreliable on
+  // Android/Hermes for this codebase — see technical-learnings).
+  actionsDividerLine: {
+    height: 1,
+    alignSelf: 'stretch',
+    backgroundColor: '#E8E9F1',
+    marginBottom: 24,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    paddingHorizontal: 24,
+    marginBottom: 24,
+  },
+  actionRowLast: {marginBottom: 0},
+  actionLabel: {
+    marginLeft: 10,
+    fontFamily: 'Runda',
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#192546',
+  },
+  // Account email shown in parallel to Log Out, right-aligned.
+  actionEmail: {
+    flex: 1,
+    marginLeft: 10,
+    fontFamily: 'Runda',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+    color: '#8F9098',
+    textAlign: 'right',
   },
 });
 

@@ -18,7 +18,7 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import {launchImageLibrary} from 'react-native-image-picker';
-import DocumentPicker from 'react-native-document-picker';
+import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import {createTopic, uploadForumMedia, FILTER_SETS, FilterItem} from '../api/forumsApi';
 import {CameraIcon, VideoIcon, AttachmentIcon} from '../components/forumsIcons';
 
@@ -76,13 +76,13 @@ const NewDiscussionScreen = ({navigation}: any) => {
 
   const handlePickDocument = async () => {
     try {
-      const res = await DocumentPicker.pick({type: [DocumentPicker.types.allFiles]});
+      const res = await pick({type: [types.allFiles]});
       const file = res[0];
       if (file) {
         setDocument({uri: file.uri, name: file.name || 'document', type: file.type || 'application/octet-stream'});
       }
     } catch (err) {
-      if (!DocumentPicker.isCancel(err)) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         Alert.alert('Error', 'Could not select that file.');
       }
     }
