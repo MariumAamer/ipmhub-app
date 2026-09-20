@@ -247,10 +247,23 @@ const ProfileSetupScreen = ({navigation}: any) => {
     } catch {} finally { setLoadingCountries(false); }
   };
 
+  // On iOS the camera / photo picker is presented with presentViewController
+  // on whatever is on top. Launching it straight from the Alert button's
+  // onPress means the Alert is still animating away at that moment, and UIKit
+  // can refuse the presentation with an uncaught exception (app abort).
+  // Waiting for the Alert to finish dismissing first avoids that race.
+  const launchPickerAfterAlert = (launch: () => void) => {
+    if (Platform.OS === 'ios') {
+      setTimeout(launch, 600);
+    } else {
+      launch();
+    }
+  };
+
   const handlePickPhoto = () => {
     Alert.alert('Profile Photo', 'Choose photo source', [
-      {text: 'Camera', onPress: () => launchCamera({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); })},
-      {text: 'Photo Library', onPress: () => launchImageLibrary({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); })},
+      {text: 'Camera', onPress: () => launchPickerAfterAlert(() => launchCamera({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); }))},
+      {text: 'Photo Library', onPress: () => launchPickerAfterAlert(() => launchImageLibrary({mediaType: 'photo', quality: 0.8, maxWidth: 400, maxHeight: 400}, res => { if (res.assets?.[0]?.uri) setPhotoUri(res.assets[0].uri!); }))},
       {text: 'Cancel', style: 'cancel'},
     ]);
   };

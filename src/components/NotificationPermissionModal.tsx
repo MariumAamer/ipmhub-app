@@ -33,8 +33,8 @@
  * reappear on every launch). Not wired yet; left for you to hook in.
  */
 
-import React from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, Modal} from 'react-native';
+import React, {useEffect, useRef} from 'react';
+import {View, Text, StyleSheet, TouchableOpacity, Animated} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 
 const NAVY = '#192546';
@@ -163,10 +163,37 @@ const NotificationPermissionModal = ({
     onAllow();
   };
 
+  // Rendered as a plain in-screen overlay instead of a native <Modal>.
+  // This prompt opens ~800ms after the Feed mounts for a brand-new user,
+  // i.e. right in the middle of the navigation.replace('MainApp') transition
+  // from onboarding. React Native's iOS Modal presents itself with
+  // presentViewController from a main-queue block, and UIKit threw an
+  // uncaught exception there (SIGABRT, seen in TestFlight crash reports for
+  // builds 12 and 13). An absolutely-positioned View has no native
+  // presentation step, so nothing can be refused. The slide-up is done with
+  // Animated to keep the previous look.
+  const slide = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (visible) {
+      slide.setValue(1);
+      Animated.timing(slide, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, slide]);
+
+  if (!visible) return null;
+
+  const translateY = slide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 600],
+  });
+
   return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={onSkip}>
-      <View style={s.overlay}>
-        <View style={s.sheet}>
+    <View style={[s.overlay, s.overlayAbsolute]}>
+        <Animated.View style={[s.sheet, {transform: [{translateY}]}]}>
           {/* ── Header ── */}
           <View style={s.header}>
             <Text style={s.headerTitle}>Notifications</Text>
@@ -207,15 +234,24 @@ const NotificationPermissionModal = ({
               <Text style={s.skipBtnText}>Skip for Now</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
-    </Modal>
+        </Animated.View>
+    </View>
   );
 };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   overlay: {flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end'},
+  // Covers the whole screen, above everything else (replaces <Modal>).
+  overlayAbsolute: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    elevation: 1000,
+  },
   sheet: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
