@@ -55,6 +55,8 @@
 	<string>IPM Hub uses your location to show relevant events and content near you.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>IPM Hub uses your location to show relevant events and content near you.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>IPM Hub needs access to your camera so you can take a profile photo or attach photos to posts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>IPM Hub needs access to your photo library so you can upload a profile picture or attach images to posts.</string>
 	<key>UIBackgroundModes</key>
