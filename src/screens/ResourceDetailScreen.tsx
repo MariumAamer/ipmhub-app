@@ -60,7 +60,7 @@ const TOCSheet = ({visible, onClose, items, onSelect}: any) => {
   return (
     <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
       <View style={toc.backdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
       </View>
       <Animated.View style={[toc.sheet, {transform: [{translateY: slideAnim}]}]}>
         <View style={toc.header}>
@@ -91,7 +91,7 @@ const TOCSheet = ({visible, onClose, items, onSelect}: any) => {
 };
 
 const toc = StyleSheet.create({
-  backdrop: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)'},
+  backdrop: {...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.3)'},
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -235,7 +235,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
   if (isVideo) {
     return (
       <SafeAreaView style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar barStyle="dark-content" />
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={s.videoHeader}>
             <BackButton onPress={() => navigation.goBack()} />
@@ -313,7 +313,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
   // ─── Article layout ──────────────────────────────────────────────────────
   return (
     <SafeAreaView style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Was the first child inside the ScrollView, so it scrolled away
           with the rest of the content instead of staying put. Now a

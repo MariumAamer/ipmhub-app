@@ -182,7 +182,7 @@ const PickerSheet = ({
   return (
     <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
       <View style={ps.backdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
       </View>
       <Animated.View style={[ps.sheet, {transform: [{translateY: slideAnim}]}]}>
         <View style={ps.header}>
@@ -215,7 +215,7 @@ const PickerSheet = ({
 };
 
 const ps = StyleSheet.create({
-  backdrop: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)'},
+  backdrop: {...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)'},
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -650,7 +650,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
 
   return (
     <SafeAreaView style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <View style={s.header}>
         <TouchableOpacity style={s.backBtn} onPress={goPrevious}>

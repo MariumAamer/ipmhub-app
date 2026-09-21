@@ -47,7 +47,7 @@ const FilterSheet = ({
       animationType="none">
       <View style={sheet.backdrop}>
         <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           onPress={onClose}
         />
       </View>
@@ -87,7 +87,7 @@ const FilterSheet = ({
 
 const sheet = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   container: {
@@ -156,7 +156,7 @@ const PhotoRing = () => (
     height={73.972}
     viewBox="0 0 74 74"
     fill="none"
-    style={StyleSheet.absoluteFillObject}>
+    style={StyleSheet.absoluteFill}>
     <Path
       d="M36.986 0C57.4128 0 73.972 16.5592 73.972 36.986C73.972 57.4128 57.4128 73.972 36.986 73.972C16.5592 73.972 0 57.4128 0 36.986C0 16.5592 16.5592 0 36.986 0ZM36.986 1.72028C17.5093 1.72028 1.72028 17.5093 1.72028 36.986C1.72028 56.4627 17.5093 72.2517 36.986 72.2517C56.4627 72.2517 72.2517 56.4627 72.2517 36.986C72.2517 17.5093 56.4627 1.72028 36.986 1.72028Z"
       fill="#FFFFFF"
@@ -477,7 +477,7 @@ const MentorsScreen = ({navigation}: any) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
       <ScrollView showsVerticalScrollIndicator={false}>

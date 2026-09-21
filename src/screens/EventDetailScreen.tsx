@@ -190,7 +190,7 @@ const EventDetailScreen = ({navigation, route}: Props) => {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF"/>
+      <StatusBar barStyle="dark-content"/>
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)}/>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>

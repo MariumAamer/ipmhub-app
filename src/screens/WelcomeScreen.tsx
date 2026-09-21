@@ -26,7 +26,7 @@ const WelcomeScreen = ({navigation}: any) => {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={false} />
+      <StatusBar barStyle="dark-content" />
 
       {/* White status bar backing — real device inset now, not the old
           Android-only StatusBar.currentHeight guess. */}

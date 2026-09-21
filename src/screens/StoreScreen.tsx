@@ -659,7 +659,7 @@ export default function StoreScreen({ navigation }: any) {
     // wrapper. Every other AppHeader screen uses a plain View for this
     // reason; wrapping it here too was doubling the space above the header.
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
       {/* Main tab bar */}
@@ -910,7 +910,7 @@ const styles = StyleSheet.create({
   gradientBtnText: { fontFamily: 'Runda', fontSize: 12, fontWeight: '500', color: '#FFF', marginRight: 8 },
 
   // ── Sort sheet ──
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  overlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16,

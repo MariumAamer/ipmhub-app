@@ -106,7 +106,7 @@ const FilterSheet = ({visible, onClose, categories, selected, onSelect, onContin
   return (
     <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
       <View style={fs.backdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
       </View>
       <Animated.View style={[fs.sheet, {transform: [{translateY: slideAnim}]}]}>
         <View style={fs.header}>
@@ -137,7 +137,7 @@ const FilterSheet = ({visible, onClose, categories, selected, onSelect, onContin
 };
 
 const fs = StyleSheet.create({
-  backdrop: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)'},
+  backdrop: {...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)'},
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -414,7 +414,7 @@ const ResourcesScreen = ({navigation}: any) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 

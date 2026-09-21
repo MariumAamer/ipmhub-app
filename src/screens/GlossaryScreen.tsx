@@ -99,7 +99,7 @@ const GlossaryScreen = ({navigation}: any) => {
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#004C96" />
+      <StatusBar barStyle="light-content" />
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 

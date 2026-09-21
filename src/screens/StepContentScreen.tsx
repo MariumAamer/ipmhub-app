@@ -403,7 +403,7 @@ const StepContentScreen = ({route, navigation}: any) => {
   return (
     <>
       <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <View style={styles.headerRow}>
         <BackButton onPress={() => navigation?.goBack?.()} />

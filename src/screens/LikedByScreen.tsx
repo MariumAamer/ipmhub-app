@@ -146,7 +146,7 @@ export default function LikedByScreen({navigation, route}: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <View style={styles.header}>
         <BackButton style={styles.backBtn} onPress={() => navigation?.goBack()} />

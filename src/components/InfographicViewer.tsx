@@ -120,7 +120,7 @@ const InfographicViewer = ({visible, onClose, title, imageUrl, resourceId}: Info
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={ig.backdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
       </View>
       <Animated.View style={[ig.sheet, {transform: [{translateY: slideAnim}]}]}>
         <View style={ig.header}>
@@ -149,7 +149,7 @@ const InfographicViewer = ({visible, onClose, title, imageUrl, resourceId}: Info
 };
 
 const ig = StyleSheet.create({
-  backdrop: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)'},
+  backdrop: {...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)'},
   sheet: {
     position: 'absolute',
     bottom: 0,

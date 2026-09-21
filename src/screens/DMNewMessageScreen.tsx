@@ -447,7 +447,7 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
 
   return (
     <SafeAreaView style={n.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Header - no AppHeader, just back + title */}
       <View style={n.header}>

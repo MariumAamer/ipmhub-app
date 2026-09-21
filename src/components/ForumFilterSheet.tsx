@@ -85,7 +85,7 @@ const ForumFilterSheet = ({
       {/* Backdrop */}
       <Animated.View style={[styles.backdrop, {opacity: backdropAnim}]}>
         <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           onPress={onClose}
         />
       </Animated.View>
@@ -149,7 +149,7 @@ const ForumFilterSheet = ({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   sheet: {

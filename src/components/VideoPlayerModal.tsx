@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   playerWrap: {width: '100%', aspectRatio: 16 / 9},
   webview: {flex: 1, backgroundColor: '#000000'},
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#000000',

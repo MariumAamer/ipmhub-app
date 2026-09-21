@@ -1421,7 +1421,7 @@ const CoursesTab = ({userId, isOwn, displayName, navigation, profileData}: {user
               <View style={s.courseImgPanel}>
                 <LinearGradient
                   colors={['#ABE4FF', '#FFFFFF']}
-                  style={StyleSheet.absoluteFillObject}
+                  style={StyleSheet.absoluteFill}
                 />
                 {c.logo_url ? (
                   <Image source={{uri: c.logo_url}} style={s.courseImgRotated} resizeMode="cover" />
@@ -2125,7 +2125,7 @@ const MemberProfileScreen = ({navigation, route}: any) => {
 
   return (
     <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
       <ScrollView showsVerticalScrollIndicator={false} bounces>

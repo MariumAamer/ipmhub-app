@@ -113,7 +113,7 @@ const ReplyToDiscussionScreen = ({navigation, route}: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Header: X close + gradient Publish */}
       <View style={styles.header}>

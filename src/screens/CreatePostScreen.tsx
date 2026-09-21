@@ -401,7 +401,7 @@ const CreatePostScreen = ({navigation, route}: any) => {
 
   return (
     <SafeAreaView style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <KeyboardAvoidingView
         style={s.flex}

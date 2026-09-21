@@ -252,7 +252,7 @@ const HelpSupportScreen = ({navigation}: any) => {
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#004C96" />
+      <StatusBar barStyle="light-content" />
 
       {/* Fixed siblings above the ScrollView — neither the shared app header
           nor the back button should scroll away with the content. */}
@@ -465,7 +465,7 @@ const HelpSupportScreen = ({navigation}: any) => {
       {/* ── Filter modal (category picker) ───────────────────────────────── */}
       <Modal transparent visible={filterModalVisible} animationType="slide" onRequestClose={closeFilterModal}>
         <View style={s.modalBackdrop}>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={closeFilterModal} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeFilterModal} />
           <View style={s.modalSheet}>
             <View style={s.modalHandle} />
             <View style={s.modalHeader}>

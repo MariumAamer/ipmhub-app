@@ -43,7 +43,7 @@ const DMMembersScreen = ({route, navigation}: any) => {
 
   return (
     <SafeAreaView style={m.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <View style={m.header}>
         <BackButton style={m.backBtn} onPress={() => navigation.goBack()} />

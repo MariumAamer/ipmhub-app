@@ -144,7 +144,7 @@ const EventThankYouScreen = ({navigation, route}: Props) => {
 
   return (
     <SafeAreaView style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF"/>
+      <StatusBar barStyle="dark-content"/>
       {/* No AppHeader — matches Figma */}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>

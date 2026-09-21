@@ -157,7 +157,7 @@ const NewDiscussionScreen = ({navigation}: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* ── Header: X + Publish (row), title below ── */}
       <View style={styles.headerFrame}>

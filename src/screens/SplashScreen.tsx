@@ -40,8 +40,6 @@ const SplashScreen = ({navigation}: any) => {
     <View style={styles.container}>
       <StatusBar
         barStyle="light-content"
-        backgroundColor="#0C4D91"
-        translucent
       />
       <Image
         source={require('../assets/images/ipmlogowhite1.png')}

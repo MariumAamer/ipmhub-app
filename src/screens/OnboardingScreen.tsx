@@ -118,7 +118,7 @@ const DiamondBG = () => {
   // These match: #C257DE(0%) #7758CE(13/50=26%) #0C4D91(36/50=72%) #192546(100%)
 
   return (
-    <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={StyleSheet.absoluteFillObject}>
+    <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={StyleSheet.absoluteFill}>
       <Defs>
         <SvgGrad id="qTL" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
           <Stop offset="0"    stopColor="#C257DE" />
@@ -228,7 +228,7 @@ const OnboardingScreen = ({navigation}: any) => {
           were unreadable (seen as near-invisible time/signal/battery on the
           purple background). backgroundColor/translucent are Android-only;
           barStyle is what actually matters on iOS. */}
-      <StatusBar barStyle="light-content" backgroundColor="#192546" translucent={false} />
+      <StatusBar barStyle="light-content" />
 
       {/* ── TOP COLORED SECTION ── */}
       <View style={s.topSection}>

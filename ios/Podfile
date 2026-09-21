@@ -5,6 +5,22 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+# React Native 0.87 changed several CocoaPods defaults. To keep this first
+# 0.87 build as close as possible to the (working) 0.80 setup, we opt out of
+# them here. Each can be flipped later, one at a time, once 0.87 builds green.
+#
+#  * RCT_USE_PREBUILT_RNCORE / RCT_USE_RN_DEP: 0.87 downloads a prebuilt React
+#    Native core + dependencies (faster CI builds) by default. This app links
+#    everything as static frameworks (required by Firebase) and I could not
+#    verify the prebuilt path with that setup without a Mac, so we keep
+#    building from source. (This is also why the fmt workaround below stays.)
+#  * RCT_REMOVE_LEGACY_ARCH: 0.87 strips the legacy-architecture code by
+#    default. Some native modules here (notably the archived @notifee/react-native)
+#    may still reference legacy bridge APIs, so keep it compiled in for now.
+ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+ENV['RCT_USE_RN_DEP'] = '0'
+ENV['RCT_REMOVE_LEGACY_ARCH'] = '0'
+
 # Firebase iOS SDK (used by @react-native-firebase) requires iOS 15.0 as
 # of the version pinned in this project — React Native's own default
 # (min_ios_version_supported, currently 13.4) is too low and causes
@@ -12,7 +28,7 @@ require Pod::Executable.execute_command('node', ['-p',
 # higher minimum deployment target". Hardcoding 15.0 here instead of
 # using RN's default. Must stay in sync with IPHONEOS_DEPLOYMENT_TARGET
 # in project.pbxproj (also set to 15.1). Bumped 15.0 -> 15.1 for React Native
-# 0.80, whose min_ios_version_supported is 15.1.
+# 0.80, whose min_ios_version_supported is 15.1 (still 15.1 in 0.87).
 platform :ios, '15.1'
 prepare_react_native_project!
 
@@ -54,8 +70,9 @@ target 'IPMMobileApp' do
 
     # Xcode 26.4+ (clang) rejects the consteval code in the bundled fmt pod
     # ("call to consteval function ... is not a constant expression" in
-    # fmt/src/format.cc). React Native 0.80 has no official fix, so build
-    # only the fmt pod as C++17, where consteval is not used.
+    # fmt/src/format.cc). Kept for the from-source build above (harmless if the
+    # fmt target does not exist, e.g. once prebuilt dependencies are enabled):
+    # build only the fmt pod as C++17, where consteval is not used.
     installer.pods_project.targets.each do |target|
       if target.name == 'fmt'
         target.build_configurations.each do |build_config|

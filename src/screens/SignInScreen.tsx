@@ -232,7 +232,7 @@ const SignInScreen = ({navigation, route}: any) => {
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F2F2F2" />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView
         style={styles.scroll}

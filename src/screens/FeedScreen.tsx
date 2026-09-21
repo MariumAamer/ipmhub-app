@@ -1286,7 +1286,7 @@ const FeedScreen = ({navigation}: any) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       <AppHeader
         navigation={navigation}

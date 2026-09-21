@@ -489,7 +489,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* ── App-wide header (chevrons, logo, envelope, bell, avatar) ── */}
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />

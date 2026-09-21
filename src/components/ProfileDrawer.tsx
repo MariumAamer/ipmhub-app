@@ -429,7 +429,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
   if (!visible) return null;
 
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[styles.backdrop, {opacity: backdropOpacity}]} />
       </TouchableWithoutFeedback>
@@ -634,7 +634,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   drawer: {

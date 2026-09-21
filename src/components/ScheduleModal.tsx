@@ -260,7 +260,7 @@ const ScheduleModal = ({
     <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
       {/* Backdrop */}
       <Animated.View style={[styles.backdrop, {opacity: backdropAnim}]}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
 
       {/* Sheet */}
@@ -368,7 +368,7 @@ const ScheduleModal = ({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   sheet: {

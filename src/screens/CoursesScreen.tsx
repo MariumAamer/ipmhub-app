@@ -794,7 +794,7 @@ const CoursesScreen = ({navigation}: any) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <TopTabs active={tab} onChange={setTab} />
       {tab === 'my' && <MyCoursesTab navigation={navigation} />}

@@ -108,7 +108,7 @@ const EditCredential = ({navigation}: any) => {
 
   return (
     <View style={st.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+      <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <ScrollView contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
         <BackBtn onPress={() => navigation?.goBack()} />

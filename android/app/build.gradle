@@ -123,7 +123,7 @@ android {
         release {
             signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
 }
@@ -139,7 +139,7 @@ dependencies {
     }
 
     // Firebase
-    implementation platform("com.google.firebase:firebase-bom:33.1.2")
+    implementation platform("com.google.firebase:firebase-bom:34.15.0")
 
     // Backports the AndroidX Photo Picker to API 24-29 devices (minSdkVersion
     // is 24 below). Without this, react-native-image-picker's launchImageLibrary()

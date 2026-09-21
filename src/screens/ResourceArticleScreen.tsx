@@ -8,7 +8,6 @@ import {
   Image,
   TouchableOpacity,
   StatusBar,
-  SafeAreaView,
   Share,
   Linking,
   Modal,
@@ -16,6 +15,8 @@ import {
   Dimensions,
   Animated,
 } from 'react-native';
+// RN core SafeAreaView is deprecated in 0.87 (and iOS-only); use the cross-platform one.
+import {SafeAreaView} from 'react-native-safe-area-context';
 import BackButton from '../components/BackButton';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
@@ -77,7 +78,7 @@ const TOCSheet = ({visible, onClose, items, onSelect}: any) => {
       animationType="none">
       <View style={toc.backdrop}>
         <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           onPress={onClose}
         />
       </View>
@@ -111,7 +112,7 @@ const TOCSheet = ({visible, onClose, items, onSelect}: any) => {
 };
 const toc = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.3)',
   },
   sheet: {
@@ -211,7 +212,7 @@ const ShareSheet = ({visible, onClose, article}: any) => {
       animationType="none">
       <View style={ss.backdrop}>
         <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           onPress={onClose}
         />
       </View>
@@ -261,7 +262,7 @@ const ShareSheet = ({visible, onClose, article}: any) => {
 };
 const ss = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.3)',
   },
   sheet: {
@@ -340,7 +341,7 @@ const ResourceArticleScreen = ({navigation, route}: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1A3A6B" />
+      <StatusBar barStyle="light-content" />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Hero image */}

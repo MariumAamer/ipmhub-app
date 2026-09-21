@@ -8,7 +8,6 @@ import {
   TextInput,
   ScrollView,
   StatusBar,
-  SafeAreaView,
   ActivityIndicator,
   Modal,
   FlatList,
@@ -18,6 +17,8 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
+// RN core SafeAreaView is deprecated in 0.87 (and iOS-only); use the cross-platform one.
+import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, {Path} from 'react-native-svg';
@@ -373,7 +374,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
       {renderPhoneCountryModal()}
 
       {/* Congratulations popup — plain overlay, see CongratulationsModal */}

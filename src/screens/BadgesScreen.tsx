@@ -925,7 +925,7 @@ const styles = StyleSheet.create({
     width: '100%', height: '100%',
   },
   lockIconCenter: {
-    ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center',
+    ...StyleSheet.absoluteFill, justifyContent: 'center', alignItems: 'center',
   },
   lockedTitle: {fontFamily: 'Runda', fontWeight: '700', fontSize: 16, color: '#192546'},
   lockedDesc: {

@@ -62,7 +62,7 @@ const OptionPickerScreen = ({navigation, route}: any) => {
 
   return (
     <View style={st.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+      <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <View style={st.content}>
         <BackBtn onPress={() => navigation?.goBack()} />

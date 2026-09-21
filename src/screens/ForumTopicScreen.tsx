@@ -92,7 +92,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar barStyle="dark-content" />
         <View style={styles.loadingBox}>
           <ActivityIndicator size="large" color="#0C4D91" />
         </View>
@@ -103,7 +103,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
   if (!topic) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar barStyle="dark-content" />
         <View style={styles.header}>
           <BackButton style={styles.backBtn} onPress={() => navigation?.goBack()} size={28} />
         </View>
@@ -116,7 +116,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* ── Header: back + Report Forum ── */}
       <View style={styles.header}>

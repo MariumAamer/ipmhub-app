@@ -588,7 +588,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
 
   return (
     <View style={c.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* App Header - always visible */}
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />

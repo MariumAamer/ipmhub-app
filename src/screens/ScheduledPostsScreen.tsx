@@ -228,7 +228,7 @@ const ScheduledPostsScreen = ({navigation}: any) => {
 
   return (
     <SafeAreaView style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Header */}
       <View style={s.header}>

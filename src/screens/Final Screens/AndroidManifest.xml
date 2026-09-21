@@ -1,0 +1,75 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <queries>
+        <package android:name="com.google.android.youtube" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="youtube" />
+        </intent>
+    </queries>
+
+    <application
+      android:name=".MainApplication"
+      android:label="@string/app_name"
+      android:icon="@mipmap/ic_launcher"
+      android:roundIcon="@mipmap/ic_launcher_round"
+      android:allowBackup="false"
+      android:theme="@style/AppTheme">
+      <activity
+        android:name=".MainActivity"
+        android:label="@string/app_name"
+        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+        android:launchMode="singleTask"
+        android:windowSoftInputMode="adjustResize"
+        android:exported="true">
+
+        <!-- App launcher -->
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+
+        <!-- Deep links from email verification -->
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="https"
+                android:host="hub.instituteprojectmanagement.com" />
+        </intent-filter>
+
+        <!--
+          Custom-scheme deep link for the LinkedIn OAuth redirect and for
+          password reset (already referenced in authApi.ts's resetPassword
+          comments as ipmhub://reset-password, but never had a matching
+          manifest entry until now).
+
+          Why a custom scheme instead of reusing the https intent-filter
+          above: Chrome Custom Tabs frequently render an https redirect as
+          a normal web page in-tab rather than handing it to the app's App
+          Link, especially for an automatic (non-tapped) redirect — which
+          is exactly what happens for a LinkedIn user who's already logged
+          in. A custom scheme like ipmhub:// has no "web page" Chrome could
+          render instead, so once it's reached via a real link tap, Android
+          must hand it to an app or show a disambiguation chooser — it
+          can't silently stay in-browser the way an https URL can.
+          autoVerify is intentionally omitted: Digital Asset Links
+          verification only applies to https/http App Links, not custom
+          schemes, so it isn't needed (or possible) here.
+        -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="ipmhub" />
+        </intent-filter>
+
+      </activity>
+    </application>
+
+</manifest>

@@ -622,7 +622,7 @@ const LessonDetailScreen = ({navigation, route}: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F2F4F7" />
+      <StatusBar barStyle="dark-content" />
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
