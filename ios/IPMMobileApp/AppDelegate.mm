@@ -5,11 +5,22 @@
 #import <React/RCTLinkingManager.h>
 #import <GoogleSignIn/GoogleSignIn.h>
 
+// React Native 0.77+ requires the app to hand the generated dependency
+// provider to the delegate. Without it, RN raises "dependencyProvider is nil"
+// as soon as it creates its first native module, i.e. the app crashes on
+// launch before the first screen.
+#if __has_include(<ReactAppDependencyProvider/RCTAppDependencyProvider.h>)
+#import <ReactAppDependencyProvider/RCTAppDependencyProvider.h>
+#else
+#import <RCTAppDependencyProvider.h>
+#endif
+
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
   self.moduleName = @"IPMMobileApp";
+  self.dependencyProvider = [RCTAppDependencyProvider new];
   // You can add your custom initial props in the dictionary below.
   // They will be passed down to the ViewController used by React Native.
   self.initialProps = @{};
