@@ -51,5 +51,17 @@ target 'IPMMobileApp' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Xcode 26.4+ (clang) rejects the consteval code in the bundled fmt pod
+    # ("call to consteval function ... is not a constant expression" in
+    # fmt/src/format.cc). React Native 0.80 has no official fix, so build
+    # only the fmt pod as C++17, where consteval is not used.
+    installer.pods_project.targets.each do |target|
+      if target.name == 'fmt'
+        target.build_configurations.each do |build_config|
+          build_config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        end
+      end
+    end
   end
 end
