@@ -173,9 +173,21 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
 
       <View style={styles.bottomStack}>
         {hasCertificate && (
+          // FIX (iOS), round 3 — confirmed via elimination: position:'absolute'
+          // (StyleSheet.absoluteFillObject) was the actual trigger. Every
+          // attempt using it (rounds 1 & 2, and the flat-color diagnostic)
+          // rendered zero space at all; removing it (border-only diagnostic)
+          // immediately reserved space correctly. This version uses NO
+          // absolute positioning anywhere — the LinearGradient is a plain
+          // nested flex child sized via alignSelf:'stretch', exactly like
+          // the badge-frame gradients elsewhere in this file that have
+          // always rendered correctly on iOS. The outer TouchableOpacity
+          // also now carries real style (alignSelf:'stretch') rather than
+          // being left completely unstyled as in the original version.
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => Linking.openURL(course.certificate_url!)}>
+            onPress={() => Linking.openURL(course.certificate_url!)}
+            style={styles.actionBtnTouchable}>
             <LinearGradient
               colors={['#E257E4', '#084D92']}
               start={{x: 0, y: 0}}
@@ -307,6 +319,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#46B0E3',
   },
   bottomStack: {gap: 10, alignSelf: 'stretch'},
+  // Outer TouchableOpacity — just enough style to get a real width context
+  // from its parent (bottomStack). Deliberately non-empty: the ORIGINAL
+  // bug had this element completely unstyled, which is worth avoiding even
+  // though the confirmed fix was actually about removing position:absolute
+  // from the child, not this alone.
+  actionBtnTouchable: {
+    alignSelf: 'stretch',
+  },
+  // Now applied directly to the LinearGradient as a normal (non-absolute)
+  // flex child — same technique as the working badgeFrame gradients.
   actionBtn: {
     flexDirection: 'row',
     minHeight: 36,

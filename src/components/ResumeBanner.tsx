@@ -182,10 +182,15 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
 
 const styles = StyleSheet.create({
   root: {
-    // width:358 explicit (not just alignSelf:'stretch') — every other card
-    // in this codebase does the same, since a plain View inside a
-    // ScrollView doesn't reliably stretch to full width otherwise.
-    width: 358,
+    // FIX: was a hardcoded width:358 (= 390pt Figma reference width minus
+    // 32px of the parent's horizontal padding). That only lines up by
+    // coincidence on devices ~390pt wide (e.g. iPhone 14 Pro's 393pt); on
+    // an SE/mini (375pt) it would overflow past the screen edge, and on a
+    // Pro Max/iPad it would leave a dead gap on the right. alignSelf:
+    // 'stretch' fills whatever width the parent (paddingHorizontal:16
+    // wrapper in CoursesScreen) actually provides, on any screen size —
+    // same fix needed in CourseCard.tsx / CourseDetailScreen.tsx.
+    alignSelf: 'stretch',
     flexDirection: 'column',
     padding: 25,
     gap: 15, // NOT pixel-confirmed for this vertical stacking — see file header
