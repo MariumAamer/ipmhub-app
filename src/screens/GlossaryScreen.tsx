@@ -54,6 +54,12 @@ const GlossaryScreen = ({navigation}: any) => {
   const [terms, setTerms] = useState<GlossaryTerm[]>([]);
   const [query, setQuery] = useState('');
 
+  // Measured height of the hero's real content — see HelpSupportScreen for
+  // why this is needed: `bottom: 0` auto-stretch against an auto-sized
+  // parent resolves to zero height for this LinearGradient/iOS combo, so
+  // it's given an explicit numeric height once measured instead.
+  const [heroHeight, setHeroHeight] = useState(0);
+
   const scrollRef = useRef<ScrollView>(null);
   const letterOffsets = useRef<Record<string, number>>({});
 
@@ -104,7 +110,23 @@ const GlossaryScreen = ({navigation}: any) => {
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
       {/* ── Hero (breadcrumb + title + search) — fixed ──────────────────── */}
-      <LinearGradient colors={['#004C96', '#001830']} start={{x: 1, y: 0}} end={{x: 0, y: 1}} style={s.hero}>
+      {/* Same fix as HelpSupportScreen's hero: LinearGradient no longer
+          carries layout styles directly. On iOS it can compute its box
+          before children finish reporting their intrinsic size, cropping
+          the bottom of the hero (Android doesn't have this issue). It's
+          now a background layer positioned behind a plain View that owns
+          the padding/sizing, with an explicit measured height (via
+          onLayout below) rather than `bottom: 0` auto-stretch — that
+          resolves to zero height on this library/iOS combo and the
+          gradient never paints.
+          See: https://github.com/react-native-community/react-native-linear-gradient/issues/195 */}
+      <View style={s.hero} onLayout={e => setHeroHeight(e.nativeEvent.layout.height)}>
+        <LinearGradient
+          colors={['#004C96', '#001830']}
+          start={{x: 1, y: 0}}
+          end={{x: 0, y: 1}}
+          style={[s.heroGradient, heroHeight ? {height: heroHeight} : null]}
+        />
         <View style={s.heroContent}>
           <View style={s.breadcrumbRow}>
             <TouchableOpacity onPress={handleGoBack} activeOpacity={0.7}>
@@ -113,11 +135,11 @@ const GlossaryScreen = ({navigation}: any) => {
             <Text style={s.breadcrumbHome}>{' / '}</Text>
             <Text style={s.breadcrumbCurrent}>{'Glossary'}</Text>
           </View>
-          <Text style={s.heroTitle}>{"IPM's Glossary"}</Text>
-          <Text style={s.heroSubtitle}>
+          <Text style={[s.heroTitle, s.heroSpacing]}>{"IPM's Glossary"}</Text>
+          <Text style={[s.heroSubtitle, s.heroSpacing]}>
             {"Definitions of the core project management terms and concepts you'll encounter throughout your study journey."}
           </Text>
-          <View style={s.searchOuter}>
+          <View style={[s.searchOuter, s.heroSpacing]}>
             <View style={s.searchInputRow}>
               <SearchIcon />
               <TextInput
@@ -134,7 +156,7 @@ const GlossaryScreen = ({navigation}: any) => {
             </TouchableOpacity>
           </View>
         </View>
-      </LinearGradient>
+      </View>
 
       {loading ? (
         <View style={s.centerFill}>
@@ -221,6 +243,9 @@ const s = StyleSheet.create({
   emptyText: {color: '#8F9098', fontFamily: 'Runda', fontSize: 13, textAlign: 'center', paddingVertical: 12},
 
   // ── Hero ──
+  // Now a plain View (was LinearGradient directly) — see the comment above
+  // the JSX for why. It owns the padding/sizing; the gradient behind it is
+  // absolutely positioned and purely decorative.
   hero: {
     paddingHorizontal: 16,
     paddingTop: 29,
@@ -228,7 +253,17 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroContent: {width: '100%', maxWidth: 358, alignItems: 'flex-start', gap: 12},
+  // No `bottom: 0` — height is set explicitly at render time from the
+  // measured `heroHeight` instead of relying on auto-stretch.
+  heroGradient: {position: 'absolute', top: 0, left: 0, right: 0},
+  heroContent: {
+    width: '100%',
+    maxWidth: 358,
+    alignItems: 'flex-start',
+    // `gap` removed — see HelpSupportScreen for why; spacing is explicit
+    // via `heroSpacing` (marginTop) on every child after the first instead.
+  },
+  heroSpacing: {marginTop: 12},
   breadcrumbRow: {flexDirection: 'row', alignItems: 'center'},
   breadcrumbHome: {color: '#FFFFFF', fontFamily: 'Runda', fontSize: 10, fontWeight: '400', lineHeight: 14},
   breadcrumbCurrent: {color: '#46B1E4', fontFamily: 'Runda', fontSize: 10, fontWeight: '500', lineHeight: 14},

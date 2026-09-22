@@ -119,6 +119,15 @@ const HelpSupportScreen = ({navigation}: any) => {
   const [loading, setLoading] = useState(true);
   const [errored, setErrored] = useState(false);
 
+  // Measured height of the hero's real content (heroContent). The gradient
+  // below is positioned absolutely behind it and, on this build of
+  // react-native-linear-gradient, doesn't reliably resolve `bottom: 0`
+  // auto-stretch against an auto-sized parent on iOS — it just renders at
+  // zero height and never paints. Giving it this explicit numeric height
+  // once we've measured it sidesteps that entirely instead of relying on
+  // the library to stretch itself to match a sibling's size.
+  const [heroHeight, setHeroHeight] = useState(0);
+
   const [heroTitle, setHeroTitle] = useState('How can we help you?');
   const [heroSubtitle, setHeroSubtitle] = useState(
     'Search our help articles, or reach the student support team directly by phone or email.',
@@ -225,8 +234,6 @@ const HelpSupportScreen = ({navigation}: any) => {
     Linking.openURL(emailHref);
   };
 
-  // Glossary screen isn't built yet — wire this up once it exists in the
-  // navigator (route name TBD).
   const handleBrowseGlossary = () => {
     navigation.navigate('Glossary');
   };
@@ -265,19 +272,36 @@ const HelpSupportScreen = ({navigation}: any) => {
       )}
 
       {/* ── Hero (badge + title + search + glossary link) — fixed ──────── */}
-      <LinearGradient
-        colors={['#004C96', '#001830']}
-        start={{x: 1, y: 0}}
-        end={{x: 0, y: 1}}
-        style={s.hero}>
+      {/* LinearGradient no longer carries the layout styles (padding/
+          alignItems/etc) directly. On iOS, LinearGradient can compute its
+          own box before children that size themselves intrinsically (like
+          the "Browse IPM's Glossary" link below) have finished reporting
+          their height, which crops the bottom of the hero — Android doesn't
+          have this issue, which is why this only showed up on device.
+          Fix: LinearGradient is now a pure background layer, positioned
+          behind a plain View that owns the padding/sizing, so layout is
+          driven by a normal View and the gradient just paints behind it.
+          See: https://github.com/react-native-community/react-native-linear-gradient/issues/195
+          It's given an explicit measured height (via onLayout below)
+          rather than `bottom: 0` auto-stretch — on this library/iOS combo,
+          auto-stretch against an auto-sized parent resolves to zero height
+          and the gradient never paints at all (it did fix the cropping,
+          but left the background blank/white until this). */}
+      <View style={s.hero} onLayout={e => setHeroHeight(e.nativeEvent.layout.height)}>
+        <LinearGradient
+          colors={['#004C96', '#001830']}
+          start={{x: 1, y: 0}}
+          end={{x: 0, y: 1}}
+          style={[s.heroGradient, heroHeight ? {height: heroHeight} : null]}
+        />
         <View style={s.heroContent}>
           <View style={s.hubPill}>
             <GreenDotIcon />
             <Text style={s.hubPillText}>{'Support Hub'}</Text>
           </View>
-          <Text style={s.heroTitle}>{heroTitle}</Text>
-          <Text style={s.heroSubtitle}>{heroSubtitle}</Text>
-          <View style={s.searchOuter}>
+          <Text style={[s.heroTitle, s.heroSpacing]}>{heroTitle}</Text>
+          <Text style={[s.heroSubtitle, s.heroSpacing]}>{heroSubtitle}</Text>
+          <View style={[s.searchOuter, s.heroSpacing]}>
             <View style={s.searchInputRow}>
               <SearchIcon />
               <TextInput
@@ -294,11 +318,11 @@ const HelpSupportScreen = ({navigation}: any) => {
               <Text style={s.searchBtnText}>{'Search'}</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={handleBrowseGlossary} activeOpacity={0.7}>
+          <TouchableOpacity style={s.heroSpacing} onPress={handleBrowseGlossary} activeOpacity={0.7}>
             <Text style={s.glossaryLink}>{"Browse IPM's Glossary →"}</Text>
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      </View>
 
       {loading ? (
         <View style={s.centerFill}>
@@ -471,7 +495,7 @@ const HelpSupportScreen = ({navigation}: any) => {
             <View style={s.modalHeader}>
               <Text style={s.modalTitle}>{'Filter'}</Text>
               <TouchableOpacity style={s.modalClose} onPress={closeFilterModal} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-                <Text style={s.modalCloseIcon}>{'\u00D7'}</Text>
+                <Text style={s.modalCloseIcon}>{'×'}</Text>
               </TouchableOpacity>
             </View>
 
@@ -518,6 +542,9 @@ const s = StyleSheet.create({
   topBar: {paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: '#FFFFFF'},
 
   // ── Hero ──
+  // Now a plain View (was LinearGradient directly) — see the comment above
+  // the JSX for why. It owns the padding/sizing; the gradient behind it is
+  // absolutely positioned and purely decorative.
   hero: {
     paddingHorizontal: 16,
     paddingTop: 29,
@@ -525,12 +552,22 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // No `bottom: 0` — height is set explicitly at render time from the
+  // measured `heroHeight` instead of relying on auto-stretch. Before that
+  // first measurement lands, it simply renders at 0 height for a frame
+  // rather than staying invisible indefinitely.
+  heroGradient: {position: 'absolute', top: 0, left: 0, right: 0},
   heroContent: {
     width: '100%',
     maxWidth: 358,
     alignItems: 'flex-start',
-    gap: 12,
+    // `gap` removed — only reliably supported from RN 0.71's Yoga onward
+    // and was one of the contributors to the iOS cropping bug. Spacing is
+    // now explicit via `heroSpacing` (marginTop) on every child after the
+    // first, which behaves identically on both platforms regardless of RN
+    // version.
   },
+  heroSpacing: {marginTop: 12},
   hubPill: {
     flexDirection: 'row',
     alignItems: 'center',
