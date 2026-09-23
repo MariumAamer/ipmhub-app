@@ -347,12 +347,14 @@ const styles = StyleSheet.create({
   // from the child, not this alone.
   actionBtnTouchable: {
     alignSelf: 'stretch',
+    height: 40,
   },
   // Now applied directly to the LinearGradient as a normal (non-absolute)
   // flex child — same technique as the working badgeFrame gradients.
   actionBtn: {
     flexDirection: 'row',
-    minHeight: 36,
+    height: 40,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 5,
