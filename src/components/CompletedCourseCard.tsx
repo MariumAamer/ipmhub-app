@@ -53,7 +53,7 @@
 import React from 'react';
 import {View, Text, Image, StyleSheet, TouchableOpacity, Linking} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import Svg, {Path} from 'react-native-svg';
+import Svg, {Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect} from 'react-native-svg';
 import {EnrolledCourse} from '../api/coursesApi';
 
 // ─── Icons (duplicated locally per project convention — see CourseCard.tsx) ─
@@ -173,29 +173,50 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
 
       <View style={styles.bottomStack}>
         {hasCertificate && (
-          // FIX (iOS), round 3 — confirmed via elimination: position:'absolute'
-          // (StyleSheet.absoluteFillObject) was the actual trigger. Every
-          // attempt using it (rounds 1 & 2, and the flat-color diagnostic)
-          // rendered zero space at all; removing it (border-only diagnostic)
-          // immediately reserved space correctly. This version uses NO
-          // absolute positioning anywhere — the LinearGradient is a plain
-          // nested flex child sized via alignSelf:'stretch', exactly like
-          // the badge-frame gradients elsewhere in this file that have
-          // always rendered correctly on iOS. The outer TouchableOpacity
-          // also now carries real style (alignSelf:'stretch') rather than
-          // being left completely unstyled as in the original version.
+          // FIX (iOS), round 4 — rounds 1-3 and disabling the New
+          // Architecture all failed to resolve this. The gradient (colors
+          // matching this button's ['#E257E4','#084D92']) was consistently
+          // rendering in the WRONG position — visually overlapping the
+          // progress bar above instead of its own slot here — while this
+          // slot itself appeared empty. That pointed at
+          // react-native-linear-gradient's native layer specifically, not
+          // layout or architecture. This version drops LinearGradient
+          // entirely for this button and draws the gradient fill with
+          // react-native-svg instead — a completely different native
+          // rendering pipeline, already proven correct elsewhere in this
+          // file (the badge icons use it).
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => Linking.openURL(course.certificate_url!)}
             style={styles.actionBtnTouchable}>
-            <LinearGradient
-              colors={['#E257E4', '#084D92']}
-              start={{x: 0, y: 0}}
-              end={{x: 1, y: 0}}
-              locations={[0, 0.7035]}
-              style={styles.actionBtn}>
+            <View style={styles.actionBtn}>
+              <Svg
+                style={StyleSheet.absoluteFillObject}
+                width="100%"
+                height="100%">
+                <Defs>
+                  <SvgLinearGradient
+                    id="certBtnGradient"
+                    x1="0%"
+                    y1="0%"
+                    x2="100%"
+                    y2="0%">
+                    <Stop offset="0%" stopColor="#E257E4" />
+                    <Stop offset="70.35%" stopColor="#084D92" />
+                    <Stop offset="100%" stopColor="#084D92" />
+                  </SvgLinearGradient>
+                </Defs>
+                <Rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx={5}
+                  fill="url(#certBtnGradient)"
+                />
+              </Svg>
               <Text style={styles.actionBtnText}>{'View Certificate'}</Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         )}
 
