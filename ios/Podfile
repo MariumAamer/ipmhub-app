@@ -17,22 +17,18 @@ require Pod::Executable.execute_command('node', ['-p',
 #  * RCT_REMOVE_LEGACY_ARCH: 0.87 strips the legacy-architecture code by
 #    default. Some native modules here (notably the archived @notifee/react-native)
 #    may still reference legacy bridge APIs, so keep it compiled in for now.
-#  * RCT_NEW_ARCH_ENABLED: needed here specifically because
-#    use_react_native!() computes fabric_enabled as
-#    `fabric_enabled || NewArchitectureHelper.new_arch_enabled` — that
-#    second half reads THIS env var directly (confirmed against RN's own
-#    test suite), independent of whatever :new_arch_enabled parameter gets
-#    passed to use_react_native! below. Without this pre-set, that helper
-#    falls back to its own built-in default (true for 0.87), so Fabric
-#    stays on regardless of the parameter. The parameter below is still
-#    needed too, for the parts of use_react_native! that use it directly.
-#    Confirmed via build logs: neither alone stopped Fabric/Codegen pods
-#    (ReactCodegen, React-viewtransitionnativemodule) from installing —
-#    both together is what actually needs testing next.
+#  * New Architecture (Fabric/TurboModules) CANNOT be disabled as of React
+#    Native 0.82+ — confirmed directly from RN's own pod install warning:
+#    "Calling pod install with RCT_NEW_ARCH_ENABLED=0 is not supported
+#    anymore... The application will run with the New Architecture enabled
+#    by default." Tried anyway via ENV['RCT_NEW_ARCH_ENABLED'] plus explicit
+#    new_arch_enabled:/fabric_enabled: params to use_react_native! — none of
+#    it changes anything on 0.87, by design. Not attempting this again;
+#    any iOS-specific rendering issues need fixing within the New
+#    Architecture, not by trying to escape it.
 ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
 ENV['RCT_USE_RN_DEP'] = '0'
 ENV['RCT_REMOVE_LEGACY_ARCH'] = '0'
-ENV['RCT_NEW_ARCH_ENABLED'] = '0'
 
 # Firebase iOS SDK (used by @react-native-firebase) requires iOS 15.0 as
 # of the version pinned in this project — React Native's own default
@@ -64,9 +60,7 @@ target 'IPMMobileApp' do
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
-    :app_path => "#{Pod::Config.instance.installation_root}/..",
-    :new_arch_enabled => false,
-    :fabric_enabled => false
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
   target 'IPMMobileAppTests' do

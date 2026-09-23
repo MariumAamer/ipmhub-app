@@ -262,6 +262,8 @@ const styles = StyleSheet.create({
   },
   stepLine: {
     alignSelf: 'stretch',
+    width: '100%',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontFamily: 'Runda-Normal',
     fontSize: 14,
