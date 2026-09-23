@@ -126,6 +126,10 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
 
   return (
     <View style={styles.card}>
+      {/* TEMP DEBUG: fresh unique marker, round 2 of build verification */}
+      <Text style={{fontSize: 22, color: 'red', backgroundColor: 'lime'}}>
+        {'VERIFY_ROUND2_QWERTY'}
+      </Text>
       {/* Compact top row: badge/icon + title block, side by side. */}
       <View style={styles.topRow}>
         {/* LinearGradient kept as root of the image stack — project rule:

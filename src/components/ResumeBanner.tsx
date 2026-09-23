@@ -115,6 +115,10 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
       start={{x: 0.85, y: 0.02}}
       end={{x: 0.15, y: 0.98}}
       style={styles.root}>
+      {/* TEMP DEBUG: fresh unique marker, round 2 of build verification */}
+      <Text style={{fontSize: 18, color: 'red', backgroundColor: 'lime'}}>
+        {'VERIFY_ROUND2_ZXCVB'}
+      </Text>
       {/* CONFIRMED (Sep 2026, live instruction supersedes the earlier
           "Frame 2085669498" inspector grouping): welcome text -> title ->
           Resume button, stacked together in the RIGHT-hand column. The image
