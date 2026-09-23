@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, Image, Linking} from 'react-native';
+import React, {useState} from 'react';
+import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, Image} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -32,37 +32,15 @@ const VerifyEmailScreen = ({route, navigation}: any) => {
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
 
-  // ── Deep link handler ──────────────────────────────────────────────────────
-  // Handles both:
-  // 1. Custom scheme: ipmhub://activate (if Robby sets this up)
-  // 2. https: hub.instituteprojectmanagement.com/activate (Android App Links)
-  useEffect(() => {
-    const handleDeepLink = ({url}: {url: string}) => {
-      if (
-        url.includes('activate') ||
-        url.includes('verify') ||
-        url.includes('ipmhub://')
-      ) {
-        navigation.replace('SignIn', {verified: true});
-      }
-    };
-
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    // App was closed and opened via link
-    Linking.getInitialURL().then(url => {
-      if (
-        url &&
-        (url.includes('activate') ||
-          url.includes('verify') ||
-          url.includes('ipmhub://'))
-      ) {
-        navigation.replace('SignIn', {verified: true});
-      }
-    });
-
-    return () => subscription.remove();
-  }, [navigation]);
+  // NOTE: this screen used to have its own Linking listener here that
+  // navigated to SignIn on any URL containing 'activate', 'verify', or even
+  // just the bare scheme 'ipmhub://'. That last check matched almost every
+  // deep link the app receives (LinkedIn callback, password reset, etc.),
+  // so if one of those arrived while this screen was still mounted it got
+  // misread as a successful activation. AppNavigator.tsx's global
+  // handleDeepLink now owns activation routing exclusively — it's scoped
+  // more precisely and works even if this screen isn't mounted (cold
+  // start), so there's no need to duplicate the listener here.
 
   // ── Open email app ─────────────────────────────────────────────────────────
   // Previously fell back to Linking.openURL('mailto:'), which Android treats

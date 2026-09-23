@@ -126,13 +126,6 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
 
   return (
     <View style={styles.card}>
-      {/* TEMP DEBUG: unique marker never seen in any previous build, used
-          to test whether Codemagic's build pipeline actually reflects
-          current source. Remove once confirmed. */}
-      <Text style={{fontSize: 22, color: 'red', backgroundColor: 'lime'}}>
-        {'CODEMAGIC_TEST_B19_XYZ'}
-      </Text>
-
       {/* Compact top row: badge/icon + title block, side by side. */}
       <View style={styles.topRow}>
         {/* LinearGradient kept as root of the image stack — project rule:

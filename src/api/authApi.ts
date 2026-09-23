@@ -23,6 +23,16 @@ const clean = (msg: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Pull the href out of the first <a href="..."> in a raw (HTML) server
+// message, before clean() discards every tag. The "account not activated"
+// error from /jwt-auth/v1/token embeds a real "click here to resend it"
+// link this way — clean() was throwing the href away entirely, leaving
+// dead, unclickable text in the app with no working way to resend.
+const extractLink = (msg: string): string | null => {
+  const match = msg.match(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>/i);
+  return match ? match[1] : null;
+};
+
 const saveUser = async (user: AuthUser) => {
   await Keychain.setGenericPassword(user.email, JSON.stringify(user));
 };
@@ -78,8 +88,13 @@ export const loginUser = async (
     body: JSON.stringify({username: email, password}),
   });
   const data = await response.json();
-  if (!response.ok || data.code)
-    throw new Error(clean(data.message || 'Login failed'));
+  if (!response.ok || data.code) {
+    const rawMessage = data.message || 'Login failed';
+    const err: any = new Error(clean(rawMessage));
+    const resendUrl = extractLink(rawMessage);
+    if (resendUrl) err.resendUrl = resendUrl;
+    throw err;
+  }
 
   const userId = extractUserIdFromToken(data.token);
 

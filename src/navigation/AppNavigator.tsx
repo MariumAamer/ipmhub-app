@@ -105,7 +105,37 @@ const handleDeepLink = (url: string | null) => {
   // ipmhub://verified). Only the part before "?" is checked so an unrelated
   // deep link's query string (e.g. a LinkedIn code) can never match by accident.
   if (/activat|verified/i.test(url.split('?')[0])) {
-    navigationRef.navigate('SignIn' as never, {verified: true} as never);
+    // We were previously showing "✓ Account verified!" purely because the
+    // URL's path LOOKED like an activation link — never because anything
+    // confirmed the key was actually accepted. A bad, expired, or
+    // already-used key still hit this branch and showed success, which is
+    // exactly how the app ended up showing "verified" and then a "not
+    // activated" login error together.
+    //
+    // TODO(Robby): confirm the actual param(s) the /activated/ bounce page
+    // appends on each outcome — this checks the common candidates
+    // (status/result/error/success) as a best-effort guess in the
+    // meantime. If the bounce page currently sends NO signal at all on
+    // failure (i.e. a bad key redirects the same as a good one), this
+    // can't be fully fixed client-side — the only reliable source of
+    // truth is the server, so that page needs to append something we can
+    // read, or the app needs a dedicated "is this account active" endpoint
+    // to call before showing success.
+    const query = url.split('?')[1] || '';
+    const params = new URLSearchParams(query);
+    const status = (params.get('status') || params.get('result') || '').toLowerCase();
+    const success = (params.get('success') || '').toLowerCase();
+    const looksFailed =
+      !!params.get('error') ||
+      ['fail', 'failed', 'error', 'invalid', 'expired'].some(s => status.includes(s)) ||
+      success === 'false' ||
+      success === '0';
+
+    if (looksFailed) {
+      navigationRef.navigate('SignIn' as never, {activationFailed: true} as never);
+    } else {
+      navigationRef.navigate('SignIn' as never, {verified: true} as never);
+    }
     return;
   }
 

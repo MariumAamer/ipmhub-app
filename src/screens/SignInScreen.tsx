@@ -88,11 +88,23 @@ const SignInScreen = ({navigation, route}: any) => {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [linkedinLoading, setLinkedinLoading] = useState(false);
-  const [error, setError] = useState('');
+  // Show success message if coming from email verification. Kept as state
+  // (not a fixed const from route params) so it can be turned off below if
+  // a real sign-in attempt shows the account genuinely isn't active —
+  // otherwise the stale "verified" banner stays on screen right next to a
+  // contradicting "not activated" error, which is the exact bug reported.
+  const [verified, setVerified] = useState<boolean>(!!route?.params?.verified);
+  const [error, setError] = useState(
+    route?.params?.activationFailed
+      ? 'That activation link looks invalid or has expired. Please request a new verification email and try again.'
+      : '',
+  );
+  // A real, working "resend activation email" URL parsed out of the
+  // server's error message (see authApi.ts's extractLink) — previously
+  // that link was silently discarded by clean(), leaving the "click here
+  // to resend it" text in the error banner dead and unclickable.
+  const [resendUrl, setResendUrl] = useState<string | null>(null);
   const passRef = useRef<TextInput>(null);
-
-  // Show success message if coming from email verification
-  const verified = route?.params?.verified;
 
   const handleSignIn = async () => {
     if (!email.trim() || !password) {
@@ -101,14 +113,44 @@ const SignInScreen = ({navigation, route}: any) => {
     }
     setLoading(true);
     setError('');
+    setResendUrl(null);
     try {
       const user = await loginUser(email.trim(), password);
       await handlePostLogin(user, navigation);
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+      const message = err.message || 'Login failed. Please try again.';
+      // The deep link only ever guessed at "verified" from the URL's shape
+      // (see AppNavigator.tsx) — if the server now says the account isn't
+      // actually active, that guess was wrong, so drop the stale success
+      // banner instead of showing both at once.
+      if (verified && /activat/i.test(message)) {
+        setVerified(false);
+      }
+      setError(message);
+      if (err.resendUrl) setResendUrl(err.resendUrl);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Opens the real resend-activation link the server sent, inside the same
+  // in-app browser already used for LinkedIn sign-in, falling back to the
+  // system browser if that's unavailable for any reason.
+  const handleResendActivation = async () => {
+    if (!resendUrl) return;
+    try {
+      const available = await InAppBrowser.isAvailable();
+      if (available) {
+        await InAppBrowser.open(resendUrl, {
+          ephemeralWebSession: false,
+          showTitle: false,
+          enableUrlBarHiding: true,
+          enableDefaultShare: false,
+        });
+        return;
+      }
+    } catch {}
+    Linking.openURL(resendUrl).catch(() => {});
   };
 
   const handleGoogle = async () => {
@@ -255,6 +297,16 @@ const SignInScreen = ({navigation, route}: any) => {
         {error ? (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
+            {resendUrl ? (
+              <TouchableOpacity
+                onPress={handleResendActivation}
+                hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                style={styles.resendLinkBtn}>
+                <Text style={styles.resendLinkText}>
+                  {'Resend verification email'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -406,6 +458,13 @@ const styles = StyleSheet.create({
     borderColor: '#FECACA',
   },
   errorText: {color: '#DC2626', fontSize: 13, textAlign: 'center'},
+  resendLinkBtn: {marginTop: 6, alignItems: 'center'},
+  resendLinkText: {
+    color: '#1A7FD4',
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
 
   inputWrap: {
     backgroundColor: '#FFFFFF',

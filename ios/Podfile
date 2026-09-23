@@ -17,9 +17,18 @@ require Pod::Executable.execute_command('node', ['-p',
 #  * RCT_REMOVE_LEGACY_ARCH: 0.87 strips the legacy-architecture code by
 #    default. Some native modules here (notably the archived @notifee/react-native)
 #    may still reference legacy bridge APIs, so keep it compiled in for now.
+#  * RCT_NEW_ARCH_ENABLED: nothing on the iOS side was explicitly setting
+#    this, so it was silently defaulting to Fabric/TurboModules being ON
+#    (0.87's default), even though Android's gradle.properties explicitly
+#    has newArchEnabled=true declared and iOS had no equivalent override.
+#    Several native modules here (react-native-linear-gradient among them)
+#    show inconsistent/broken rendering under Fabric on iOS specifically.
+#    Forcing this off to run the legacy renderer, matching the working 0.80
+#    behavior, same as the other three flags above.
 ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
 ENV['RCT_USE_RN_DEP'] = '0'
 ENV['RCT_REMOVE_LEGACY_ARCH'] = '0'
+ENV['RCT_NEW_ARCH_ENABLED'] = '0'
 
 # Firebase iOS SDK (used by @react-native-firebase) requires iOS 15.0 as
 # of the version pinned in this project — React Native's own default
