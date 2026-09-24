@@ -380,7 +380,12 @@ const styles = StyleSheet.create({
   },
   actionBtnText: {
     color: '#FFFFFF',
-    fontFamily: 'Runda-Medium',
+    // TEMP TEST: fontFamily removed. Measurements proved this button is
+    // correctly sized (w320 h40) and its gradient paints — only the TEXT is
+    // missing. If the label appears with the system font, 'Runda-Medium'
+    // is not resolving on iOS (PostScript name mismatch / font not linked
+    // in the iOS target), which is the real root cause.
+    // fontFamily: 'Runda-Medium',
     fontSize: 12,
   },
   outlineBtn: {

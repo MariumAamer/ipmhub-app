@@ -281,7 +281,10 @@ const styles = StyleSheet.create({
     width: '100%',
     flexShrink: 1,
     color: '#FFFFFF',
-    fontFamily: 'Runda-Normal',
+    // TEMP TEST: fontFamily removed. onLayout proved this text IS correctly
+    // sized (w311) and wrapping to 2 lines (h36) — the glyphs themselves
+    // overflow, which points at 'Runda-Normal' not resolving on iOS.
+    // fontFamily: 'Runda-Normal',
     fontSize: 14,
     lineHeight: 18,
   },
