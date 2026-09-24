@@ -1,14 +1,52 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useMemo} from 'react';
-import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, ActivityIndicator, Linking, Alert} from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, Image, TouchableOpacity,
+  StatusBar, ActivityIndicator, Linking, Alert, TextInput,
+} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import WebinarFilterSheet from '../components/WebinarFilterSheet';
+import WebinarSortSheet from '../components/WebinarSortSheet';
 import {
   getEvents, getWebinarRecordings, getStoredUserFields,
   getRegisteredEventIds, markEventRegistered, registerForEvent,
   EventItem, WebinarRecordingItem, EventRegistrationPayload,
+  WEBINAR_TAGS, WEBINAR_SORT_OPTIONS, WebinarSort,
 } from '../api/eventsApi';
+
+// ─── Search / Filter Icons ──────────────────────────────────────────────────
+// Both given by Marium as <mask>-based SVGs (a path used as an alpha mask
+// over a solid-color rect) — react-native-svg@15.3.0 doesn't render <mask>,
+// so both are rebuilt as a single plain filled <Path> (mask silhouette +
+// rect fill collapses to exactly that), per technical-learnings.md.
+const SearchIcon = () => (
+  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+    <Path
+      fillRule="evenodd" clipRule="evenodd"
+      d="M6.42765 0.333496C3.06482 0.333496 0.333984 3.03789 0.333984 6.37972C0.333984 9.72155 3.06482 12.4259 6.42765 12.4259C7.6814 12.4259 8.84764 12.0499 9.81693 11.4052L13.7923 15.3478C14.2213 15.7732 14.9156 15.7732 15.3445 15.3478C15.7749 14.9209 15.7749 14.2276 15.3445 13.8007L11.3945 9.88328C12.1038 8.89503 12.5213 7.68547 12.5213 6.37972C12.5213 3.03789 9.79049 0.333496 6.42765 0.333496ZM2.53182 6.37972C2.53182 4.24994 4.27344 2.51872 6.42765 2.51872C8.58187 2.51872 10.3235 4.24994 10.3235 6.37972C10.3235 8.5095 8.58187 10.2407 6.42765 10.2407C4.27344 10.2407 2.53182 8.5095 2.53182 6.37972Z"
+      fill="#8F9098"
+    />
+  </Svg>
+);
+
+const FilterIcon = () => (
+  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+    <Path
+      d="M1.33398 3C1.33398 2.73478 1.43432 2.48043 1.61293 2.29289C1.79154 2.10536 2.03378 2 2.28637 2H13.7149C13.9675 2 14.2098 2.10536 14.3884 2.29289C14.567 2.48043 14.6673 2.73478 14.6673 3C14.6673 3.26522 14.567 3.51957 14.3884 3.70711C14.2098 3.89464 13.9675 4 13.7149 4H2.28637C2.03378 4 1.79154 3.89464 1.61293 3.70711C1.43432 3.51957 1.33398 3.26522 1.33398 3ZM3.4326 8C3.4326 7.73478 3.53294 7.48043 3.71155 7.29289C3.89015 7.10536 4.1324 7 4.38498 7H11.6626C11.9152 7 12.1575 7.10536 12.3361 7.29289C12.5147 7.48043 12.615 7.73478 12.615 8C12.615 8.26522 12.5147 8.51957 12.3361 8.70711C12.1575 8.89464 11.9152 9 11.6626 9H4.38498C4.1324 9 3.89015 8.89464 3.71155 8.70711C3.53294 8.51957 3.4326 8.26522 3.4326 8ZM5.88041 13.1322C5.88041 12.867 5.98075 12.6127 6.15936 12.4251C6.33796 12.2376 6.58021 12.1322 6.83279 12.1322H9.21669C9.46927 12.1322 9.71152 12.2376 9.89012 12.4251C10.0687 12.6127 10.1691 12.867 10.1691 13.1322C10.1691 13.3974 10.0687 13.6518 9.89012 13.8393C9.71152 14.0269 9.46927 14.1322 9.21669 14.1322H6.83279C6.58021 14.1322 6.33796 14.0269 6.15936 13.8393C5.98075 13.6518 5.88041 13.3974 5.88041 13.1322Z"
+      fill="#192546"
+    />
+  </Svg>
+);
+
+// Small "x" for a selected-filter chip — plain, no mask involved.
+const ChipCloseIcon = () => (
+  <Svg width={8} height={8} viewBox="0 0 10 10" fill="none">
+    <Path d="M1 1L9 9M9 1L1 9" stroke="#192647" strokeWidth={1.2} strokeLinecap="round" />
+  </Svg>
+);
 
 // ─── Calendar Icon ─────────────────────────────────────────────────────────────
 const CalendarIcon = () => (
@@ -106,9 +144,8 @@ const EventCard = ({event, onCardPress, onRegisterPress, isRegistered, isRegiste
 );
 
 // ─── Webinar Recording Card ────────────────────────────────────────────────────
-const RecordingCard = ({recording}: {recording: WebinarRecordingItem}) => (
-  <TouchableOpacity style={recStyles.card} activeOpacity={0.85}
-    onPress={() => recording.recordingUrl && Linking.openURL(recording.recordingUrl)}>
+const RecordingCard = ({recording, onPress}: {recording: WebinarRecordingItem; onPress: (r: WebinarRecordingItem) => void}) => (
+  <TouchableOpacity style={recStyles.card} activeOpacity={0.85} onPress={() => onPress(recording)}>
     <View style={recStyles.thumbWrap}>
       {recording.image
         ? <Image source={{uri: recording.image}} style={recStyles.thumbTopAnchored} resizeMode="cover"/>
@@ -179,11 +216,20 @@ const EventsScreen = ({navigation}: any) => {
   const [drawerOpen, setDrawerOpen]         = useState(false);
   const [upcomingEvents, setUpcomingEvents] = useState<EventItem[]>([]);
   const [pastEvents, setPastEvents]         = useState<EventItem[]>([]);
-  // Webinar Recordings: backend pagination is broken (page param ignored),
-  // so we fetch the full list once and reveal it client-side instead.
+  // Webinar Recordings: search/tags/sort now filter server-side (CONFIRMED
+  // Sep 2026) — fetch matching results in one call per filter change, still
+  // revealing them client-side in pages (per_page's real behavior on this
+  // endpoint wasn't confirmed, so not relied on — see eventsApi comment).
   const [allRecordings, setAllRecordings]         = useState<WebinarRecordingItem[]>([]);
+  const [recordingsTotal, setRecordingsTotal]     = useState(0);
   const [recordingsVisibleCount, setRecordingsVisibleCount] = useState(RECORDINGS_PAGE_SIZE);
   const recordings = useMemo(() => allRecordings.slice(0, recordingsVisibleCount), [allRecordings, recordingsVisibleCount]);
+  const [webinarSearchInput, setWebinarSearchInput] = useState('');
+  const [webinarSearch, setWebinarSearch]         = useState(''); // debounced value actually sent to the API
+  const [webinarTags, setWebinarTags]             = useState<string[]>([]);
+  const [webinarSort, setWebinarSort]             = useState<WebinarSort>('recent');
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [sortSheetVisible, setSortSheetVisible]     = useState(false);
   const [loading, setLoading]               = useState(true);
   const [page, setPage]                     = useState(1);
   const [hasMore, setHasMore]               = useState(false);
@@ -233,16 +279,26 @@ const EventsScreen = ({navigation}: any) => {
 
   const loadRecordings = useCallback(async () => {
     setLoading(true);
-    const result = await getWebinarRecordings();
+    const result = await getWebinarRecordings({search: webinarSearch, tags: webinarTags, sort: webinarSort});
     setAllRecordings(result.recordings);
+    setRecordingsTotal(result.total);
     setRecordingsVisibleCount(RECORDINGS_PAGE_SIZE);
     setLoading(false);
-  }, []);
+  }, [webinarSearch, webinarTags, webinarSort]);
 
   useEffect(() => {
     if (activeTab === 'myEvents') {loadEvents(1, true);}
     else {loadRecordings();}
   }, [activeTab, loadEvents, loadRecordings]);
+
+  // Debounce the search box → API call (400ms), separate from the raw
+  // input state so every keystroke doesn't fire a request.
+  useEffect(() => {
+    const t = setTimeout(() => setWebinarSearch(webinarSearchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [webinarSearchInput]);
+
+  const handleRemoveTag = (slug: string) => setWebinarTags(prev => prev.filter(t => t !== slug));
 
   // Tap card → EventDetailScreen (read-only)
   const handleCardPress = (event: EventItem) => {
@@ -251,6 +307,13 @@ const EventsScreen = ({navigation}: any) => {
       rawEvent: event.rawEvent,
       isNearestUpcoming: event.id === nearestUpcomingId,
     });
+  };
+
+  // Tap a webinar recording card → the new WebinarDetail screen (full
+  // detail page), NOT Linking.openURL anymore — recording.id is the WP
+  // post id, same value used as event_id on /single-webinar.
+  const handleRecordingPress = (recording: WebinarRecordingItem) => {
+    navigation.navigate('WebinarDetail', {eventId: recording.id});
   };
 
   // Tap "Register Now" → actually register via the API, then go to ThankYou.
@@ -302,8 +365,8 @@ const EventsScreen = ({navigation}: any) => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content"/>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF"/>
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)}/>
       <Tabs active={activeTab} onChange={setActiveTab}/>
 
@@ -357,14 +420,58 @@ const EventsScreen = ({navigation}: any) => {
 
         {activeTab === 'webinars' && (
           <>
-            <SectionHeader left="Recommended " accent="Webinar Recordings"/>
+            <View style={styles.webinarControlsWrap}>
+              <View style={styles.searchFilterRow}>
+                <View style={styles.searchBar}>
+                  <SearchIcon/>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search"
+                    placeholderTextColor="#8F9098"
+                    value={webinarSearchInput}
+                    onChangeText={setWebinarSearchInput}
+                  />
+                </View>
+                <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterSheetVisible(true)} activeOpacity={0.8}>
+                  <FilterIcon/>
+                  {webinarTags.length > 0 && (
+                    <View style={styles.filterBadge}><Text style={styles.filterBadgeText}>{webinarTags.length}</Text></View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.sortRow} onPress={() => setSortSheetVisible(true)} activeOpacity={0.8}>
+                <Text style={styles.sortRowText}>
+                  {'Sort by : '}
+                  {WEBINAR_SORT_OPTIONS.find(o => o.value === webinarSort)?.label ?? 'Most Recent'}
+                </Text>
+              </TouchableOpacity>
+
+              {webinarTags.length > 0 && (
+                <View style={styles.chipsRow}>
+                  {webinarTags.map(slug => {
+                    const tag = WEBINAR_TAGS.find(t => t.slug === slug);
+                    if (!tag) return null;
+                    return (
+                      <TouchableOpacity key={slug} style={styles.chip} onPress={() => handleRemoveTag(slug)} activeOpacity={0.7}>
+                        <Text style={styles.chipText}>{tag.name}</Text>
+                        <ChipCloseIcon/>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {!loading && <Text style={styles.webinarCountText}>{`${recordingsTotal} Webinars`}</Text>}
+            </View>
+
             <View style={styles.recListWrap}>
               {loading ? (
                 <><RecordingSkeleton/><RecordingSkeleton/><RecordingSkeleton/></>
               ) : recordings.length === 0 ? (
-                <EmptyState title="No recordings found" subtitle="Check back soon for webinar recordings."/>
+                <EmptyState title="No recordings found" subtitle="Try a different search or filter."/>
               ) : recordings.map((r, i) => (
-                <RecordingCard key={`${r.id}-${i}`} recording={r}/>
+                <RecordingCard key={`${r.id}-${i}`} recording={r} onPress={handleRecordingPress}/>
               ))}
             </View>
             {!loading && recordingsVisibleCount < allRecordings.length && (
@@ -378,8 +485,21 @@ const EventsScreen = ({navigation}: any) => {
         <View style={{height:40}}/>
       </ScrollView>
 
+      <WebinarFilterSheet
+        visible={filterSheetVisible}
+        onClose={() => setFilterSheetVisible(false)}
+        selectedTags={webinarTags}
+        onApply={setWebinarTags}
+      />
+      <WebinarSortSheet
+        visible={sortSheetVisible}
+        onClose={() => setSortSheetVisible(false)}
+        selected={webinarSort}
+        onSelect={setWebinarSort}
+      />
+
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation}/>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -401,11 +521,11 @@ const cardStyles = StyleSheet.create({
   underline:     {width:28, height:2, backgroundColor:'#46B0E3', borderRadius:1, marginBottom:8},
   speakerName:   {color:'#192546', fontFamily:'Runda', fontSize:14, fontWeight:'700', letterSpacing:0.07},
   speakerTitle:  {color:'#192546', fontFamily:'Runda', fontSize:12, fontWeight:'400', lineHeight:16, marginTop:2},
-  registerBtn:      {backgroundColor:'#0C4D91', borderRadius:30, height:36, justifyContent:'center', alignItems:'center'},
+  registerBtn:      {backgroundColor:'#0C4D91', borderRadius:5, height:36, justifyContent:'center', alignItems:'center'},
   registerBtnText:  {color:'#FFFFFF', fontFamily:'Runda', fontSize:12, fontWeight:'700'},
   registeredBtn:    {backgroundColor:'#46B0E3', borderRadius:5, height:36, justifyContent:'center', alignItems:'center'},
   registeredBtnText:{color:'#FFFFFF', fontFamily:'Runda', fontSize:12, fontWeight:'700'},
-  comingSoonBtn:    {borderWidth:1, borderColor:'#0C4D91', borderRadius:30, height:36, justifyContent:'center', alignItems:'center'},
+  comingSoonBtn:    {borderWidth:1, borderColor:'#0C4D91', borderRadius:5, height:36, justifyContent:'center', alignItems:'center'},
   comingSoonText:   {color:'#0C4D91', fontFamily:'Runda', fontSize:12, fontWeight:'700'},
 });
 
@@ -475,6 +595,40 @@ const styles = StyleSheet.create({
   sectionTitleAccent: {color:'#46B0E3'},
   listWrap:           {paddingHorizontal:16, alignItems:'center'},
   recListWrap:        {paddingHorizontal:16},
+
+  // ── Webinar Recordings: search / filter / sort / chips ──
+  webinarControlsWrap: {paddingHorizontal:16, paddingTop:24},
+  searchFilterRow:    {flexDirection:'row', alignItems:'center', marginBottom:16},
+  searchBar:          {
+    flex:1, flexDirection:'row', alignItems:'center', height:36,
+    paddingHorizontal:16, borderRadius:5, backgroundColor:'#FFFFFF',
+    borderWidth:1, borderColor:'#E8E9F1', marginRight:8,
+  },
+  searchInput:        {flex:1, marginLeft:16, color:'#192546', fontFamily:'Runda-Normal', fontSize:14},
+  filterBtn:          {
+    width:36, height:36, borderRadius:5, borderWidth:1, borderColor:'#8F9098',
+    alignItems:'center', justifyContent:'center', position:'relative',
+  },
+  filterBadge:        {
+    position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:100,
+    backgroundColor:'#46B1E4', alignItems:'center', justifyContent:'center',
+  },
+  filterBadgeText:    {color:'#FFFFFF', fontFamily:'Runda-Medium', fontSize:11},
+  sortRow:            {
+    paddingVertical:12, paddingHorizontal:16, borderRadius:5, backgroundColor:'#FFFFFF',
+    shadowColor:'#000', shadowOffset:{width:0,height:0}, shadowOpacity:0.15, shadowRadius:10.023, elevation:3,
+    alignItems:'center', marginBottom:16,
+  },
+  sortRowText:        {color:'#192546', fontFamily:'Runda-Medium', fontSize:14},
+  chipsRow:           {flexDirection:'row', flexWrap:'wrap', marginBottom:8},
+  chip:               {
+    flexDirection:'row', alignItems:'center', height:27.773, paddingVertical:3.561, paddingHorizontal:10.682,
+    borderRadius:3.561, borderWidth:0.855, borderColor:'#CECDCD', backgroundColor:'#FAFAFA',
+    marginRight:8, marginBottom:8,
+  },
+  chipText:           {color:'#192647', fontFamily:'Runda-Medium', fontSize:12, marginRight:7.121},
+  webinarCountText:   {color:'#192546', fontFamily:'Runda-Medium', fontSize:14, marginBottom:16},
+
   emptyState:         {alignItems:'center', paddingVertical:60},
   emptyTitle:         {fontSize:18, fontWeight:'700', color:'#192546', marginBottom:8, fontFamily:'Runda'},
   emptySubtitle:      {fontSize:14, color:'#8F9098', fontFamily:'Runda', textAlign:'center'},

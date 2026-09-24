@@ -3,6 +3,35 @@ import {apiRequest, BASE_URL} from './apiClient';
 import * as Keychain from 'react-native-keychain';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// ─── Webinar tag taxonomy ───────────────────────────────────────────────────
+// CONFIRMED (Sep 2026) — these are the only 5 real tags on the backend.
+// The Figma filter-sheet mockup originally listed 8 different placeholder
+// topics (Agile, Sustainability, Digital Transformation, etc.) that don't
+// exist as tags at all — tags=agile,sustainability returned 0 results when
+// tested. Marium confirmed via a screenshot of the live tag-search dropdown
+// that these 5 are correct; the checkbox sheet UI itself is unchanged, only
+// the data backing it.
+export interface WebinarTag {
+  id: number;
+  name: string;
+  slug: string;
+}
+export const WEBINAR_TAGS: WebinarTag[] = [
+  {id: 449, name: 'AI & Technology',       slug: 'ai-technology'},
+  {id: 448, name: 'Communication',          slug: 'communication'},
+  {id: 447, name: 'Leadership & Influence', slug: 'leadership-influence'},
+  {id: 451, name: 'People & Change',        slug: 'people-change'},
+  {id: 450, name: 'Team Management',        slug: 'team-management'},
+];
+
+export type WebinarSort = 'recent' | 'older';
+// CONFIRMED (Sep 2026) — exactly 2 sort options, shown in a bottom sheet
+// with the same visual treatment as the filter sheet (Marium's note).
+export const WEBINAR_SORT_OPTIONS: {value: WebinarSort; label: string}[] = [
+  {value: 'recent', label: 'Most Recent'},
+  {value: 'older',  label: 'Older'},
+];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface EventItem {
   rawEvent?: any;
@@ -30,7 +59,68 @@ export interface WebinarRecordingItem {
   speakerTitle: string;
   image: string | null;
   recordingUrl: string | null;
+  tagSlugs: string[];
 }
+
+// ─── Single-webinar detail — CONFIRMED via Postman (Sep 2026, event_id
+// 107005). The response wraps a `webinar` object plus three sibling blocks
+// (latest_webinars, recommended_course, sidebar) that the detail screen's
+// Figma DOES use (Latest Webinars list, Recommended Course card, and the
+// Join the Community / Explore Resources cards respectively) — confirmed
+// against the 4 detail-screen screenshots Marium shared.
+export interface WebinarSpeakerLinkedIn {
+  loading: boolean;
+  url: string | null; // null once loaded with nothing found -> button disabled
+}
+
+export interface RelatedWebinarItem {
+  id: string;
+  title: string;
+  dateLabel: string;
+  speakerName: string;
+  speakerTitle: string;
+  image: string | null;
+}
+
+export interface SidebarCardData {
+  title: string;
+  description: string;
+  url: string;
+}
+
+export interface RecommendedCourseCardData {
+  id: number;
+  title: string;
+  permalink: string;
+  image: string;
+  description: string;
+}
+
+export interface WebinarDetail {
+  id: string;
+  title: string;
+  dateLabel: string;
+  durationLabel: string;
+  tagName: string;
+  speakerName: string;
+  speakerTitle: string;
+  speakerImage: string | null;
+  speakerBioText: string;
+  speakerProfileUrl: string | null;
+  speakerUserId: number | null;
+  videoEmbedUrl: string | null;
+  videoWatchUrl: string | null;
+  shareUrl: string | null; // permalink — the public page to share/copy
+  aboutVisible: string[];
+  aboutHidden: string[];
+  recommendedCourse: RecommendedCourseCardData | null;
+  sidebarForums: SidebarCardData | null;
+  sidebarResources: SidebarCardData | null;
+  latestWebinars: RelatedWebinarItem[];
+  allCoursesUrl: string | null;
+  recordingsUrl: string | null;
+}
+
 
 export interface EventRegistrationPayload {
   first_name: string;
@@ -236,7 +326,61 @@ const mapRecording = (raw: any): WebinarRecordingItem => ({
   // different image fields.
   image:        toUrl(raw.header_banner_image) ?? toUrl(raw.main_image) ?? toUrl(raw.image_url) ?? null,
   recordingUrl: raw.recording_link || null,
+  tagSlugs:     Array.isArray(raw.tag_slugs) ? raw.tag_slugs : [],
 });
+
+// json = the FULL /single-webinar response ({success, webinar,
+// latest_webinars, recommended_course, sidebar}), not just the webinar
+// object — recommended_course/sidebar/latest_webinars are siblings of
+// `webinar` in the confirmed response, not nested inside it.
+const mapWebinarDetail = (json: any): WebinarDetail => {
+  const w = json?.webinar ?? {};
+  return {
+    id:                String(w.id ?? ''),
+    title:             decodeEntities(w.title ?? ''),
+    dateLabel:         w.event_date_formatted ?? formatDateLabel(w.event_time ?? ''),
+    durationLabel:     w.duration_label ?? '',
+    tagName:           decodeEntities(w.tag_name ?? w.tags?.[0]?.name ?? ''),
+    speakerName:       decodeEntities(w.speaker ?? ''),
+    speakerTitle:      decodeEntities(w.job_title ?? ''),
+    speakerImage:      toUrl(w.speaker_image) ?? toUrl(w.main_image) ?? null,
+    speakerBioText:    decodeEntities(w.speaker_bio_text ?? (Array.isArray(w.speaker_bio) ? w.speaker_bio.join('\n\n') : '')),
+    speakerProfileUrl: toUrl(w.speaker_profile_url),
+    speakerUserId:     typeof w.speaker_user_id === 'number' ? w.speaker_user_id : null,
+    videoEmbedUrl:     toUrl(w.video_embed_url),
+    videoWatchUrl:     toUrl(w.video_url) ?? toUrl(w.recording_link),
+    shareUrl:          toUrl(w.permalink) ?? toUrl(w.single_webinar_url),
+    aboutVisible:      Array.isArray(w.about_visible) ? w.about_visible : (Array.isArray(w.about_webinar) ? w.about_webinar : (w.about_webinar ? [w.about_webinar] : [])),
+    aboutHidden:       Array.isArray(w.about_hidden) ? w.about_hidden : [],
+    recommendedCourse: json?.recommended_course ? {
+      id:          json.recommended_course.id,
+      title:       decodeEntities(json.recommended_course.title ?? ''),
+      permalink:   json.recommended_course.permalink ?? '',
+      image:       json.recommended_course.image ?? '',
+      description: decodeEntities(json.recommended_course.description ?? ''),
+    } : null,
+    sidebarForums: json?.sidebar?.forums ? {
+      title:       decodeEntities(json.sidebar.forums.title ?? ''),
+      description: decodeEntities(json.sidebar.forums.description ?? ''),
+      url:         json.sidebar.forums.url ?? '',
+    } : null,
+    sidebarResources: json?.sidebar?.resources ? {
+      title:       decodeEntities(json.sidebar.resources.title ?? ''),
+      description: decodeEntities(json.sidebar.resources.description ?? ''),
+      url:         json.sidebar.resources.url ?? '',
+    } : null,
+    latestWebinars: Array.isArray(json?.latest_webinars) ? json.latest_webinars.map((r: any) => ({
+      id:           String(r.id ?? ''),
+      title:        decodeEntities(r.title ?? ''),
+      dateLabel:    r.event_date_formatted ?? formatDateLabel(r.event_time ?? ''),
+      speakerName:  decodeEntities(r.speaker ?? ''),
+      speakerTitle: decodeEntities(r.job_title ?? ''),
+      image:        toUrl(r.header_banner_image) ?? toUrl(r.main_image) ?? toUrl(r.image_url) ?? null,
+    })) : [],
+    allCoursesUrl:  toUrl(w.all_courses_url),
+    recordingsUrl:  toUrl(w.recordings_url),
+  };
+};
 
 // ─── API calls ────────────────────────────────────────────────────────────────
 export const getRecommendedEvents = async (page = 1): Promise<{events: EventItem[]; hasMore: boolean}> => {
@@ -263,20 +407,106 @@ export const getPastEventRecordings = async (userId: string, page = 1): Promise<
   }
 };
 
-// NOTE: backend does not respect the page/per_page params on this endpoint
-// — confirmed 2026-07 by requesting page=1 and page=2 directly and getting
-// back the identical first 10 items both times. Fetching everything in one
-// call and paginating client-side instead, until the backend is fixed.
-export const getWebinarRecordings = async (): Promise<{recordings: WebinarRecordingItem[]}> => {
+// UPDATED (Sep 2026) — the backend now supports search/tags/sort on this
+// endpoint, and CONFIRMED (via Marium's cc=0-result test filtering
+// tags=agile,sustainability) that `tags` genuinely filters server-side —
+// unlike page/per_page, which stayed unverified this round: every sample
+// response happened to have count === per_page, so it's not clear per_page
+// actually caps anything rather than just echoing the filtered total back.
+// Playing it safe and NOT passing page/per_page — request everything
+// matching the filters in one call, same client-side "reveal N at a time"
+// pattern already used for the list (see recordingsVisibleCount in
+// EventsScreen), rather than trusting a param that may silently no-op the
+// way page did on the old endpoint.
+export interface GetWebinarRecordingsParams {
+  search?: string;
+  tags?: string[]; // slugs, e.g. ['leadership-influence']
+  sort?: WebinarSort;
+}
+
+export const getWebinarRecordings = async (
+  params: GetWebinarRecordingsParams = {},
+): Promise<{recordings: WebinarRecordingItem[]; total: number}> => {
   try {
-    const json = await apiRequest(`${BASE_URL}/custom/v1/webinar-recordings?per_page=100`);
-    const items: any[] = Array.isArray(json) ? json : json.events ?? json.recordings ?? json.data ?? [];
-    if (__DEV__) console.log('[eventsApi] webinars count:', items.length);
-    return {recordings: items.map(mapRecording)};
+    const qs = new URLSearchParams();
+    if (params.search) qs.set('search', params.search);
+    if (params.tags && params.tags.length > 0) qs.set('tags', params.tags.join(','));
+    qs.set('sort', params.sort ?? 'recent');
+
+    const json = await apiRequest(`${BASE_URL}/custom/v1/webinar-recordings?${qs.toString()}`);
+    const items: any[] = Array.isArray(json) ? json : json.events ?? json.webinars ?? json.data ?? [];
+    // total/count CONFIRMED backend-driven (Sep 2026) — matches Marium's
+    // "48 Webinars" / "18 Webinars" screenshots exactly, not a client count.
+    const total = typeof json?.total === 'number' ? json.total
+      : typeof json?.count === 'number' ? json.count
+      : items.length;
+    if (__DEV__) console.log('[eventsApi] webinars count:', items.length, 'total:', total);
+    return {recordings: items.map(mapRecording), total};
   } catch (err) {
     console.error('[eventsApi] getWebinarRecordings', err);
-    return {recordings: []};
+    return {recordings: [], total: 0};
   }
+};
+
+// GET /wp-json/custom/v1/single-webinar?event_id={id} — CONFIRMED (Sep
+// 2026, event_id=107005). Returns the full detail screen's data in one
+// call: webinar object + latest_webinars/recommended_course/sidebar
+// siblings (all three used by the detail screen — see mapWebinarDetail).
+export const getSingleWebinar = async (eventId: string | number): Promise<WebinarDetail | null> => {
+  try {
+    const json = await apiRequest(`${BASE_URL}/custom/v1/single-webinar?event_id=${eventId}`);
+    if (!json?.webinar) return null;
+    return mapWebinarDetail(json);
+  } catch (err) {
+    console.error('[eventsApi] getSingleWebinar', err);
+    return null;
+  }
+};
+
+// Speaker's LinkedIn for the "Connect on LinkedIn" button on the webinar
+// detail screen. The /single-webinar response has NO LinkedIn field —
+// only speaker_profile_url (the Hub member page, not LinkedIn) — so this
+// makes a second, separate call using speaker_user_id, reusing the exact
+// confirmed endpoint + field ID already working on MemberProfileScreen
+// (GET /buddyboss/v1/members/{id}?xprofile=1, field 1098 = LinkedIn).
+// Returns null (button disabled) if the speaker never filled that field in
+// — per Marium, no fallback to speaker_profile_url in that case.
+export const getSpeakerLinkedIn = async (userId: number): Promise<string | null> => {
+  if (!userId) return null;
+  try {
+    const res = await apiRequest(`${BASE_URL}/buddyboss/v1/members/${userId}?xprofile=1`);
+    const xmap = parseXprofile(res?.xprofile);
+    const raw = xmap['field_1098'];
+    if (!raw) return null;
+    return raw.startsWith('http') ? raw : `https://${raw}`;
+  } catch (err) {
+    console.error('[eventsApi] getSpeakerLinkedIn', err);
+    return null;
+  }
+};
+
+// ─── Local "saved" webinar state ──────────────────────────────────────────
+// No backend field for this yet (confirmed nothing in the single-webinar
+// response represents a saved/bookmarked state) — same local-AsyncStorage
+// pattern already used for event registration above, toggle-based since
+// "Save" is a toggle rather than a one-way action like registering.
+const SAVED_WEBINARS_KEY = 'ipm_saved_webinars';
+
+export const getSavedWebinarIds = async (): Promise<string[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(SAVED_WEBINARS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+};
+
+export const toggleSavedWebinar = async (webinarId: string): Promise<boolean> => {
+  try {
+    const existing = await getSavedWebinarIds();
+    const isSaved = existing.includes(webinarId);
+    const next = isSaved ? existing.filter(id => id !== webinarId) : [...existing, webinarId];
+    await AsyncStorage.setItem(SAVED_WEBINARS_KEY, JSON.stringify(next));
+    return !isSaved; // returns the NEW saved state
+  } catch { return false; }
 };
 
 export const getEvents = async (page = 1): Promise<GetEventsResult> => {
