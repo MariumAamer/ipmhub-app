@@ -277,8 +277,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.08,
   },
   stepLine: {
+    // width:'100%' REMOVED — onLayout measured this text at w311 while the
+    // card's real content width is 308 (358 card - 25*2 padding). That 3pt
+    // overspill is why the last word rendered past the right edge instead
+    // of wrapping. alignSelf:'stretch' alone gives the correct content
+    // width; flexShrink guards against any residual overflow.
     alignSelf: 'stretch',
-    width: '100%',
     flexShrink: 1,
     color: '#FFFFFF',
     // TEMP TEST: fontFamily removed. onLayout proved this text IS correctly

@@ -207,7 +207,8 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
             style={styles.actionBtnTouchable}>
             <View style={styles.actionBtn}>
               <Svg
-                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
+                style={styles.actionBtnGradientLayer}
                 width="100%"
                 height="100%">
                 <Defs>
@@ -231,7 +232,9 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
                   fill="url(#certBtnGradient)"
                 />
               </Svg>
-              <Text style={styles.actionBtnText}>{'View Certificate'}</Text>
+              <Text style={[styles.actionBtnText, styles.actionBtnTextOnTop]}>
+                {'View Certificate'}
+              </Text>
             </View>
           </TouchableOpacity>
         )}
@@ -377,6 +380,23 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignSelf: 'stretch',
+  },
+  // The SVG gradient sits BEHIND the label. zIndex 0 + explicit absolute
+  // placement keeps it a background layer; without this the native SVG view
+  // composites above its sibling <Text> on iOS/Fabric and hides the label
+  // entirely (the button was always there at w320/h40 and the gradient was
+  // always painting — the text was simply underneath it).
+  actionBtnGradientLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+  },
+  // Label forced above the gradient layer.
+  actionBtnTextOnTop: {
+    zIndex: 1,
   },
   actionBtnText: {
     color: '#FFFFFF',
