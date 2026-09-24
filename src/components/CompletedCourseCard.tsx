@@ -124,17 +124,15 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
   const percentage = course.progress?.percentage ?? course.progress_pct ?? 100;
   const hasCertificate = !!course.certificate_url;
 
-  // TEMP DEBUG: capture the REAL computed layout of the certificate button
-  // as the device actually measures it, and print it on screen. Explicit
-  // height:40 / width:'100%' appear to have no effect; this shows what the
-  // device thinks the actual size and position are.
-  const [btnLayout, setBtnLayout] = useState<string>('not measured yet');
+  // TEMP DEBUG: measure the <Text> INSIDE the button specifically. If this
+  // reports a real w/h, the label is laid out and something covers it. If
+  // w0/h0 or never set, the text isn't being laid out at all.
+  const [txtLayout, setTxtLayout] = useState<string>('TXT:not-set');
 
   return (
     <View style={styles.card}>
-      {/* TEMP DEBUG: fresh unique marker, round 2 of build verification */}
       <Text style={{fontSize: 12, color: 'red', backgroundColor: 'lime'}}>
-        {`QWERTY hasCert=${String(hasCertificate)} btn:${btnLayout}`}
+        {txtLayout}
       </Text>
       {/* Compact top row: badge/icon + title block, side by side. */}
       <View style={styles.topRow}>
@@ -198,12 +196,6 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => Linking.openURL(course.certificate_url!)}
-            onLayout={e => {
-              const {x, y, width, height} = e.nativeEvent.layout;
-              setBtnLayout(
-                `x${Math.round(x)} y${Math.round(y)} w${Math.round(width)} h${Math.round(height)}`,
-              );
-            }}
             style={styles.actionBtnTouchable}>
             <View style={styles.actionBtn}>
               <Svg
@@ -232,7 +224,14 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
                   fill="url(#certBtnGradient)"
                 />
               </Svg>
-              <Text style={[styles.actionBtnText, styles.actionBtnTextOnTop]}>
+              <Text
+                style={[styles.actionBtnText, styles.actionBtnTextOnTop]}
+                onLayout={e => {
+                  const {x, y, width, height} = e.nativeEvent.layout;
+                  setTxtLayout(
+                    `TXT x${Math.round(x)} y${Math.round(y)} w${Math.round(width)} h${Math.round(height)}`,
+                  );
+                }}>
                 {'View Certificate'}
               </Text>
             </View>
@@ -400,12 +399,7 @@ const styles = StyleSheet.create({
   },
   actionBtnText: {
     color: '#FFFFFF',
-    // TEMP TEST: fontFamily removed. Measurements proved this button is
-    // correctly sized (w320 h40) and its gradient paints — only the TEXT is
-    // missing. If the label appears with the system font, 'Runda-Medium'
-    // is not resolving on iOS (PostScript name mismatch / font not linked
-    // in the iOS target), which is the real root cause.
-    // fontFamily: 'Runda-Medium',
+    fontFamily: 'Runda-Medium',
     fontSize: 12,
   },
   outlineBtn: {

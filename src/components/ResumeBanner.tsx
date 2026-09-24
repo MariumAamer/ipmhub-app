@@ -77,7 +77,7 @@
 //     at the confirmed font size — this is a text-length issue, not a
 //     layout bug).
 
-import React, {useState} from 'react';
+import React from 'react';
 import {View, Text, Image, StyleSheet, TouchableOpacity} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path} from 'react-native-svg';
@@ -107,8 +107,6 @@ interface Props {
 }
 
 const ResumeBanner = ({banner, onPressResume}: Props) => {
-  // TEMP DEBUG: capture the REAL computed layout of the step/module text.
-  const [stepLayout, setStepLayout] = useState<string>('not measured');
   const pct = Math.max(0, Math.min(100, banner.progress ?? 0));
 
   return (
@@ -117,10 +115,6 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
       start={{x: 0.85, y: 0.02}}
       end={{x: 0.15, y: 0.98}}
       style={styles.root}>
-      {/* TEMP DEBUG: fresh unique marker, round 2 of build verification */}
-      <Text style={{fontSize: 11, color: 'red', backgroundColor: 'lime'}}>
-        {`ZXCVB step:${stepLayout}`}
-      </Text>
       {/* CONFIRMED (Sep 2026, live instruction supersedes the earlier
           "Frame 2085669498" inspector grouping): welcome text -> title ->
           Resume button, stacked together in the RIGHT-hand column. The image
@@ -151,17 +145,7 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
       {/* Breadcrumb, progress bar, and meta row still span the full card
           width, below the image+title row. */}
       {!!banner.step_line && (
-        <Text
-          style={styles.stepLine}
-          numberOfLines={3}
-          onLayout={e => {
-            const {x, y, width, height} = e.nativeEvent.layout;
-            setStepLayout(
-              `x${Math.round(x)} y${Math.round(y)} w${Math.round(width)} h${Math.round(height)}`,
-            );
-          }}>
-          {banner.step_line}
-        </Text>
+        <Text style={styles.stepLine} numberOfLines={3}>{banner.step_line}</Text>
       )}
 
       <View style={styles.progressTrack}>
@@ -285,10 +269,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     flexShrink: 1,
     color: '#FFFFFF',
-    // TEMP TEST: fontFamily removed. onLayout proved this text IS correctly
-    // sized (w311) and wrapping to 2 lines (h36) — the glyphs themselves
-    // overflow, which points at 'Runda-Normal' not resolving on iOS.
-    // fontFamily: 'Runda-Normal',
+    fontFamily: 'Runda-Normal',
     fontSize: 14,
     lineHeight: 18,
   },
