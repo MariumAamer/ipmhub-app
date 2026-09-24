@@ -59,6 +59,19 @@
 	<string>IPM Hub needs access to your camera so you can take a profile photo or attach photos to posts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>IPM Hub needs access to your photo library so you can upload a profile picture or attach images to posts.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Runda-Black.ttf</string>
+		<string>Runda-BlackItalic.ttf</string>
+		<string>Runda-Bold.ttf</string>
+		<string>Runda-BoldItalic.ttf</string>
+		<string>Runda-Light.ttf</string>
+		<string>Runda-LightItalic.ttf</string>
+		<string>Runda-Medium.ttf</string>
+		<string>Runda-MediumItalic.ttf</string>
+		<string>Runda-Normal.ttf</string>
+		<string>Runda-NormalItalic.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
