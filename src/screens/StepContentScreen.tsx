@@ -34,6 +34,8 @@ import {
   StatusBar,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 // FIXED (Aug 2026): was importing SafeAreaView from 'react-native' — that
 // core component only applies the safe-area inset on iOS and is a no-op on
@@ -412,7 +414,8 @@ const StepContentScreen = ({route, navigation}: any) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Breadcrumb — confirmed data via getCourseActivity */}
         <View style={styles.breadcrumbRow}>
           <Text style={styles.breadcrumbText}>{safeTitleText(activity?.course.title)}</Text>
@@ -623,6 +626,7 @@ const StepContentScreen = ({route, navigation}: any) => {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
       </SafeAreaView>
       <VideoPlayerModal
         visible={!!videoModalUrl}
@@ -766,10 +770,9 @@ const styles = StyleSheet.create({
 
   controlsRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   completeBtn: {
-    flex: 1,
+    alignSelf: 'stretch',
     flexDirection: 'row',
-    height: 40,
-    paddingVertical: 12,
+    minHeight: 40,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -808,8 +811,7 @@ const styles = StyleSheet.create({
 
   postCommentBtn: {
     flexDirection: 'row',
-    height: 40,
-    paddingVertical: 12,
+    minHeight: 40,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -826,8 +828,7 @@ const styles = StyleSheet.create({
   commentsCountText: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 16, letterSpacing: 0.08},
   collapseCommentsBtn: {
     flexDirection: 'row',
-    height: 40,
-    paddingVertical: 12,
+    minHeight: 40,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -871,7 +872,8 @@ const styles = StyleSheet.create({
   },
 
   supportCard: {
-    width: 358,
+    width: '100%',
+    maxWidth: 358,
     alignSelf: 'center',
     padding: 16,
     flexDirection: 'column',

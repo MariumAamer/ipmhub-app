@@ -110,11 +110,19 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
   const pct = Math.max(0, Math.min(100, banner.progress ?? 0));
 
   return (
-    <LinearGradient
-      colors={['#004C96', '#001830']}
-      start={{x: 0.85, y: 0.02}}
-      end={{x: 0.15, y: 0.98}}
-      style={styles.root}>
+    <View style={styles.root}>
+      {/* iOS FIX: gradient is now a padding-free absolute background layer.
+          With padding/gap on the LinearGradient itself, iOS painted the
+          gradient only over the content box (card looked inset ~25pt with
+          content flush to its edges and clipped on the right). */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#004C96', '#001830']}
+        start={{x: 0.85, y: 0.02}}
+        end={{x: 0.15, y: 0.98}}
+        style={styles.rootGradient}
+      />
+      <View style={styles.rootContent}>
       {/* CONFIRMED (Sep 2026, live instruction supersedes the earlier
           "Frame 2085669498" inspector grouping): welcome text -> title ->
           Resume button, stacked together in the RIGHT-hand column. The image
@@ -176,30 +184,34 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
           </View>
         )}
       </View>
-    </LinearGradient>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   root: {
-    // FIX: was a hardcoded width:358 (= 390pt Figma reference width minus
-    // 32px of the parent's horizontal padding). That only lines up by
-    // coincidence on devices ~390pt wide (e.g. iPhone 14 Pro's 393pt); on
-    // an SE/mini (375pt) it would overflow past the screen edge, and on a
-    // Pro Max/iPad it would leave a dead gap on the right. alignSelf:
-    // 'stretch' fills whatever width the parent (paddingHorizontal:16
-    // wrapper in CoursesScreen) actually provides, on any screen size —
-    // same fix needed in CourseCard.tsx / CourseDetailScreen.tsx.
     alignSelf: 'stretch',
-    flexDirection: 'column',
-    padding: 25,
-    gap: 15, // NOT pixel-confirmed for this vertical stacking — see file header
     borderRadius: 5,
+    backgroundColor: '#003366', // gives iOS a shape to cast the shadow from
     elevation: 4,
     shadowColor: '#000000',
     shadowOpacity: 0.15,
     shadowRadius: 10.023,
     shadowOffset: {width: 0, height: 0},
+  },
+  rootGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 5,
+  },
+  rootContent: {
+    flexDirection: 'column',
+    padding: 25,
+    gap: 15,
   },
   topRow: {
     flexDirection: 'row',

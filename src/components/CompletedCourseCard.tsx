@@ -124,16 +124,11 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
   const percentage = course.progress?.percentage ?? course.progress_pct ?? 100;
   const hasCertificate = !!course.certificate_url;
 
-  // TEMP DEBUG: measure the <Text> INSIDE the button specifically. If this
-  // reports a real w/h, the label is laid out and something covers it. If
-  // w0/h0 or never set, the text isn't being laid out at all.
-  const [txtLayout, setTxtLayout] = useState<string>('TXT:not-set');
+  // measured size of the certificate button (numeric px for the SVG gradient)
+  const [btnSize, setBtnSize] = useState<{w: number; h: number}>({w: 0, h: 40});
 
   return (
     <View style={styles.card}>
-      <Text style={{fontSize: 12, color: 'red', backgroundColor: 'lime'}}>
-        {txtLayout}
-      </Text>
       {/* Compact top row: badge/icon + title block, side by side. */}
       <View style={styles.topRow}>
         {/* LinearGradient kept as root of the image stack — project rule:
@@ -197,43 +192,34 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
             activeOpacity={0.85}
             onPress={() => Linking.openURL(course.certificate_url!)}
             style={styles.actionBtnTouchable}>
-            <View style={styles.actionBtn}>
-              <Svg
-                pointerEvents="none"
-                style={styles.actionBtnGradientLayer}
-                width="100%"
-                height="100%">
-                <Defs>
-                  <SvgLinearGradient
-                    id="certBtnGradient"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="0%">
-                    <Stop offset="0%" stopColor="#E257E4" />
-                    <Stop offset="70.35%" stopColor="#084D92" />
-                    <Stop offset="100%" stopColor="#084D92" />
-                  </SvgLinearGradient>
-                </Defs>
-                <Rect
-                  x="0"
-                  y="0"
-                  width="100%"
-                  height="100%"
-                  rx={5}
-                  fill="url(#certBtnGradient)"
-                />
-              </Svg>
-              <Text
-                style={[styles.actionBtnText, styles.actionBtnTextOnTop]}
-                onLayout={e => {
-                  const {x, y, width, height} = e.nativeEvent.layout;
-                  setTxtLayout(
-                    `TXT x${Math.round(x)} y${Math.round(y)} w${Math.round(width)} h${Math.round(height)}`,
-                  );
-                }}>
-                {'View Certificate'}
-              </Text>
+            <View
+              style={styles.actionBtn}
+              onLayout={e => {
+                const {width, height} = e.nativeEvent.layout;
+                setBtnSize(prev => (prev.w === width && prev.h === height ? prev : {w: width, h: height}));
+              }}>
+              {/* iOS FIX: numeric width/height from onLayout instead of
+                  width="100%"/height="100%" — percent sizing on an absolute
+                  root <Svg> resolved to ~89% x 45% on iOS, and the shrunken
+                  gradient painted over the label. */}
+              {btnSize.w > 0 && (
+                <Svg
+                  pointerEvents="none"
+                  style={styles.actionBtnGradientLayer}
+                  width={btnSize.w}
+                  height={btnSize.h}
+                  viewBox={`0 0 ${btnSize.w} ${btnSize.h}`}>
+                  <Defs>
+                    <SvgLinearGradient id="certBtnGradient" x1="0" y1="0" x2={btnSize.w} y2="0" gradientUnits="userSpaceOnUse">
+                      <Stop offset="0" stopColor="#E257E4" />
+                      <Stop offset="0.7035" stopColor="#084D92" />
+                      <Stop offset="1" stopColor="#084D92" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Rect x={0} y={0} width={btnSize.w} height={btnSize.h} rx={5} fill="url(#certBtnGradient)" />
+                </Svg>
+              )}
+              <Text style={styles.actionBtnText}>{'View Certificate'}</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -269,7 +255,7 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
 
 const styles = StyleSheet.create({
   card: {
-    width: 358,
+    alignSelf: 'stretch',
     minHeight: 341.948,
     flexDirection: 'column',
     padding: 16,
@@ -389,9 +375,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 0,
   },
   // Label forced above the gradient layer.
   actionBtnTextOnTop: {
