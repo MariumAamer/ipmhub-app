@@ -371,6 +371,21 @@ export interface CourseActivityStamp {
   display: string;
 }
 
+// CONFIRMED (Postman, course 307, Sep 2026): getCourseActivity returns a
+// pre-built "countdown" inside course.access for TIME-LIMITED courses —
+// every string is ready to render as-is (no client-side date math). Not
+// seen yet for unlimited courses, where access.from/expires are null —
+// treat a missing/null countdown as "no expiry" and skip the card.
+// `class` has only been seen as "warn"; other values are unconfirmed and
+// the app does not branch on it.
+export interface CourseCountdown {
+  class: string; // seen: "warn"
+  days_left: number; // e.g. 9
+  title: string; // e.g. "9 days left to complete this course"
+  subtitle: string; // e.g. "~32 hrs of content remaining — you can finish it this week"
+  expires_label: string; // e.g. "Expires 7 Oct 2026"
+}
+
 export interface CourseCurriculumTotals {
   modules: number;
   topics: number;
@@ -488,7 +503,17 @@ export const getMyCourses = async (userId: number): Promise<MyCoursesResponse> =
       section: json?.section ?? 'ld-inprogress',
       count: json?.count ?? 0,
       courses: Array.isArray(json?.courses)
-        ? json.courses.map((c: EnrolledCourse) => ({...c, title: decodeEntities(c.title)}))
+        ? json.courses.map((c: EnrolledCourse) => ({
+            ...c,
+            title: decodeEntities(c.title),
+            // current_step.lesson_title feeds the in-progress card's "Module X –
+            // ..." row and comes through HTML-entity-encoded (e.g. "&#8211;")
+            // same as the course title — decode it here too, or the card
+            // renders the literal entity instead of the en dash.
+            current_step: c.current_step
+              ? {...c.current_step, lesson_title: decodeEntities(c.current_step.lesson_title)}
+              : c.current_step,
+          }))
         : [],
     };
   } catch (err) {
@@ -894,7 +919,14 @@ export interface CourseActivityResponse {
     status: CourseStatus;
     progress: CourseProgress;
     activity: EnrolledCourse['activity'];
-    access: {from: string | null; expires: string | null};
+    // CORRECTED (Sep 2026, Postman course 307): from/expires are
+    // {timestamp, iso8601, display} objects (not plain strings), and
+    // time-limited courses also carry a `countdown` block.
+    access: {
+      from: CourseActivityStamp | null;
+      expires: CourseActivityStamp | null;
+      countdown?: CourseCountdown | null;
+    };
     current_step: EnrolledCourse['current_step'];
     curriculum: {
       content_label: string;

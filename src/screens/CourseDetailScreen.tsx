@@ -45,6 +45,7 @@ import {
   getInstructorsTabContent,
   CourseDetailsResponse,
   CourseActivityResponse,
+  CourseCountdown,
   OverviewTabResponse,
   CertificationsTabResponse,
   FaqsTabResponse,
@@ -214,25 +215,6 @@ const StepListIcon = () => (
   </Svg>
 );
 
-// ─── Progress card (shared: Overview + Modules tab header) ────────────────
-
-const ProgressCard = ({activity}: {activity: CourseActivityResponse}) => {
-  const pct = activity.course.progress.percentage;
-  return (
-    <View style={styles.progressCard}>
-      <Text style={styles.progressPercentText}>{`${pct}% Complete`}</Text>
-      <View style={styles.progressBarTrack}>
-        <View style={[styles.progressBarFill, {width: `${pct}%`}]} />
-      </View>
-      {activity.course.activity.last_activity && (
-        <Text style={styles.lastActivityText}>
-          {`Last activity on ${activity.course.activity.last_activity.display}`}
-        </Text>
-      )}
-    </View>
-  );
-};
-
 // ─── Modules tab (fully data-backed, confirmed getCourseActivity shape) ───
 
 // CONFIRMED live crash fix (Aug 2026): title fields returned by the
@@ -307,6 +289,211 @@ const getDurationText = (duration: {minutes: number; display: string} | string |
   if (!duration) return null;
   if (typeof duration === 'string') return duration;
   return duration.display ?? null;
+};
+
+// ─── Overview redesign (Figma, Sep 2026) ─────────────────────────────────
+// Continue card, Need Help link, days-left card and the redesigned
+// "Your Progress" card. Icons are the Figma SVGs with their <clipPath>
+// wrappers dropped (the clip rects cover the full viewBox, so they did
+// nothing) — avoids clip-ID collisions across instances per project rule.
+
+const PlayTriangleIcon = () => (
+  <Svg width={10.27} height={10.27} viewBox="0 0 11 11" fill="none">
+    <Path
+      d="M2.26058 1.71139C2.18516 1.84172 2.14546 1.98965 2.14551 2.14023V8.13083C2.14546 8.28141 2.18516 8.42934 2.26058 8.55967C2.33601 8.69001 2.4445 8.79814 2.57509 8.87315C2.70569 8.94816 2.85377 8.98739 3.00437 8.98688C3.15498 8.98637 3.30279 8.94613 3.43287 8.87024L8.56864 5.87494C8.69808 5.79954 8.80547 5.6915 8.88007 5.5616C8.95466 5.43171 8.99385 5.28452 8.99372 5.13473C8.99359 4.98495 8.95415 4.83783 8.87933 4.70806C8.80451 4.5783 8.69693 4.47044 8.56735 4.39526L3.43287 1.40082C3.30279 1.32493 3.15498 1.2847 3.00437 1.28418C2.85377 1.28367 2.70569 1.3229 2.57509 1.39791C2.4445 1.47292 2.33601 1.58105 2.26058 1.71139Z"
+      stroke="#FFFFFF"
+      strokeWidth={1.28378}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+// NOTE: no chevron spec/SVG was supplied for the continue card — this
+// reuses the existing SmallChevronRight path in white (the screenshot
+// shows a chevron at the right edge). Swap in the exact Figma SVG if it
+// differs.
+const ContinueChevronIcon = () => (
+  <Svg width={10} height={10} viewBox="0 0 15 15" fill="none">
+    <Path
+      d="M3.408 14.413C3.031 14.047 3.031 13.453 3.408 13.087L9.15 7.5 3.408 1.913C3.031 1.547 3.031 0.954 3.408 0.588C3.784 0.221 4.394 0.221 4.77 0.588L11.875 7.5 4.77 14.413C4.394 14.779 3.784 14.779 3.408 14.413Z"
+      fill="#FFFFFF"
+    />
+  </Svg>
+);
+
+const HeadsetIcon = () => (
+  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+    <Path
+      d="M2 7.33349H4C4.35362 7.33349 4.69276 7.47398 4.94281 7.72404C5.19286 7.97411 5.33333 8.31328 5.33333 8.66693V10.6671C5.33333 11.0207 5.19286 11.3599 4.94281 11.61C4.69276 11.86 4.35362 12.0005 4 12.0005H3.33333C2.97971 12.0005 2.64057 11.86 2.39052 11.61C2.14048 11.3599 2 11.0207 2 10.6671V7.33349ZM2 7.33349C2 6.54549 2.15519 5.76522 2.45672 5.0372C2.75825 4.30919 3.20021 3.6477 3.75736 3.09051C4.31451 2.53331 4.97595 2.09132 5.7039 1.78977C6.43185 1.48821 7.21207 1.33301 8 1.33301C8.78793 1.33301 9.56815 1.48821 10.2961 1.78977C11.0241 2.09132 11.6855 2.53331 12.2426 3.09051C12.7998 3.6477 13.2417 4.30919 13.5433 5.0372C13.8448 5.76522 14 6.54549 14 7.33349M14 7.33349V10.6671M14 7.33349H12C11.6464 7.33349 11.3072 7.47398 11.0572 7.72404C10.8071 7.97411 10.6667 8.31328 10.6667 8.66693V10.6671C10.6667 11.0207 10.8071 11.3599 11.0572 11.61C11.3072 11.86 11.6464 12.0005 12 12.0005H12.6667C13.0203 12.0005 13.3594 11.86 13.6095 11.61C13.8595 11.3599 14 11.0207 14 10.6671M14 10.6671V12.0005C14 12.7078 13.719 13.3862 13.219 13.8863C12.7189 14.3864 12.0406 14.6674 11.3333 14.6674H8"
+      stroke="#46B0E3"
+      strokeWidth={1.45455}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+// 20px circle-x (the 15px "inner x" layer in the Figma export is already
+// included in this path, so it is not drawn separately).
+const CircleXIcon = () => (
+  <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+    <Path
+      d="M11.95 8.05L8.05 11.95M8.05 8.05L11.95 11.95M16.5 10C16.5 13.5899 13.5899 16.5 10 16.5C6.41015 16.5 3.5 13.5899 3.5 10C3.5 6.41015 6.41015 3.5 10 3.5C13.5899 3.5 16.5 6.41015 16.5 10Z"
+      stroke="#46B0E3"
+      strokeWidth={1.55988}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+const TrophyIcon = () => (
+  <Svg width={9.457} height={9.457} viewBox="0 0 11 11" fill="none">
+    <Path
+      d="M4.45067 6.65417V7.42301C4.44889 7.58502 4.40551 7.74385 4.3247 7.88427C4.24389 8.02469 4.12836 8.142 3.98918 8.22494C3.69373 8.44378 3.45338 8.72851 3.28725 9.05651C3.12112 9.38451 3.03377 9.74674 3.03216 10.1144M6.34203 6.65417V7.42301C6.34381 7.58502 6.38719 7.74385 6.468 7.88427C6.54881 8.02469 6.66434 8.142 6.80352 8.22494C7.09897 8.44378 7.33932 8.72851 7.50545 9.05651C7.67159 9.38451 7.75893 9.74674 7.76054 10.1144M8.23338 3.97784H8.94264C9.25615 3.97784 9.55682 3.85329 9.77851 3.63161C10.0002 3.40992 10.1247 3.10925 10.1247 2.79574C10.1247 2.48223 10.0002 2.18156 9.77851 1.95987C9.55682 1.73819 9.25615 1.61365 8.94264 1.61365H8.23338M8.23338 3.97784C8.23338 4.73026 7.93448 5.45187 7.40243 5.98392C6.87039 6.51597 6.14878 6.81487 5.39635 6.81487C4.64392 6.81487 3.92231 6.51597 3.39027 5.98392C2.85822 5.45187 2.55932 4.73026 2.55932 3.97784M8.23338 3.97784V1.14081C8.23338 1.0154 8.18356 0.895134 8.09489 0.80646C8.00622 0.717785 7.88595 0.667969 7.76054 0.667969H3.03216C2.90676 0.667969 2.78649 0.717785 2.69781 0.80646C2.60914 0.895134 2.55932 1.0154 2.55932 1.14081V3.97784M2.55932 3.97784H1.85006C1.53655 3.97784 1.23588 3.85329 1.0142 3.63161C0.792511 3.40992 0.667969 3.10925 0.667969 2.79574C0.667969 2.48223 0.792511 2.18156 1.0142 1.95987C1.23588 1.73819 1.53655 1.61365 1.85006 1.61365H2.55932M1.61365 10.1247H9.17906"
+      stroke="#0C4D91"
+      strokeWidth={1.33556}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+const LastActiveClockIcon = () => (
+  <Svg width={12.81} height={12.81} viewBox="0 0 13 13" fill="none">
+    <Path
+      d="M6.4014 3.20158V6.40433L8.53657 7.47192M11.7393 6.40433C11.7393 9.35239 9.34946 11.7423 6.4014 11.7423C3.45335 11.7423 1.06348 9.35239 1.06348 6.40433C1.06348 3.45628 3.45335 1.06641 6.4014 1.06641C9.34946 1.06641 11.7393 3.45628 11.7393 6.40433Z"
+      stroke="#C5C6CC"
+      strokeWidth={1.50772}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+// "Continue where you left off" — enrolled + Overview tab only. Replaces
+// the plain Continue button there (same action: opens the Modules tab).
+// Text is lesson_title + step_title from current_step (both come back
+// HTML-entity-encoded, e.g. "Module 2 &#8211; Setting up a PMO").
+const ContinueCard = ({
+  lessonTitle,
+  stepTitle,
+  onPress,
+}: {
+  lessonTitle: string;
+  stepTitle: string;
+  onPress: () => void;
+}) => {
+  const title = [decodeEntities(lessonTitle), decodeEntities(stepTitle)].filter(Boolean).join(': ');
+  return (
+    <TouchableOpacity
+      style={styles.continueCardTouch}
+      activeOpacity={0.85}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Continue where you left off. ${title}`}>
+      {/* CSS linear-gradient(213deg, #004C96 -3.99%, #001830 100%) —
+          start/end points below reproduce the 213deg angle for a ~342x80
+          box (RN points are box fractions, so they fall outside 0..1). */}
+      <LinearGradient
+        colors={['#004C96', '#001830']}
+        locations={[0, 1]}
+        start={{x: 0.702, y: -0.83}}
+        end={{x: 0.298, y: 1.83}}
+        style={styles.continueCard}>
+        <View style={styles.continuePlayCircle}>
+          <PlayTriangleIcon />
+        </View>
+        <View style={styles.continueTextCol}>
+          <Text style={styles.continueCaption}>{'Continue where you left off'}</Text>
+          <Text style={styles.continueTitle} numberOfLines={2}>
+            {title}
+          </Text>
+        </View>
+        <ContinueChevronIcon />
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+};
+
+const NeedHelpRow = ({onPress}: {onPress: () => void}) => (
+  <TouchableOpacity style={styles.needHelpRow} onPress={onPress} activeOpacity={0.7} accessibilityRole="link">
+    <View style={styles.needHelpIcon}>
+      <HeadsetIcon />
+    </View>
+    <Text style={styles.needHelpText}>{'Need Help?'}</Text>
+  </TouchableOpacity>
+);
+
+// The backend sends "Expires 7 Oct 2026" as one string; Figma shows it on
+// two lines ("Expires" / "7 Oct 2026"), so split on the first space.
+const splitExpiresLabel = (label: string): string => {
+  const text = decodeEntities(label).trim();
+  const m = text.match(/^(\S+)\s+(.+)$/);
+  return m ? `${m[1]}\n${m[2]}` : text;
+};
+
+// "N days left to complete this course" — only rendered when the activity
+// endpoint returns access.countdown (time-limited courses). Unlimited
+// courses have no countdown, so the card is skipped. All copy comes from
+// the backend. countdown.class ("warn" seen so far) is intentionally NOT
+// used for styling — Figma shows one blue-border style.
+const CountdownCard = ({countdown}: {countdown: CourseCountdown}) => (
+  <View style={styles.countdownCard}>
+    <View style={styles.countdownIcon}>
+      <CircleXIcon />
+    </View>
+    <View style={styles.countdownTextCol}>
+      <Text style={styles.countdownTitle}>{decodeEntities(countdown.title)}</Text>
+      {countdown.subtitle ? <Text style={styles.countdownSubtitle}>{decodeEntities(countdown.subtitle)}</Text> : null}
+    </View>
+    {countdown.expires_label ? (
+      <Text style={styles.countdownExpires}>{splitExpiresLabel(countdown.expires_label)}</Text>
+    ) : null}
+  </View>
+);
+
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "25 May 2026" from the stamp's iso8601 (falls back to the backend's
+// own display string if the date can't be parsed).
+const formatLastActive = (stamp: {iso8601: string; display: string}): string => {
+  const d = new Date(stamp.iso8601);
+  if (isNaN(d.getTime())) return decodeEntities(stamp.display);
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+};
+
+// ─── Progress card (shared: Overview + Modules tab header) ────────────────
+// Redesigned to the Figma "Your Progress" card. The message line is fixed
+// copy for every course/percentage (per Marium); "minutes remaining" is
+// intentionally not shown.
+
+const ProgressCard = ({activity}: {activity: CourseActivityResponse}) => {
+  const rawPct = activity.course.progress.percentage;
+  const pct = Math.max(0, Math.min(100, Number.isFinite(rawPct) ? rawPct : 0));
+  const lastActivity = activity.course.activity.last_activity;
+  return (
+    <View style={styles.progressCard}>
+      <View style={styles.progressHeaderRow}>
+        <Text style={styles.progressTitleText}>{'Your Progress'}</Text>
+        <Text style={styles.progressPercentText}>{`${pct}%`}</Text>
+      </View>
+      <View style={styles.progressMessageRow}>
+        <View style={styles.progressTrophy}>
+          <TrophyIcon />
+        </View>
+        <Text style={styles.progressMessageText}>{"You're on your way — keep learning!"}</Text>
+        <Text style={styles.progressCompleteLabel}>{'Complete'}</Text>
+      </View>
+      <View style={styles.progressBarTrack}>
+        <View style={[styles.progressBarFill, {width: `${pct}%`}]} />
+      </View>
+      {lastActivity ? (
+        <View style={styles.lastActivityRow}>
+          <View style={styles.lastActivityIcon}>
+            <LastActiveClockIcon />
+          </View>
+          <Text style={styles.lastActivityText}>{`Last active ${formatLastActive(lastActivity)}`}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
 };
 
 const ModuleStepRow = ({
@@ -1154,6 +1341,105 @@ const CourseDetailScreen = ({route, navigation}: any) => {
   const {course} = details;
   const {header, sidebar, tabs} = course;
 
+  // Continue card data. current_step is confirmed on both
+  // getCourseDetails (sidebar.enrollment) and getCourseActivity; the
+  // sidebar copy arrives with the first response so the card doesn't
+  // wait on the activity call. It is null once a course is finished.
+  const currentStep = sidebar.enrollment.current_step ?? activity?.course.current_step ?? null;
+  const showContinueCard = activeTab === 'overview' && sidebar.enrollment.is_enrolled;
+
+  // Where "Continue" should take an enrolled user. Preference order:
+  //   1. current_step from the sidebar / activity response (the backend's
+  //      own answer);
+  //   2. the step the curriculum marks is_current;
+  //   3. the first step that is not completed yet.
+  // (2 and 3 are a safety net so Continue still works if current_step is
+  // missing or null in a response.) Returns null only when nothing is left
+  // to open, e.g. every step is complete.
+  const getResumeTarget = (): {stepId: number; lessonId: number; lessonTitle: string; kind: 'topic' | 'quiz'} | null => {
+    if (currentStep && currentStep.step_id) {
+      return {
+        stepId: currentStep.step_id,
+        lessonId: currentStep.lesson_id,
+        lessonTitle: stripEntities(currentStep.lesson_title),
+        kind: currentStep.step_type === 'quiz' ? 'quiz' : 'topic',
+      };
+    }
+    if (!activity) return null;
+    let firstOpen: {stepId: number; lessonId: number; lessonTitle: string; kind: 'topic' | 'quiz'} | null = null;
+    for (const lesson of activity.course.lessons) {
+      const steps = [
+        ...(lesson.topics ?? []).map((st) => ({st, kind: 'topic' as const})),
+        ...(lesson.quizzes ?? []).map((st) => ({st, kind: 'quiz' as const})),
+      ];
+      for (const {st, kind} of steps) {
+        const target = {stepId: st.id, lessonId: lesson.id, lessonTitle: stripEntities(lesson.title), kind};
+        if (st.is_current) return target;
+        if (!firstOpen && st.status !== 'completed') firstOpen = target;
+      }
+    }
+    return firstOpen;
+  };
+
+  const handleCtaPress = () => {
+    if (sidebar.enrollment.is_enrolled) {
+      // BUG FIX (Sep 2026): Continue used to just switch to the Modules
+      // tab, which does nothing when you are already on the Modules tab
+      // (and is not "continue" anywhere else). Enrolled users now go
+      // straight to the step they left off on, using the same routes the
+      // Modules tab rows use (quiz -> 'Quiz', everything else ->
+      // 'StepContent'). Only when there is nothing to resume does it fall
+      // back to opening the Modules tab.
+      const target = getResumeTarget();
+      if (__DEV__) {
+        console.log('[CourseDetailScreen] Continue pressed', {
+          currentStep,
+          hasActivity: !!activity,
+          target,
+        });
+      }
+      if (target) {
+        if (target.kind === 'quiz') {
+          navigation?.navigate?.('Quiz', {
+            courseId,
+            stepId: target.stepId,
+            courseTitle: stripEntities(course.title),
+            lessonTitle: target.lessonTitle,
+          });
+        } else {
+          navigation?.navigate?.('StepContent', {
+            courseId,
+            stepId: target.stepId,
+            lessonId: target.lessonId,
+            stepType: 'topic',
+          });
+        }
+      } else {
+        handleTabPress('modules');
+      }
+    } else {
+      // Use the button's own url, not course.permalink — this
+      // is the field the API explicitly built for the
+      // "take_course" action (action: "take_course", url: ...).
+      // Currently identical to permalink for every course
+      // tested, but reading the correct field means this stays
+      // right if that ever changes (e.g. if a direct
+      // checkout/cart link gets added here later).
+      Linking.openURL(sidebar.enrollment.button.url).catch((err) =>
+        console.error('[CourseDetailScreen] CTA', err),
+      );
+    }
+  };
+
+  // Days-left card data — only present for time-limited courses
+  // (activity.course.access.countdown). Unlimited courses have none, so
+  // no card is shown.
+  const countdown = activity?.course.access?.countdown ?? null;
+
+  // Need Help → the in-app Help & Support screen (same route the profile
+  // drawer uses).
+  const handleNeedHelpPress = () => navigation?.navigate?.('HelpSupport');
+
   const contentTabs = tabs.filter((t) => t.type !== 'link'); // Forums excluded — no in-app forums view
   const activeTabMeta = tabs.find((t) => t.id === activeTab);
 
@@ -1329,29 +1615,22 @@ const CourseDetailScreen = ({route, navigation}: any) => {
         )}
 
         <View style={styles.ctaFrame}>
-          <TouchableOpacity
-            style={styles.ctaButton}
-            onPress={() => {
-              if (sidebar.enrollment.is_enrolled) {
-                // Enrolled: jump into the curriculum in-app rather than
-                // out to the website — matches "Continue" opening the
-                // same Course Detail screen's Modules tab.
-                handleTabPress('modules');
-              } else {
-                // Use the button's own url, not course.permalink — this
-                // is the field the API explicitly built for the
-                // "take_course" action (action: "take_course", url: ...).
-                // Currently identical to permalink for every course
-                // tested, but reading the correct field means this stays
-                // right if that ever changes (e.g. if a direct
-                // checkout/cart link gets added here later).
-                Linking.openURL(sidebar.enrollment.button.url).catch((err) =>
-                  console.error('[CourseDetailScreen] CTA', err),
-                );
-              }
-            }}>
-            <Text style={styles.ctaButtonText}>{decodeEntities(sidebar.enrollment.button.label)}</Text>
-          </TouchableOpacity>
+          {/* Overview + enrolled + a known current step: the "Continue
+              where you left off" card replaces the plain Continue button
+              (same action — opens the Modules tab). Every other case
+              (not enrolled, other tabs, or a finished course with no
+              current_step) keeps the regular button. */}
+          {showContinueCard && currentStep ? (
+            <ContinueCard
+              lessonTitle={currentStep.lesson_title}
+              stepTitle={currentStep.step_title}
+              onPress={handleCtaPress}
+            />
+          ) : (
+            <TouchableOpacity style={styles.ctaButton} onPress={handleCtaPress}>
+              <Text style={styles.ctaButtonText}>{decodeEntities(sidebar.enrollment.button.label)}</Text>
+            </TouchableOpacity>
+          )}
 
           {header.meta.price_type !== 'closed' && !sidebar.enrollment.is_enrolled && (
             <Text style={styles.priceText}>{decodeEntities(header.meta.price)}</Text>
@@ -1365,6 +1644,8 @@ const CourseDetailScreen = ({route, navigation}: any) => {
                 <StatBox icon={<TopicsIcon />} count={sidebar.course_includes.totals.topics} label={sidebar.course_includes.totals.labels.topics} />
                 <StatBox icon={<QuizzesIcon />} count={sidebar.course_includes.totals.quizzes} label={sidebar.course_includes.totals.labels.quizzes} />
               </View>
+              <NeedHelpRow onPress={handleNeedHelpPress} />
+              {sidebar.enrollment.is_enrolled && countdown?.title ? <CountdownCard countdown={countdown} /> : null}
             </>
           )}
 
@@ -1496,12 +1777,65 @@ const styles = StyleSheet.create({
   statCount: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 12},
   statLabel: {color: '#46B0E3', fontFamily: 'Runda-Medium', fontSize: 12},
 
-  // Progress card — real data (getCourseActivity)
+  // Continue card (Figma) — enrolled users, Overview tab
+  continueCardTouch: {alignSelf: 'stretch'},
+  continueCard: {
+    minHeight: 80.243,
+    paddingVertical: 12.838,
+    paddingHorizontal: 15.405,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    borderRadius: 5,
+  },
+  continuePlayCircle: {
+    width: 30.811,
+    height: 30.811,
+    paddingLeft: 2,
+    borderRadius: 64.189,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10.5,
+  },
+  continueTextCol: {flex: 1, marginRight: 10.5},
+  continueCaption: {color: '#FFFFFF', fontFamily: 'Runda-Normal', fontSize: 10, textTransform: 'uppercase'},
+  continueTitle: {color: '#FFFFFF', fontFamily: 'Runda-Medium', fontSize: 14},
+
+  // Need Help link (Figma)
+  needHelpRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', paddingVertical: 10},
+  needHelpIcon: {marginRight: 6},
+  needHelpText: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 14, textDecorationLine: 'underline'},
+
+  // Days-left card (Figma) — time-limited courses only
+  countdownCard: {
+    minHeight: 58,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#46B0E3',
+    backgroundColor: '#FFFFFF',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: {width: 0, height: 0},
+  },
+  countdownIcon: {width: 20, height: 20, marginRight: 14},
+  countdownTextCol: {flex: 1, marginRight: 14},
+  countdownTitle: {color: '#0C4D91', fontFamily: 'Runda-Medium', fontSize: 14},
+  countdownSubtitle: {color: '#192546', fontFamily: 'Runda-Normal', fontSize: 12, lineHeight: 16},
+  countdownExpires: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 12, textAlign: 'right'},
+
+  // Progress card (Figma "Your Progress") — real data (getCourseActivity)
   progressCard: {
     padding: 16,
     flexDirection: 'column',
     alignItems: 'flex-end',
-    gap: 2,
     alignSelf: 'stretch',
     borderRadius: 8.201,
     backgroundColor: '#FFFFFF',
@@ -1511,10 +1845,18 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: {width: 0, height: 0},
   },
-  progressPercentText: {alignSelf: 'flex-start', color: '#0C4D91', fontFamily: 'Runda-Medium', fontSize: 14},
+  progressHeaderRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch', marginBottom: 2},
+  progressTitleText: {color: '#192546', fontFamily: 'Runda-Bold', fontSize: 18, letterSpacing: 0.09},
+  progressPercentText: {color: '#0C4D91', fontFamily: 'Runda-Bold', fontSize: 18, letterSpacing: 0.09, textAlign: 'right'},
+  progressMessageRow: {flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'stretch'},
+  progressTrophy: {marginTop: 3, marginRight: 8},
+  progressMessageText: {flex: 1, color: '#0C4D91', fontFamily: 'Runda-Normal', fontSize: 12, lineHeight: 16},
+  progressCompleteLabel: {marginLeft: 8, color: '#8F9098', fontFamily: 'Runda-Normal', fontSize: 12, lineHeight: 16, textAlign: 'right'},
   progressBarTrack: {height: 10, alignSelf: 'stretch', borderRadius: 20, backgroundColor: '#E8E9F1', marginVertical: 8, overflow: 'hidden'},
   progressBarFill: {height: 10, borderTopRightRadius: 20, borderBottomRightRadius: 20, backgroundColor: '#46B0E3'},
-  lastActivityText: {alignSelf: 'flex-start', color: '#8F9098', fontFamily: 'Runda-Normal', fontSize: 12, lineHeight: 16},
+  lastActivityRow: {flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch'},
+  lastActivityIcon: {marginRight: 6},
+  lastActivityText: {color: '#8F9098', fontFamily: 'Runda-Medium', fontSize: 10, lineHeight: 14},
 
   // Unified Overview card — merges what used to be 2-3 separate cards
   // (About This Course / parsed content / author) into ONE, per spec.

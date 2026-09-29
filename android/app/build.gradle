@@ -98,7 +98,7 @@ android {
         applicationId "com.ipmmobileapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 23
+        versionCode 24
         versionName "2.0.1"
     }
 

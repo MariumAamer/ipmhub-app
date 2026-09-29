@@ -178,8 +178,10 @@ const TopTabs = ({active, onChange}: {active: TopTab; onChange: (t: TopTab) => v
 // Wired to getMyCourses() — confirmed endpoint. Same screen handles both
 // states: no enrolled courses yet -> recommendation cards (reusing
 // EmptyCoursesRecommendation, same component used on the Certifications
-// empty state); has enrolled courses -> list of CourseCards. Status text
-// ("In-Progress") intentionally NOT shown on the card.
+// empty state); has enrolled courses -> list of CourseCards. Sept 2026
+// redesign: each card is now the taller 'enrolled' layout with a Progress
+// row/bar and current-module row (see CourseCard.tsx) — card_status
+// ("In-Progress") still isn't rendered as literal text on this card.
 
 const MyCoursesTab = ({navigation}: {navigation: any}) => {
   const [courses, setCourses] = useState<EnrolledCourse[]>([]);
@@ -266,7 +268,14 @@ const MyCoursesTab = ({navigation}: {navigation: any}) => {
                 {icon: 'calendar', text: item.enrollment.date_display},
                 {icon: 'format', text: item.format_label},
               ]}
-              statusText={item.card_status}
+              // CORRECTED (this pass): the label above the bar IS
+              // card_status ("In-Progress") — Marium confirmed against
+              // her live Figma file (the exported PNG mockup had rendered
+              // it wrong as a static "Progress"). Same field already
+              // picks CompletedCourseCard vs this card one section down.
+              statusLabel={item.card_status}
+              progressPercentage={item.progress.percentage}
+              moduleText={item.current_step?.lesson_title}
               buttonLabel="Continue Course"
               onPressButton={() => navigation?.navigate?.('CourseDetail', {courseId: item.id})}
             />
@@ -1117,12 +1126,13 @@ export default CoursesScreen;
 /* ─────────────────────────────────────────────────────────────────────────
    STILL MISSING — flagged rather than guessed:
 
-   [Latest pass, July 2026]:
-   - My Courses card: fixed via CourseCard.tsx's new 'enrolled' variant —
-     16px gap between image/text, circle+arrow icon now sits top-right
-     next to the title (not embedded in the button), bottom row is
-     status text (left, e.g. "In-Progress") + content-width "Continue
-     Course" button (right), matching the corrected screenshot.
+   [Latest pass, Sep 2026]:
+   - My Courses card: 'enrolled' variant redesigned per new Figma spec —
+     taller card (250 vs 180), Progress row (static "Progress" label +
+     live percentage) + bar, current-module row, full-width "Continue
+     Course" button underneath (was: statusText left + content-width
+     button right, no progress bar or module row at all). See
+     CourseCard.tsx for the full layout.
    - Upcoming Courses "View Course" button: fixed to full-width, radius 50,
      border 1.5px solid #0C4D91 (was radius 100 / 1px border).
    - Search All Courses card: rebuilt image frame (179 tall, image 151x215

@@ -34,8 +34,6 @@ import {
   StatusBar,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 // FIXED (Aug 2026): was importing SafeAreaView from 'react-native' — that
 // core component only applies the safe-area inset on iOS and is a no-op on
@@ -74,14 +72,66 @@ const ExpandIcon = () => (
   </Svg>
 );
 
-const ChevronLeft = () => (
+// Previous / Next arrows (Figma, Sep 2026) — grey #7C86A1. The Figma
+// left arrow is a <mask> SVG, rebuilt here as a plain filled path (project
+// rule: react-native-svg does not render <mask>); the right arrow is the
+// same shape mirrored.
+const NavArrowLeft = () => (
   <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
     <Path
-      d="M11.5924 0.587C11.9687 0.953 11.9687 1.547 11.5924 1.913L5.8503 7.5 11.5924 13.087C11.9687 13.453 11.9687 14.046 11.5924 14.412C11.2162 14.779 10.6061 14.779 10.2298 14.412L3.125 7.5 10.2298 0.587C10.6061 0.221 11.2162 0.221 11.5924 0.587Z"
-      fill="#192546"
+      d="M11.5924 0.587077C11.9687 0.953179 11.9687 1.54675 11.5924 1.91285L5.85026 7.49972L11.5924 13.0866C11.9687 13.4527 11.9687 14.0463 11.5924 14.4124C11.2162 14.7785 10.6061 14.7785 10.2298 14.4124L3.125 7.49972L10.2298 0.587077C10.6061 0.220974 11.2162 0.220974 11.5924 0.587077Z"
+      fill="#7C86A1"
     />
   </Svg>
 );
+const NavArrowRight = () => (
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path
+      d="M3.40761 0.587077C3.03135 0.953179 3.03135 1.54675 3.40761 1.91285L9.14974 7.49972L3.40761 13.0866C3.03135 13.4527 3.03135 14.0463 3.40761 14.4124C3.78383 14.7785 4.39389 14.7785 4.77016 14.4124L11.875 7.49972L4.77016 0.587077C4.39389 0.220974 3.78383 0.220974 3.40761 0.587077Z"
+      fill="#7C86A1"
+    />
+  </Svg>
+);
+
+// Topic / Materials tab icons (Figma, Sep 2026).
+const TopicTabIcon = () => (
+  <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+    <Path d="M12.8161 10.1005H8.45707V9.23027H12.8161V10.1005Z" fill="#0C4D91" />
+    <Path d="M13.5574 7.61525H7.84719V6.74497H13.5574V7.61525Z" fill="#0C4D91" />
+    <Path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M16.2607 17.8627H4.75032C3.70154 17.8627 2.84166 17.0564 2.7536 16.0305H2.74512V3.38599C2.74524 2.18256 3.72081 1.20623 4.92421 1.20605H16.2607V17.8627ZM4.75032 14.7225C4.12369 14.7225 3.6154 15.2308 3.6154 15.8575C3.61572 16.4838 4.12388 16.9915 4.75032 16.9915H15.3905V14.7225H4.75032ZM4.92421 2.07718C4.20148 2.07736 3.61552 2.66324 3.6154 3.38599V14.2068C3.93825 13.9845 4.32865 13.8522 4.75032 13.8522H5.8844V2.07718H4.92421ZM6.75468 13.8522H15.3905V2.07718H6.75468V13.8522Z"
+      fill="#0C4D91"
+    />
+  </Svg>
+);
+
+const MaterialsTabIcon = () => (
+  <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+    <Path
+      d="M16.4525 4.73476C16.4525 4.4296 16.2052 4.18222 15.9 4.18222H13.6899C13.3847 4.18222 13.1373 4.4296 13.1373 4.73476V6.9449C13.1373 7.25006 13.3847 7.49744 13.6899 7.49744H15.9C16.2052 7.49744 16.4525 7.25006 16.4525 6.9449V4.73476ZM17.5576 6.9449C17.5576 7.86037 16.8155 8.60251 15.9 8.60251H13.6899C12.7744 8.60251 12.0323 7.86037 12.0323 6.9449V4.73476C12.0323 3.81929 12.7744 3.07715 13.6899 3.07715H15.9C16.8155 3.07715 17.5576 3.81929 17.5576 4.73476V6.9449Z"
+      fill="#0C4D91"
+    />
+    <Path
+      d="M9.6011 3.40867C9.90625 3.40867 10.1536 3.65605 10.1536 3.96121C10.1536 4.26636 9.90625 4.51374 9.6011 4.51374H2.86015C2.555 4.51374 2.30762 4.26636 2.30762 3.96121C2.30762 3.65605 2.555 3.40867 2.86015 3.40867H9.6011Z"
+      fill="#0C4D91"
+    />
+    <Path
+      d="M9.6011 7.49744C9.90625 7.49744 10.1536 7.74482 10.1536 8.04997C10.1536 8.35513 9.90625 8.60251 9.6011 8.60251H2.86015C2.555 8.60251 2.30762 8.35513 2.30762 8.04997C2.30762 7.74482 2.555 7.49744 2.86015 7.49744H9.6011Z"
+      fill="#0C4D91"
+    />
+    <Path
+      d="M16.7841 11.6415C17.0892 11.6415 17.3366 11.8888 17.3366 12.194C17.3366 12.4992 17.0892 12.7465 16.7841 12.7465H2.86015C2.555 12.7465 2.30762 12.4992 2.30762 12.194C2.30762 11.8888 2.555 11.6415 2.86015 11.6415H16.7841Z"
+      fill="#0C4D91"
+    />
+    <Path
+      d="M16.7841 15.6197C17.0892 15.6197 17.3366 15.8671 17.3366 16.1723C17.3366 16.4774 17.0892 16.7248 16.7841 16.7248H2.86015C2.555 16.7248 2.30762 16.4774 2.30762 16.1723C2.30762 15.8671 2.555 15.6197 2.86015 15.6197H16.7841Z"
+      fill="#0C4D91"
+    />
+  </Svg>
+);
+
 const ChevronRight = () => (
   <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
     <Path
@@ -218,33 +268,8 @@ const safeTitleText = (value: unknown): string => {
   return '';
 };
 
-// Comment content comes back as WP post HTML (e.g. "<p>Hi there</p><p>Second
-// paragraph</p>"), same raw markup WP stores for post_content generally —
-// confirmed live (Aug 2026) via the comments endpoint rendering literal
-// "<p>...</p>" tags on screen. safeTitleText() only decodes entities, it
-// doesn't touch tags, so it's not enough here on its own. This strips tags
-// while turning block boundaries (</p>, <br>, </div>) into newlines first,
-// so multi-paragraph comments don't get squashed into one run-on line.
-const safeCommentText = (value: unknown): string => {
-  const withTags = typeof value === 'string'
-    ? value
-    : value && typeof value === 'object' && typeof (value as any).rendered === 'string'
-      ? (value as any).rendered
-      : value && typeof value === 'object' && typeof (value as any).raw === 'string'
-        ? (value as any).raw
-        : '';
-  const withBreaks = withTags
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<[^>]+>/g, '');
-  return decodeEntities(withBreaks).trim();
-};
-
 const StepContentScreen = ({route, navigation}: any) => {
   const {courseId, stepId, lessonId} = route?.params || {};
-  // TEMP DEBUG — remove after grabbing IDs for Postman
-  console.log('IDs:', courseId, stepId);
   const [activity, setActivity] = useState<CourseActivityResponse | null>(null);
   const [stepContent, setStepContent] = useState<StepContentResponseStep | null>(null);
   const [loading, setLoading] = useState(true);
@@ -405,7 +430,7 @@ const StepContentScreen = ({route, navigation}: any) => {
   return (
     <>
       <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={styles.headerRow}>
         <BackButton onPress={() => navigation?.goBack?.()} />
@@ -414,8 +439,7 @@ const StepContentScreen = ({route, navigation}: any) => {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Breadcrumb — confirmed data via getCourseActivity */}
         <View style={styles.breadcrumbRow}>
           <Text style={styles.breadcrumbText}>{safeTitleText(activity?.course.title)}</Text>
@@ -425,23 +449,34 @@ const StepContentScreen = ({route, navigation}: any) => {
           <Text style={styles.breadcrumbTextActive}>{stepTitle}</Text>
         </View>
 
-        {/* Prev/next — Mark Complete moved to the end of the screen,
-            below the content, per Figma. */}
-        <View style={styles.controlsRow}>
-          <View style={styles.prevNextGroup}>
-            <TouchableOpacity
-              style={[styles.prevBtn, !prevStep && styles.navBtnDisabled]}
-              disabled={!prevStep}
-              onPress={() => goToStep(prevStep)}>
-              <ChevronLeft />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.nextBtn, !nextStep && styles.navBtnDisabled]}
-              disabled={!nextStep}
-              onPress={() => goToStep(nextStep)}>
-              <ChevronRight />
-            </TouchableOpacity>
+        {/* Previous | status | Next (Figma, Sep 2026). The middle pill is a
+            status display only: "Completed" once the step is done,
+            otherwise "In Progress". Mark Complete stays at the end of the
+            content. Previous/Next dim when there is no step that way. */}
+        <View style={styles.navRow}>
+          <TouchableOpacity
+            style={[styles.navBtn, styles.navBtnPrev, !prevStep && styles.navBtnDisabled]}
+            disabled={!prevStep}
+            onPress={() => goToStep(prevStep)}
+            accessibilityRole="button"
+            accessibilityLabel="Previous step">
+            <NavArrowLeft />
+            <Text style={[styles.navBtnText, styles.navBtnTextPrev]}>{'PREVIOUS'}</Text>
+          </TouchableOpacity>
+          <View style={styles.statusPill}>
+            <Text style={styles.statusPillText}>
+              {(stepContent?.status ?? currentStep?.status) === 'completed' ? 'Completed' : 'In Progress'}
+            </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.navBtn, styles.navBtnNext, !nextStep && styles.navBtnDisabled]}
+            disabled={!nextStep}
+            onPress={() => goToStep(nextStep)}
+            accessibilityRole="button"
+            accessibilityLabel="Next step">
+            <Text style={[styles.navBtnText, styles.navBtnTextNext]}>{'NEXT'}</Text>
+            <NavArrowRight />
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.stepTitle}>{stepTitle}</Text>
@@ -461,16 +496,32 @@ const StepContentScreen = ({route, navigation}: any) => {
           <Text style={styles.bodyText}>{decodeEntities(stepContent.content.short_description)}</Text>
         ) : null}
 
-        {/* Topic/Materials sub-tabs — only shown if there's actually
-            something to switch between */}
-        {(htmlBlocks.length > 0 || hasMaterials) && (
+        {/* Topic/Materials sub-tabs */}
+        {/* Only shown when there is something to switch between (a step
+            with materials). A step with just topic content shows no tab
+            row, per Marium (Sep 2026). */}
+        {hasMaterials && (
           <View style={styles.subTabRow}>
-            <TouchableOpacity onPress={() => setSubTab('topic')}>
-              <Text style={[styles.subTabText, subTab === 'topic' && styles.subTabTextActive]}>{'Topic'}</Text>
+            <TouchableOpacity
+              style={[styles.subTab, subTab === 'topic' ? styles.subTabSelected : styles.subTabIdle]}
+              onPress={() => setSubTab('topic')}
+              accessibilityRole="tab"
+              accessibilityState={{selected: subTab === 'topic'}}>
+              <View style={styles.subTabIcon}>
+                <TopicTabIcon />
+              </View>
+              <Text style={styles.subTabText}>{'Topic'}</Text>
             </TouchableOpacity>
             {hasMaterials && (
-              <TouchableOpacity onPress={() => setSubTab('materials')}>
-                <Text style={[styles.subTabText, subTab === 'materials' && styles.subTabTextActive]}>{'Materials'}</Text>
+              <TouchableOpacity
+                style={[styles.subTab, subTab === 'materials' ? styles.subTabSelected : styles.subTabIdle]}
+                onPress={() => setSubTab('materials')}
+                accessibilityRole="tab"
+                accessibilityState={{selected: subTab === 'materials'}}>
+                <View style={styles.subTabIcon}>
+                  <MaterialsTabIcon />
+                </View>
+                <Text style={styles.subTabText}>{'Materials'}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -626,7 +677,6 @@ const StepContentScreen = ({route, navigation}: any) => {
           </>
         )}
       </ScrollView>
-      </KeyboardAvoidingView>
       </SafeAreaView>
       <VideoPlayerModal
         visible={!!videoModalUrl}
@@ -644,24 +694,27 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
   <View>
     <View style={styles.commentCard}>
       <View style={styles.commentAuthorRow}>
-        {comment.author?.avatar ? (
-          <Image source={{uri: comment.author.avatar}} style={styles.commentAvatar} />
+        {comment.author_avatar ? (
+          <Image source={{uri: comment.author_avatar}} style={styles.commentAvatar} />
         ) : (
           <View style={[styles.commentAvatar, {backgroundColor: '#E8E9F1'}]} />
         )}
         <View>
-          {/* CONFIRMED via Postman (Aug 2026): the comments endpoint nests
-              author under an `author` object ({user_id, full_name, avatar,
-              profile_url}), not flat author_name/author_avatar fields as
-              previously assumed — that's why names/avatars weren't
-              showing. safeTitleText() still needed since full_name comes
-              through the same WP entity-encoding as everything else. */}
-          <Text style={styles.commentAuthorName}>{safeTitleText(comment.author?.full_name)}</Text>
+          {/* author_name/content/date_formatted come from the same
+              WP-backed comments endpoint as everything else in this app —
+              previously rendered completely raw here, so a commenter name
+              or comment body containing an entity (e.g. an apostrophe in
+              "can't") showed up as literal "&#039;" text. CONFIRMED live
+              crash fix (Aug 2026): these fields aren't guaranteed to be
+              plain strings either — decodeEntities() now coerces safely
+              instead of assuming, so a non-string value here renders as
+              empty rather than crashing the screen. */}
+          <Text style={styles.commentAuthorName}>{decodeEntities(comment.author_name)}</Text>
           <Text style={styles.commentDate}>{decodeEntities(comment.date_formatted)}</Text>
         </View>
       </View>
       <View style={styles.commentBody}>
-        <Text style={styles.commentText}>{safeCommentText(comment.content)}</Text>
+        <Text style={styles.commentText}>{decodeEntities(comment.content)}</Text>
         <TouchableOpacity onPress={onReply}>
           <Text style={styles.commentReplyText}>{'Reply'}</Text>
         </TouchableOpacity>
@@ -768,11 +821,11 @@ const styles = StyleSheet.create({
   breadcrumbText: {color: '#0C4D91', fontFamily: 'Runda-Medium', fontSize: 12, width: 104},
   breadcrumbTextActive: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 12, width: 104},
 
-  controlsRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   completeBtn: {
-    alignSelf: 'stretch',
+    flex: 1,
     flexDirection: 'row',
-    minHeight: 40,
+    height: 40,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -782,10 +835,18 @@ const styles = StyleSheet.create({
   },
   completeBtnDisabled: {opacity: 0.6},
   completeBtnText: {color: '#FFFFFF', fontFamily: 'Runda-Medium', fontSize: 14},
-  prevNextGroup: {flexDirection: 'row'},
-  prevBtn: {width: 61, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 50, borderTopRightRadius: 0, borderBottomRightRadius: 0, backgroundColor: '#E8E9F1'},
-  nextBtn: {width: 61, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 50, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, backgroundColor: '#E8E9F1'},
+  // Previous | status | Next row (Figma) — margins instead of gap, which is
+  // unreliable on Android/Hermes.
+  navRow: {flexDirection: 'row', alignItems: 'stretch', alignSelf: 'stretch'},
+  navBtn: {flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 5, backgroundColor: '#E8E9F1'},
+  navBtnPrev: {marginRight: 6},
+  navBtnNext: {marginLeft: 6},
+  navBtnText: {flex: 1, color: '#7C86A1', fontFamily: 'Runda-Medium', fontSize: 12, textAlignVertical: 'center'},
+  navBtnTextPrev: {textAlign: 'right', marginLeft: 8},
+  navBtnTextNext: {textAlign: 'left', marginRight: 8},
   navBtnDisabled: {opacity: 0.4},
+  statusPill: {paddingVertical: 10, paddingHorizontal: 12, borderRadius: 5, backgroundColor: '#192546', alignItems: 'center', justifyContent: 'center'},
+  statusPillText: {color: '#FFFFFF', fontFamily: 'Runda-Medium', fontSize: 12},
 
   stepTitle: {color: '#192647', fontFamily: 'Runda-Bold', fontSize: 22},
   blockHeading: {color: '#0C4D91', fontFamily: 'Runda-Bold', fontSize: 16, marginTop: 8},
@@ -798,9 +859,14 @@ const styles = StyleSheet.create({
   emptyStateText: {color: '#8F9098', fontFamily: 'Runda-Normal', fontSize: 13, lineHeight: 18},
   bodyText: {color: '#192546', fontFamily: 'Runda-Normal', fontSize: 12, lineHeight: 16},
 
-  subTabRow: {flexDirection: 'row', gap: 24, borderBottomWidth: 1, borderBottomColor: '#E8E9F1', paddingBottom: 8},
-  subTabText: {color: '#8F9098', fontFamily: 'Runda-Medium', fontSize: 14},
-  subTabTextActive: {color: '#0C4D91', textDecorationLine: 'underline'},
+  // Topic / Materials tabs (Figma): equal-width tabs, icon + label, 1px
+  // underline — dark blue on the selected tab, faint grey on the other.
+  subTabRow: {flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch'},
+  subTab: {flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingBottom: 10, borderBottomWidth: 1},
+  subTabSelected: {borderBottomColor: '#0C4D91'},
+  subTabIdle: {borderBottomColor: '#E8E9F1'},
+  subTabIcon: {width: 20, height: 20, marginRight: 8},
+  subTabText: {color: '#0C4D91', fontFamily: 'Runda-Medium', fontSize: 14},
 
   videoPlaceholder: {height: 180, borderRadius: 8, backgroundColor: '#192546', alignItems: 'center', justifyContent: 'center'},
   inlineContentImage: {width: '100%', height: 200, borderRadius: 8, backgroundColor: '#F5F6FA'},
@@ -811,7 +877,8 @@ const styles = StyleSheet.create({
 
   postCommentBtn: {
     flexDirection: 'row',
-    minHeight: 40,
+    height: 40,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -828,7 +895,8 @@ const styles = StyleSheet.create({
   commentsCountText: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 16, letterSpacing: 0.08},
   collapseCommentsBtn: {
     flexDirection: 'row',
-    minHeight: 40,
+    height: 40,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -872,8 +940,7 @@ const styles = StyleSheet.create({
   },
 
   supportCard: {
-    width: '100%',
-    maxWidth: 358,
+    width: 358,
     alignSelf: 'center',
     padding: 16,
     flexDirection: 'column',
