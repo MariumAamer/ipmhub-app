@@ -294,11 +294,17 @@ const CreatePostScreen = ({navigation, route}: any) => {
           return;
         }
       }
+      // Explicit user_id + privacy: BuddyBoss answers "Cannot create new
+      // activity." when bp_activity_add() rejects the row, so don't rely on
+      // server-side defaults for who the author is or who can see the post.
+      const userId = await getUserId();
       const body: any = {
         content: content.trim(),
         type: 'activity_update',
         component: 'activity',
+        privacy: 'public',
       };
+      if (userId) body.user_id = userId;
       if (mediaIds.length > 0) body.bp_media_ids = mediaIds;
 
       const res = await fetch(`${BASE}/buddyboss/v1/activity`, {
@@ -313,11 +319,26 @@ const CreatePostScreen = ({navigation, route}: any) => {
       if (res.ok) {
         navigation.goBack();
       } else {
-        const err = await res.json();
-        Alert.alert('Error', err?.message || 'Could not post. Try again.');
+        // Read as text first: a non-JSON error body (HTML error page, empty
+        // 5xx, etc.) used to make res.json() throw a confusing "JSON Parse
+        // error" instead of showing what the server actually said.
+        const raw = await res.text().catch(() => '');
+        let serverMsg = '';
+        try {
+          const parsed = JSON.parse(raw);
+          serverMsg = parsed?.message || parsed?.code || '';
+        } catch {
+          serverMsg = raw.replace(/<[^>]*>/g, '').trim().slice(0, 200);
+        }
+        console.log(`CreatePost failed (${res.status}):`, raw.slice(0, 500));
+        Alert.alert(
+          'Error',
+          `${serverMsg || 'Could not post. Try again.'} (${res.status})`,
+        );
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Something went wrong.');
+      console.log('CreatePost exception:', err);
+      Alert.alert('Error', err?.message || 'Something went wrong.');
     } finally {
       setPosting(false);
     }
@@ -337,12 +358,15 @@ const CreatePostScreen = ({navigation, route}: any) => {
       const scheduledISO = buildScheduledISO(date, time, meridiem);
       const {ids: mediaIds} = await uploadImages(token);
 
+      const userId = await getUserId();
       const body: any = {
         content: content.trim(),
         type: 'activity_update',
         component: 'activity',
+        privacy: 'public',
         scheduled_date: scheduledISO,
       };
+      if (userId) body.user_id = userId;
       if (mediaIds.length > 0) body.bp_media_ids = mediaIds;
 
       const res = await fetch(`${BASE}/buddyboss/v1/activity`, {

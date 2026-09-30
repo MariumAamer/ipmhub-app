@@ -351,11 +351,18 @@ const TagArrowIcon = () => (
 // the 200x200 illustration frame (see promoPersonBadgeA/B/C and
 // mentorshipTag styles below).
 const MentorshipPromoCard = ({navigation}: {navigation: any}) => (
-  <LinearGradient
-    colors={['#E257E4', '#084D92']}
-    start={{x: 0, y: 0}}
-    end={{x: 0.7035, y: 0}}
-    style={styles.promoCard}>
+  // iOS: the gradient used to be the padded container itself (padding: 24),
+  // which iOS mis-measures — content overflowed the right edge and the bottom
+  // button was cut off. Now the gradient is only a background layer and a
+  // plain View carries the padding/layout.
+  <View style={styles.promoCard}>
+    <LinearGradient
+      colors={['#E257E4', '#084D92']}
+      start={{x: 0, y: 0}}
+      end={{x: 0.7035, y: 0}}
+      style={StyleSheet.absoluteFill}
+    />
+    <View style={styles.promoContent}>
     <View style={styles.promoIllustration}>
       <View style={styles.promoOuterCircle}>
         <Svg width={200} height={200} viewBox="0 0 200 200" fill="none">
@@ -420,7 +427,8 @@ const MentorshipPromoCard = ({navigation}: {navigation: any}) => (
       activeOpacity={0.85}>
       <Text style={styles.becomeMemberBtnText}>{'Become a Member'}</Text>
     </TouchableOpacity>
-  </LinearGradient>
+    </View>
+  </View>
 );
 
 // PERF: stable module-level refs for FlatList props.
@@ -891,12 +899,16 @@ const styles = StyleSheet.create({
   // gradient. Gap 36 (between illustration and text block) replaced with
   // marginBottom on the illustration, per the no-`gap`-on-Android rule.
   promoCard: {
-    alignItems: 'center',
     alignSelf: 'stretch',
     marginHorizontal: 16,
     marginBottom: 16,
-    padding: 24,
     borderRadius: 15,
+    overflow: 'hidden',
+  },
+  promoContent: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    padding: 24,
   },
   // 200x200 relative box holding the concentric circles + badges + tag,
   // all absolutely positioned within it.
