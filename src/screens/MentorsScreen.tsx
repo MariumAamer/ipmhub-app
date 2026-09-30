@@ -205,24 +205,29 @@ const MentorCard = React.memo(({mentor, onRequestCall, navigation}: {mentor: Men
     <TouchableOpacity style={styles.card} onPress={openProfile} activeOpacity={0.9}>
       <View style={styles.cardRow}>
         <View style={styles.avatarFrame}>
+          {/* iOS: gradient is a pure background layer (absoluteFill) and the
+              photo is centered by the parent View. Previously the photo sat
+              INSIDE the LinearGradient and relied on its padding for
+              positioning, which iOS measures incorrectly (photo drifted to
+              the bottom-right of the square). */}
           <LinearGradient
             colors={['#E257E4', '#005AB4']}
             start={{x: 0.91, y: 0.08}}
             end={{x: 0.09, y: 0.89}}
-            style={styles.avatarGradient}>
-            <View style={styles.avatarInner}>
-              {mentor.avatar ? (
-                <Image source={{uri: mentor.avatar}} style={styles.avatarImg} />
-              ) : (
-                <View style={[styles.avatarImg, styles.avatarFallback]}>
-                  <Text style={styles.avatarInitial}>
-                    {mentor.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              <PhotoRing />
-            </View>
-          </LinearGradient>
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.avatarInner}>
+            {mentor.avatar ? (
+              <Image source={{uri: mentor.avatar}} style={styles.avatarImg} />
+            ) : (
+              <View style={[styles.avatarImg, styles.avatarFallback]}>
+                <Text style={styles.avatarInitial}>
+                  {mentor.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <PhotoRing />
+          </View>
         </View>
 
         <View style={styles.cardInfo}>
@@ -762,15 +767,8 @@ const styles = StyleSheet.create({
     width: 123,
     height: 123,
     marginRight: 15,
-  },
-  avatarGradient: {
-    width: 123,
-    height: 123,
     borderRadius: 8.601,
-    paddingTop: 24.944,
-    paddingRight: 24.083,
-    paddingBottom: 24.084,
-    paddingLeft: 24.945,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -941,10 +939,8 @@ const styles = StyleSheet.create({
     width: 68.932,
     height: 68.932,
     borderRadius: 34.466,
-    paddingTop: 9.709,
-    paddingRight: 6.472,
-    paddingBottom: 6.472,
-    paddingLeft: 9.709,
+    // (padding removed: iOS mis-measures padding inside LinearGradient;
+    // the icon is centered by justify/align below)
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 3,
@@ -958,7 +954,6 @@ const styles = StyleSheet.create({
     width: 23.625,
     height: 23.625,
     borderRadius: 11.812,
-    padding: 1.618,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 4,

@@ -165,10 +165,16 @@ const NewDiscussionScreen = ({navigation}: any) => {
           <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.closeBtn}>
             <Text style={styles.closeX}>{'✕'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity disabled={!canPublish} onPress={handlePublish}>
+          <TouchableOpacity
+            disabled={!canPublish}
+            onPress={handlePublish}
+            activeOpacity={0.85}
+            style={[styles.publishBtnWrap, !canPublish && {opacity: 0.5}]}>
             <LinearGradient
               colors={GRADIENT}
-              style={[styles.publishBtn, !canPublish && {opacity: 0.5}]}>
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 0}}
+              style={styles.publishBtn}>
               {publishing ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
@@ -380,13 +386,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeX: {fontSize: 18, color: '#8F9098'},
+  // iOS: size the pill on the TouchableOpacity (fixed width/height) and let the
+  // gradient just fill it. Padding/minWidth on the LinearGradient was measured
+  // wrong on iOS, pushing the button past the right edge and clipping its text.
+  publishBtnWrap: {width: 92, height: 36, borderRadius: 50, overflow: 'hidden'},
   publishBtn: {
-    height: 36,
-    paddingHorizontal: 24,
-    borderRadius: 50,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 84,
   },
   publishBtnText: {color: '#FFFFFF', fontFamily: 'Runda', fontSize: 13, fontWeight: '700'},
   headerTitle: {

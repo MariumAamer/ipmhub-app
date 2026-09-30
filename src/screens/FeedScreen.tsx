@@ -1807,9 +1807,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  joinDiscussionWrap: {marginBottom: 14, borderRadius: 10, overflow: 'hidden'},
-  joinDiscussionBtn: {borderRadius: 10, paddingVertical: 13, alignItems: 'center'},
-  joinDiscussionText: {color: '#FFFFFF', fontSize: 15, fontWeight: '700'},
+  // iOS: the button used to get its height from paddingVertical inside the
+  // LinearGradient. On iOS that height was mis-measured inside the FlatList
+  // row, so the card ended early and the next card covered the button
+  // (Android was fine). Fixed, explicit height + flex:1 gradient removes the
+  // dependence on measuring padding.
+  joinDiscussionWrap: {height: 46, marginBottom: 14, borderRadius: 10, overflow: 'hidden', alignSelf: 'stretch'},
+  joinDiscussionBtn: {flex: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center'},
+  joinDiscussionText: {color: '#FFFFFF', fontSize: 15, lineHeight: 20, fontWeight: '700'},
 
   postStats: {
     flexDirection: 'row',

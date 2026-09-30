@@ -2470,9 +2470,9 @@ const s = StyleSheet.create({
   forumReadMore:  {color:'#46B0E3', fontSize:13, fontWeight:'500'},
   forumTag: {borderWidth:1, borderColor:'#DDD', borderRadius:20, paddingHorizontal:10, paddingVertical:4},
   forumTagText: {fontSize:11, color:'#555'},
-  joinDiscussionWrap: {borderRadius:10, overflow:'hidden'},
-  joinDiscussionBtn: {borderRadius:10, paddingVertical:13, alignItems:'center'},
-  joinDiscussionText: {color:'#FFFFFF', fontSize:15, fontWeight:'700'},
+  joinDiscussionWrap: {height:46, borderRadius:10, overflow:'hidden', alignSelf:'stretch'},
+  joinDiscussionBtn: {flex:1, borderRadius:10, alignItems:'center', justifyContent:'center'},
+  joinDiscussionText: {color:'#FFFFFF', fontSize:15, lineHeight:20, fontWeight:'700'},
 
   activityRow:   {flexDirection:'row', alignItems:'flex-start', gap:8, paddingVertical:8, borderBottomWidth:1, borderBottomColor:'#F5F5F5'},
   activityDot:   {width:8, height:8, borderRadius:4, backgroundColor:'#46B0E3', marginTop:4},

@@ -170,7 +170,7 @@ const ArticleSubmissionScreen = ({navigation}: any) => {
           <Text style={styles.label}>{'First Name*'}</Text>
           <TextInput
             style={[styles.input, errors.firstName && styles.inputErr]}
-            placeholder="Camila"
+            placeholder="First name"
             placeholderTextColor="#C0C0C0"
             value={firstName}
             onChangeText={v => {
@@ -183,7 +183,7 @@ const ArticleSubmissionScreen = ({navigation}: any) => {
           <Text style={styles.label}>{'Last Name*'}</Text>
           <TextInput
             style={[styles.input, errors.lastName && styles.inputErr]}
-            placeholder="Cabello"
+            placeholder="Last name"
             placeholderTextColor="#C0C0C0"
             value={lastName}
             onChangeText={v => {
@@ -196,7 +196,7 @@ const ArticleSubmissionScreen = ({navigation}: any) => {
           <Text style={styles.label}>{'Job Title*'}</Text>
           <TextInput
             style={[styles.input, errors.jobTitle && styles.inputErr]}
-            placeholder="Project Manager"
+            placeholder="Job title"
             placeholderTextColor="#C0C0C0"
             value={jobTitle}
             onChangeText={v => {

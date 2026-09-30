@@ -16,6 +16,8 @@ import {
   Image,
   Alert,
   Dimensions,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 // RN core SafeAreaView is deprecated in 0.87 (and iOS-only); use the cross-platform one.
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -26,10 +28,13 @@ import Geolocation from '@react-native-community/geolocation';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import {fetchCountries, Country} from '../api/countriesApi';
 import {getCachedCountries, cacheCountries} from '../api/cacheService';
-import {submitWelcomeIntro, resolveCountryForSubmission} from '../api/profileApi';
+import {submitWelcomeIntro, resolveCountryForSubmission, getWelcomeIntroConfig} from '../api/profileApi';
 import {getStoredUser} from '../api/authApi';
 
 const {width} = Dimensions.get('window');
+
+// Fallback minimum intro length (chars) if the config endpoint is unreachable.
+const DEFAULT_MIN_BIO_LENGTH = 130;
 
 // ─── Camera SVG Icon ──────────────────────────────────────────────────────────
 const CameraIcon = () => (
@@ -200,8 +205,18 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [linkedIn, setLinkedIn] = useState('');
   const [introduction, setIntroduction] = useState('');
   const [showExample, setShowExample] = useState(true);
+  // Server enforces a minimum bio length (130 per backend spec). Start with
+  // the default, then override with GET /welcome-intro/config → min_bio_length.
+  const [minBioLength, setMinBioLength] = useState(DEFAULT_MIN_BIO_LENGTH);
 
   useEffect(() => { loadCountriesAndDetectLocation(); }, []);
+  useEffect(() => {
+    getWelcomeIntroConfig().then(cfg => {
+      if (cfg && typeof cfg.min_bio_length === 'number' && cfg.min_bio_length > 0) {
+        setMinBioLength(cfg.min_bio_length);
+      }
+    });
+  }, []);
 
   const requestLocationPermission = async (): Promise<boolean> => {
     if (Platform.OS === 'android') {
@@ -290,11 +305,21 @@ const ProfileSetupScreen = ({navigation}: any) => {
         Alert.alert('Required Fields', 'Please fill in your Phone Number, LinkedIn URL, and Introduction to continue.');
         return;
       }
+      if (introLength < minBioLength) {
+        Alert.alert(
+          'Introduction too short',
+          `You need to enter at least ${minBioLength} characters in your intro (${minBioLength - introLength} more to go).`,
+        );
+        return;
+      }
       await handleSubmit();
     }
   };
 
-  const isStep3Valid = !!phoneNumber.trim() && !!linkedIn.trim() && !!introduction.trim();
+  const introLength = introduction.trim().length;
+  const introRemaining = Math.max(0, minBioLength - introLength);
+  const isIntroLongEnough = introLength >= minBioLength;
+  const isStep3Valid = !!phoneNumber.trim() && !!linkedIn.trim() && isIntroLongEnough;
   const isStep1Valid = !!photoUri && !!jobTitle.trim() && !!company.trim();
 
   // Replaced 2026-08-28: this used to be 3 separate calls (uploadAvatar +
@@ -514,7 +539,16 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
       {/* ── STEP 3 ── */}
       {step === 3 && (
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          // Buttons stay tappable while the keyboard is open; dragging also hides it.
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag">
+        {/* Tapping any empty area outside an input hides the keyboard */}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View>
 
           {/* Gradient title */}
           <GradientText text="Start Your IPM Journey" style={styles.introTitle} />
@@ -553,11 +587,22 @@ const ProfileSetupScreen = ({navigation}: any) => {
                 numberOfLines={5}
                 textAlignVertical="top"
               />
+              {/* Character counter bottom left */}
+              <Text style={[styles.charCounter, isIntroLongEnough && styles.charCounterOk]}>
+                {isIntroLongEnough
+                  ? `${introLength} characters`
+                  : `${introLength}/${minBioLength} characters (min)`}
+              </Text>
               {/* Smiley icon bottom right */}
               <View style={styles.smileyWrap}>
                 <SmileyIcon />
               </View>
             </View>
+            {!isIntroLongEnough && introLength > 0 && (
+              <Text style={styles.charHint}>
+                {`You need to enter at least ${minBioLength} characters in your intro (${introRemaining} more).`}
+              </Text>
+            )}
           </View>
 
           {/* Example toggle */}
@@ -569,6 +614,8 @@ const ProfileSetupScreen = ({navigation}: any) => {
               <Text style={styles.exampleText}>{"Hello, I'm Paul McCartney, a seasoned Project Manager Consultant with a track record of steering projects to success across diverse industries. My expertise lies in optimising resource utilisation and ensuring stakeholder satisfaction. I'm eager to embark on collaborative ventures within this dynamic community. I am interested in PMO."}</Text>
             </View>
           )}
+        </View>
+        </TouchableWithoutFeedback>
         </ScrollView>
       )}
 
@@ -578,7 +625,10 @@ const ProfileSetupScreen = ({navigation}: any) => {
           // Post button — gradient E257E4 → 084D92
           <TouchableOpacity
             onPress={handleContinue}
-            disabled={saving || !isStep3Valid}
+            // Only locked while saving: an enabled-looking-disabled button lets
+            // handleContinue explain WHY (e.g. intro too short) instead of
+            // silently ignoring the tap.
+            disabled={saving}
             activeOpacity={0.85}
             style={[styles.postBtnWrap, !isStep3Valid && styles.postBtnWrapDisabled]}>
             {isStep3Valid ? (
@@ -823,6 +873,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   smileyWrap: {position: 'absolute', bottom: 10, right: 12},
+  charCounter: {position: 'absolute', bottom: 10, left: 14, fontFamily: 'Runda', fontSize: 11, color: '#8F9098'},
+  charCounterOk: {color: '#2E7D32'},
+  charHint: {fontFamily: 'Runda', fontSize: 12, color: '#D32F2F', marginTop: 4},
 
   exampleToggle: {marginTop: 12, marginBottom: 8},
   exampleLabel: {fontFamily: 'Runda', fontSize: 13, color: '#333', fontWeight: '600'},

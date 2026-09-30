@@ -120,10 +120,16 @@ const ReplyToDiscussionScreen = ({navigation, route}: any) => {
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.closeBtn}>
           <Text style={styles.closeX}>{'✕'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity disabled={!canSubmit} onPress={handlePublish}>
+        <TouchableOpacity
+          disabled={!canSubmit}
+          onPress={handlePublish}
+          activeOpacity={0.85}
+          style={[styles.publishBtnWrap, !canSubmit && {opacity: 0.5}]}>
           <LinearGradient
             colors={GRADIENT}
-            style={[styles.publishBtn, !canSubmit && {opacity: 0.5}]}>
+            start={{x: 0, y: 0}}
+            end={{x: 1, y: 0}}
+            style={styles.publishBtn}>
             {submitting ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
@@ -272,7 +278,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.09,
     marginBottom: 12,
   },
-  publishBtn: {borderRadius: 50, paddingHorizontal: 20, paddingVertical: 10, minWidth: 84, alignItems: 'center'},
+  // iOS: fixed size on the touchable, gradient fills it (see NewDiscussionScreen).
+  publishBtnWrap: {width: 92, height: 36, borderRadius: 50, overflow: 'hidden'},
+  publishBtn: {flex: 1, alignItems: 'center', justifyContent: 'center'},
   publishBtnText: {color: '#FFFFFF', fontFamily: 'Runda', fontSize: 13, fontWeight: '700'},
 
   // Figma spec's own layout block for the content area below the header:
