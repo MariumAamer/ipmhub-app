@@ -1597,6 +1597,60 @@ export interface StepCommentsResponse {
   comments: StepComment[];
 }
 
+// The comments endpoint's field names were never Postman-verified, and
+// WordPress commonly returns text as {rendered, raw} objects or under
+// different keys (author / author_display_name / comment_content, etc.).
+// Normalise every variant to the flat StepComment shape the screen expects
+// so name/body/avatar never silently render empty.
+const pickText = (...vals: any[]): string => {
+  for (const v of vals) {
+    if (typeof v === 'string' && v.trim()) return v;
+    if (typeof v === 'number') return String(v);
+    if (v && typeof v === 'object') {
+      const inner = v.rendered ?? v.raw ?? v.full_name ?? v.name ?? v.display_name;
+      if (typeof inner === 'string' && inner.trim()) return inner;
+    }
+  }
+  return '';
+};
+
+const stripCommentHtml = (html: string): string =>
+  html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#(\d+);/g, (_, c) => String.fromCharCode(parseInt(c, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .trim();
+
+const normalizeStepComment = (c: any): StepComment => {
+  const avatarRaw =
+    c?.author?.avatar ?? c?.author?.avatar_url ?? c?.author?.avatar_urls ??
+    c?.author_avatar ?? c?.author_avatar_url ?? c?.avatar ?? c?.avatar_url ?? c?.author_avatar_urls;
+  const avatar =
+    typeof avatarRaw === 'string'
+      ? avatarRaw
+      : avatarRaw && typeof avatarRaw === 'object'
+      ? avatarRaw['96'] ?? avatarRaw['48'] ?? avatarRaw.full ?? avatarRaw.thumb ?? (Object.values(avatarRaw)[0] as string) ?? ''
+      : '';
+  const children = c?.replies ?? c?.children ?? [];
+  return {
+    id: c?.id ?? c?.comment_ID ?? c?.comment_id ?? 0,
+    author_name: pickText(
+      c?.author_name, c?.author?.full_name, c?.author?.display_name, c?.author?.name, c?.author, c?.user_display_name, c?.display_name,
+      c?.author_display_name, c?.comment_author, c?.user?.display_name, c?.user?.name, c?.name,
+    ),
+    author_avatar: avatar,
+    content: stripCommentHtml(
+      pickText(c?.content, c?.comment_content, c?.text, c?.comment, c?.body, c?.message),
+    ),
+    date_formatted: pickText(c?.date_formatted, c?.date_display, c?.formatted_date, c?.date, c?.comment_date),
+    replies: Array.isArray(children) ? children.map(normalizeStepComment) : [],
+  };
+};
+
 /** GET custom/v1/ld-courses/{courseId}/steps/{stepId}/comments?user_id={userId} — CONFIRMED by Robby (July 2026) */
 export const getStepComments = async (
   courseId: number,
@@ -1605,7 +1659,13 @@ export const getStepComments = async (
 ): Promise<StepCommentsResponse | null> => {
   try {
     const json = await apiFetch(`/custom/v1/ld-courses/${courseId}/steps/${stepId}/comments?user_id=${userId}`);
-    return json ?? null;
+    if (!json) return null;
+    const rawList = Array.isArray(json) ? json : json.comments ?? [];
+    if (__DEV__ && rawList[0]) {
+      // Temporary: shows the real field names coming back from the API.
+      console.log('[coursesApi] step comment raw sample', JSON.stringify(rawList[0]));
+    }
+    return {comments: rawList.map(normalizeStepComment)};
   } catch (err) {
     console.error('[coursesApi] getStepComments', err);
     return null;
@@ -1628,7 +1688,10 @@ export const postStepComment = async (
       body: JSON.stringify({user_id: userId, content, parent_id: parentId}),
     });
     if (!res.ok) throw new Error(`${res.status}: postStepComment`);
-    return await res.json();
+    const json = await res.json();
+    // Response may be the bare comment or wrapped ({comment} / {comments:[...]}).
+    const created = json?.comment ?? (Array.isArray(json?.comments) ? json.comments[0] : json);
+    return created ? normalizeStepComment(created) : null;
   } catch (err) {
     console.error('[coursesApi] postStepComment', err);
     return null;

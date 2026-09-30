@@ -441,6 +441,9 @@ const StepContentScreen = ({route, navigation}: any) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Breadcrumb — confirmed data via getCourseActivity */}
+        {/* Three columns in ONE row (never wraps to a second row). Each title
+            gets an equal share of the width and wraps onto extra lines
+            inside its own column, so the full text is always shown. */}
         <View style={styles.breadcrumbRow}>
           <Text style={styles.breadcrumbText}>{safeTitleText(activity?.course.title)}</Text>
           <ChevronRight />
@@ -690,7 +693,12 @@ const StepContentScreen = ({route, navigation}: any) => {
 // Single comment card — per Figma spec (bordered box, avatar, name, date,
 // text, Reply link). Renders its own replies indented one level, same
 // styling. No confirmed data yet for deeper nesting than one level.
-const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => void}) => (
+const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => void}) => {
+  const [expanded, setExpanded] = useState(false);
+  const fullText = decodeEntities(comment.content);
+  // Long comments (e.g. pasted assignments) show a preview with See more.
+  const isLong = fullText.length > 220 || fullText.split('\n').length > 5;
+  return (
   <View>
     <View style={styles.commentCard}>
       <View style={styles.commentAuthorRow}>
@@ -714,7 +722,14 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
         </View>
       </View>
       <View style={styles.commentBody}>
-        <Text style={styles.commentText}>{decodeEntities(comment.content)}</Text>
+        <Text style={styles.commentText} numberOfLines={isLong && !expanded ? 5 : undefined}>
+          {fullText}
+        </Text>
+        {isLong ? (
+          <TouchableOpacity onPress={() => setExpanded((v) => !v)}>
+            <Text style={styles.commentReplyText}>{expanded ? 'See less' : 'See more'}</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity onPress={onReply}>
           <Text style={styles.commentReplyText}>{'Reply'}</Text>
         </TouchableOpacity>
@@ -727,6 +742,7 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
     ))}
   </View>
 );
+};
 
 // Minimal inline block renderer (heading/paragraph/list/video) — mirrors
 // ContentBlocksRenderer in CourseDetailScreen.tsx; duplicated here rather
@@ -817,9 +833,10 @@ const styles = StyleSheet.create({
   // flush under the header.
   scrollContent: {paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 16},
 
-  breadcrumbRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 4, flexWrap: 'wrap'},
-  breadcrumbText: {color: '#0C4D91', fontFamily: 'Runda-Medium', fontSize: 12, width: 104},
-  breadcrumbTextActive: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 12, width: 104},
+  // Single line: each title shares the width equally and truncates with "…".
+  breadcrumbRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 4, flexWrap: 'nowrap'},
+  breadcrumbText: {color: '#0C4D91', fontFamily: 'Runda-Medium', fontSize: 12, flex: 1},
+  breadcrumbTextActive: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 12, flex: 1},
 
   completeBtn: {
     flex: 1,

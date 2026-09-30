@@ -391,12 +391,18 @@ const ContinueCard = ({
       {/* CSS linear-gradient(213deg, #004C96 -3.99%, #001830 100%) —
           start/end points below reproduce the 213deg angle for a ~342x80
           box (RN points are box fractions, so they fall outside 0..1). */}
-      <LinearGradient
-        colors={['#004C96', '#001830']}
-        locations={[0, 1]}
-        start={{x: 0.702, y: -0.83}}
-        end={{x: 0.298, y: 1.83}}
-        style={styles.continueCard}>
+      {/* iOS fix: the gradient used to be the content container itself
+          (with minHeight), and iOS clipped the wrapped title inside it.
+          Now the gradient is only an absolutely-positioned background and
+          the content View sizes naturally, so nothing can be cropped. */}
+      <View style={styles.continueCard}>
+        <LinearGradient
+          colors={['#004C96', '#001830']}
+          locations={[0, 1]}
+          start={{x: 0.702, y: -0.83}}
+          end={{x: 0.298, y: 1.83}}
+          style={StyleSheet.absoluteFill}
+        />
         <View style={styles.continuePlayCircle}>
           <PlayTriangleIcon />
         </View>
@@ -407,7 +413,7 @@ const ContinueCard = ({
           </Text>
         </View>
         <ContinueChevronIcon />
-      </LinearGradient>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -1787,6 +1793,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     borderRadius: 5,
+    overflow: 'hidden',
   },
   continuePlayCircle: {
     width: 30.811,
@@ -1799,8 +1806,8 @@ const styles = StyleSheet.create({
     marginRight: 10.5,
   },
   continueTextCol: {flex: 1, marginRight: 10.5},
-  continueCaption: {color: '#FFFFFF', fontFamily: 'Runda-Normal', fontSize: 10, textTransform: 'uppercase'},
-  continueTitle: {color: '#FFFFFF', fontFamily: 'Runda-Medium', fontSize: 14},
+  continueCaption: {color: '#FFFFFF', fontFamily: 'Runda-Normal', fontSize: 10, lineHeight: 14, textTransform: 'uppercase'},
+  continueTitle: {color: '#FFFFFF', fontFamily: 'Runda-Medium', fontSize: 14, lineHeight: 19},
 
   // Need Help link (Figma)
   needHelpRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', paddingVertical: 10},
