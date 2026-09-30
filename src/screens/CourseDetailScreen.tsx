@@ -1352,7 +1352,10 @@ const CourseDetailScreen = ({route, navigation}: any) => {
   // sidebar copy arrives with the first response so the card doesn't
   // wait on the activity call. It is null once a course is finished.
   const currentStep = sidebar.enrollment.current_step ?? activity?.course.current_step ?? null;
-  const showContinueCard = activeTab === 'overview' && sidebar.enrollment.is_enrolled;
+  // Shown on EVERY tab for enrolled users (it used to be Overview-only, so
+  // Course Content / FAQs / etc. fell back to the plain Continue button).
+  // Tapping it always resumes the current step (see handleCtaPress).
+  const showContinueCard = sidebar.enrollment.is_enrolled;
 
   // Where "Continue" should take an enrolled user. Preference order:
   //   1. current_step from the sidebar / activity response (the backend's
