@@ -437,14 +437,22 @@ const QualificationCard = ({item, index}: {item: QualificationItem; index: numbe
     </View>
   );
 
+// PERF: tabs unmount on switch, so every tab revisit showed a spinner and
+// refetched. Overview content is public/static, so keep the last result at
+// module level, render it instantly on revisit and refresh in the background.
+let overviewCache: CertificationsOverviewResponse | null = null;
+
 const CertificationsOverviewTab = () => {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<CertificationsOverviewResponse | null>(null);
+  const [loading, setLoading] = useState(!overviewCache);
+  const [data, setData] = useState<CertificationsOverviewResponse | null>(overviewCache);
   const [newsletterEmail, setNewsletterEmail] = useState('');
 
   const load = async () => {
-    setLoading(true);
-    setData(await getCertificationsOverview());
+    // PERF: only show the spinner when there is nothing to render yet.
+    if (!overviewCache) setLoading(true);
+    const result = await getCertificationsOverview();
+    if (result) overviewCache = result;
+    setData(result ?? overviewCache);
     setLoading(false);
   };
 
@@ -583,13 +591,19 @@ const CertificationsOverviewTab = () => {
 };
 
 // ─── IPM Certifications tab ────────────────────────────────────────────────
+// PERF: same stale-while-revalidate cache as the Overview tab (public content).
+let ipmCache: CertificationsIpmResponse | null = null;
+
 const IpmCertificationsTab = () => {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<CertificationsIpmResponse | null>(null);
+  const [loading, setLoading] = useState(!ipmCache);
+  const [data, setData] = useState<CertificationsIpmResponse | null>(ipmCache);
 
   const load = async () => {
-    setLoading(true);
-    setData(await getCertificationsIpm());
+    // PERF: only show the spinner when there is nothing to render yet.
+    if (!ipmCache) setLoading(true);
+    const result = await getCertificationsIpm();
+    if (result) ipmCache = result;
+    setData(result ?? ipmCache);
     setLoading(false);
   };
 

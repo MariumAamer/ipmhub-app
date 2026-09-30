@@ -54,10 +54,11 @@ export default function LikedByScreen({navigation, route}: any) {
   }, []);
 
   const init = async () => {
-    try {
-      const uid = await getUserIdFromToken();
-      setMyUserId(uid);
-    } catch {}
+    // PERF: myUserId is only needed when tapping Message, so don't make the
+    // likers fetch below wait on it — resolve it in parallel.
+    getUserIdFromToken()
+      .then(uid => setMyUserId(uid))
+      .catch(() => {});
 
     // The feed/comments LIST endpoints don't reliably embed liked_by (only
     // the single-activity endpoint does) — that's the bug behind "the like

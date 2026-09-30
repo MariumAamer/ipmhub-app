@@ -1,4 +1,4 @@
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from './credentialsCache';
 
 export const BASE_URL = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -63,7 +63,7 @@ export const API = {
 
 export const getToken = async (): Promise<string | null> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds) return null;
     const user = JSON.parse(creds.password);
     return user?.token ?? null;
@@ -82,11 +82,27 @@ export const apiRequest = async (
     'Content-Type': 'application/json',
     ...(token ? {Authorization: `Bearer ${token}`} : {}),
   };
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // React Native's fetch has no default timeout, so a stalled connection
+  // leaves the screen's spinner up indefinitely. Abort after 20s so the
+  // caller's catch/retry UI can actually run.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Request timed out. Please check your connection.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await response.json().catch(() => null);
   if (response.status === 403 || response.status === 401) {
     throw new Error('UNAUTHORIZED');

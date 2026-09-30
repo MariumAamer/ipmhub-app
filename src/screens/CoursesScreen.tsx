@@ -9,6 +9,7 @@
 // bottom of this file for everything still open.
 
 import React, {useState, useEffect, useCallback} from 'react';
+import {useDebouncedValue} from '../hooks/useDebouncedValue';
 import {
   View,
   Text,
@@ -655,6 +656,8 @@ const GoogleReviewsWidget = () => (
 
 const SearchAllCoursesTab = () => {
   const [query, setQuery] = useState('');
+  // PERF: a search request used to fire on every keystroke.
+  const debouncedQuery = useDebouncedValue(query, 400);
   // NOTE: was hardcoded to 'popular', which forced &sort=popular on every
   // request regardless of what order the Hub website shows by default —
   // this is very likely why mobile's order didn't match web. Leaving this
@@ -680,7 +683,7 @@ const SearchAllCoursesTab = () => {
   const runSearch = useCallback(async () => {
     setLoading(true);
     const res = await searchCourses({
-      query,
+      query: debouncedQuery,
       ...(sort ? {sort: sort as SortOption['slug']} : {}),
       ...activeFilters,
       page: 1,
@@ -691,7 +694,7 @@ const SearchAllCoursesTab = () => {
     setSortOptions(res.sort_options);
     if (!sort && res.sort) setSort(res.sort); // lock to the backend's resolved default
     setLoading(false);
-  }, [query, sort, activeFilters]);
+  }, [debouncedQuery, sort, activeFilters]);
 
   const loadFilters = useCallback(async () => {
     const res = await getSearchFilters({...activeFilters});

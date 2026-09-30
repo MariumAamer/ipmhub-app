@@ -169,15 +169,15 @@ const WebinarDetailScreen = ({navigation, route}: any) => {
   const load = useCallback(async () => {
     if (!eventId) { setLoading(false); return; }
     setLoading(true);
-    const data = await getSingleWebinar(eventId);
+    // PERF: saved-ids (local AsyncStorage) is independent of the network call — read in parallel.
+    const [data, savedIds] = await Promise.all([getSingleWebinar(eventId), getSavedWebinarIds()]);
     setWebinar(data);
+    setIsSaved(savedIds.includes(String(eventId)));
     setLoading(false);
 
     if (data?.speakerUserId) {
       getSpeakerLinkedIn(data.speakerUserId).then(setLinkedInUrl);
     }
-    const savedIds = await getSavedWebinarIds();
-    setIsSaved(savedIds.includes(String(eventId)));
   }, [eventId]);
 
   useEffect(() => { load(); }, [load]);

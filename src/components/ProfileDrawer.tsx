@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path} from 'react-native-svg';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from '../api/credentialsCache';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {logoutUser} from '../api/authApi';
 
@@ -47,7 +47,7 @@ const b64decode = (str: string): string => {
 // ─── Keychain helpers ─────────────────────────────────────────────────────────
 const getSavedToken = async (): Promise<string | null> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds?.password) return null;
     return JSON.parse(creds.password)?.token ?? null;
   } catch {
@@ -57,7 +57,7 @@ const getSavedToken = async (): Promise<string | null> => {
 
 const getSavedUserId = async (): Promise<number | null> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds?.password) return null;
     const parsed = JSON.parse(creds.password);
     if (parsed?.userId) return Number(parsed.userId);
@@ -278,7 +278,8 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
   }, [visible]);
 
   const loadAll = async () => {
-    setLoading(true);
+    // PERF: only show the loading placeholders on the first open; on re-open keep the existing data visible while it refreshes silently.
+    if (!profile) setLoading(true);
     await Promise.allSettled([loadProfile(), loadActiveMembers(), loadBadgeProgress(), loadEmail()]);
     setLoading(false);
   };

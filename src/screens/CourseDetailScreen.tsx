@@ -1029,6 +1029,8 @@ const CourseDetailScreen = ({route, navigation}: any) => {
   // from "did we get data back", so a failed fetch is tried exactly once,
   // not forever. (activityAttempted removed — activity now refetches on
   // every focus instead of once-per-course, see fetchActivity above.)
+  const hasLoadedDetailsRef = useRef(false);
+  const hasLoadedActivityRef = useRef(false);
   const overviewAttempted = useRef(false);
   const certificationsAttempted = useRef(false);
   const faqsAttempted = useRef(false);
@@ -1136,7 +1138,12 @@ const CourseDetailScreen = ({route, navigation}: any) => {
       setLoading(false);
       return null;
     }
-    setLoading(true);
+    // PERF: only show the full-screen spinner on the FIRST load. This runs
+    // on every focus (so progress stays fresh when returning from a
+    // lesson), and blanking the whole screen each time made every
+    // back-navigation feel like a full reload. On refocus the existing
+    // content stays visible and is swapped in place when the data lands.
+    if (!hasLoadedDetailsRef.current) setLoading(true);
     const uid = await getUserIdFromToken();
     setUserId(uid);
     // userId is optional on getCourseDetails now — passing undefined
@@ -1146,6 +1153,7 @@ const CourseDetailScreen = ({route, navigation}: any) => {
     // course) — see coursesApi.ts for details.
     const detailsRes = await getCourseDetails(courseId, uid ?? undefined);
     setDetails(detailsRes);
+    hasLoadedDetailsRef.current = true;
     setLoading(false);
     return uid;
   }, [courseId]);
@@ -1158,9 +1166,10 @@ const CourseDetailScreen = ({route, navigation}: any) => {
   const fetchActivity = useCallback(
     async (uid: number | null) => {
       if (!courseId || !uid) return;
-      setActivityLoading(true);
+      if (!hasLoadedActivityRef.current) setActivityLoading(true);
       const res = await getCourseActivity(courseId, uid);
       setActivity(res);
+      hasLoadedActivityRef.current = true;
       setActivityLoading(false);
     },
     [courseId],
@@ -1169,8 +1178,13 @@ const CourseDetailScreen = ({route, navigation}: any) => {
   useFocusEffect(
     useCallback(() => {
       (async () => {
-        const uid = await fetchCourseDetails();
-        await fetchActivity(uid);
+        // PERF: details and activity (curriculum + progress) used to run
+        // strictly one after the other — two full round trips before the
+        // Modules tab could render. They're independent (activity only
+        // needs the user id, which is now an in-memory lookup), so fire
+        // both at once.
+        const uid = await getUserIdFromToken();
+        await Promise.all([fetchCourseDetails(), fetchActivity(uid)]);
       })();
     }, [fetchCourseDetails, fetchActivity]),
   );

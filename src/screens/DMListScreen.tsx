@@ -7,12 +7,12 @@ import ProfileDrawer from '../components/ProfileDrawer';
 import {getUserIdFromToken} from '../api/profileApi';
 import {
   getThreadList,
-  getFullName,
   getOtherRecipient,
   formatThreadDate,
   stripHtml,
   DMThread,
 } from '../api/dmApi';
+import {getMembersBatch, resolveFullName} from '../api/feedApi';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -148,23 +148,36 @@ const DMListScreen = ({navigation}: any) => {
 
   const loadThreads = async () => {
     try {
-      const data = await getThreadList();
-      // Enrich each thread recipient with full name
-      const enriched = await Promise.all(
-        data.map(async thread => {
-          const other = getOtherRecipient(thread, currentUserId);
-          if (!other) return thread;
-          const fullName = await getFullName(other.user_id);
-          if (!fullName) return thread;
-          return {
-            ...thread,
-            recipients: {
-              ...thread.recipients,
-              [other.user_id]: {...other, name: fullName},
-            },
-          };
-        }),
+      // Resolve my id here rather than reading the `currentUserId` state —
+      // this runs on mount, before initUser()'s setState has landed, so the
+      // closure always saw 0.
+      const [data, myId] = await Promise.all([
+        getThreadList(),
+        getUserIdFromToken(),
+      ]);
+      // PERF: this used to fire one /members/{id} request per thread (N+1).
+      // Resolve every other participant's full name with ONE batched
+      // members request instead.
+      const otherIds = data
+        .map(t => getOtherRecipient(t, myId || currentUserId)?.user_id)
+        .filter(Boolean) as number[];
+      const members = await getMembersBatch(otherIds).catch(
+        () => new Map<number, any>(),
       );
+      const enriched = data.map(thread => {
+        const other = getOtherRecipient(thread, myId || currentUserId);
+        if (!other) return thread;
+        const member = members.get(Number(other.user_id));
+        const fullName = member ? resolveFullName(member, '') : '';
+        if (!fullName) return thread;
+        return {
+          ...thread,
+          recipients: {
+            ...thread.recipients,
+            [other.user_id]: {...other, name: fullName},
+          },
+        };
+      });
       setThreads(enriched);
       setFiltered(enriched);
     } catch (e) {

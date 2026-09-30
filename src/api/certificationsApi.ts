@@ -142,9 +142,9 @@ export interface MyCertificationsResponse {
 
 export const getMyCertifications = async (): Promise<MyCertificationsResponse | null> => {
   try {
-    const userId = await getUserIdFromToken();
+    // PERF: userId and auth headers are independent — resolve in parallel.
+    const [userId, headers] = await Promise.all([getUserIdFromToken(), authHeaders()]);
     if (!userId) return null;
-    const headers = await authHeaders();
     const res = await fetch(
       `${BASE}/custom/v1/certifications/my?user_id=${userId}`,
       {headers},

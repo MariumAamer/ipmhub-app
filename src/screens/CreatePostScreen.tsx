@@ -20,7 +20,7 @@ import {
 // SafeAreaView, which measures the actual device inset on both platforms.
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {launchImageLibrary} from 'react-native-image-picker';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from '../api/credentialsCache';
 import Svg, {Path, Circle} from 'react-native-svg';
 import ScheduleModal from '../components/ScheduleModal';
 import {updateActivity, resolveFullName} from '../api/feedApi';
@@ -30,7 +30,8 @@ const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const getToken = async (): Promise<string | null> => {
   try {
-    const c = await Keychain.getGenericPassword();
+    // PERF: in-memory cached credentials instead of a native Keychain read per call.
+    const c = await getCachedCredentials();
     if (!c?.password) return null;
     return JSON.parse(c.password)?.token ?? null;
   } catch {
@@ -58,7 +59,8 @@ const b64decode = (str: string): string => {
 // Never trust a separately-stored "userId" field; always derive from the token.
 const getUserId = async (): Promise<number | null> => {
   try {
-    const c = await Keychain.getGenericPassword();
+    // PERF: in-memory cached credentials instead of a native Keychain read per call.
+    const c = await getCachedCredentials();
     if (!c?.password) return null;
     const stored = JSON.parse(c.password);
     if (stored?.userId) return Number(stored.userId);
@@ -163,8 +165,8 @@ const CreatePostScreen = ({navigation, route}: any) => {
 
   const loadProfile = async () => {
     try {
-      const token = await getToken();
-      const userId = await getUserId();
+      // PERF: independent lookups - run in parallel.
+      const [token, userId] = await Promise.all([getToken(), getUserId()]);
       if (!token || !userId) return;
       const res = await fetch(
         `${BASE}/buddyboss/v1/members/${userId}?xprofile=1`,

@@ -14,6 +14,16 @@ const config = (async () => {
   return {
     transformer: {
       babelTransformerPath: require.resolve('react-native-svg-transformer'),
+      // PERF: with ~90 screens/components all statically imported from
+      // AppNavigator, every module (and its heavy deps) was evaluated at
+      // launch. inlineRequires defers each require() until the module is
+      // first used, so startup only pays for what the first screen needs.
+      getTransformOptions: async () => ({
+        transform: {
+          experimentalImportSupport: false,
+          inlineRequires: true,
+        },
+      }),
     },
     resolver: {
       assetExts: assetExts.filter(ext => ext !== 'svg'),

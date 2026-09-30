@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
+import {useDebouncedValue} from '../hooks/useDebouncedValue';
 import {
   View,
   Text,
@@ -17,6 +18,7 @@ import {
   Dimensions,
   Linking,
   Alert,
+  Platform,
 } from 'react-native';
 import {WebView} from 'react-native-webview';
 import Svg, {Path} from 'react-native-svg';
@@ -33,6 +35,9 @@ import {
 } from '../api/resourcesApi';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
+
+// PERF: stable empty array so FlatList `data` identity doesn't change while loading.
+const EMPTY_RESOURCES: ResourceItem[] = [];
 
 // Fallback tabs — used only if the /resources/tabs endpoint is unreachable,
 // so the screen still renders something instead of going blank.
@@ -271,8 +276,13 @@ const SvgThumbnail = ({uri, width, height}: {uri: string; width: number; height:
   );
 };
 
-const ResourceCard = ({item, onPress, onDownloadPress}: any) => {
+// PERF: memoized, and takes stable (item) => void handlers instead of a fresh
+// inline closure per row, so rows don't re-render on every keystroke/state
+// change in the parent — only when their own `item` changes.
+const ResourceCard = React.memo(({item, onItemPress, onItemDownload}: any) => {
   const isSvg = item.type === 'cheatsheet' || (item.image_url || '').toLowerCase().endsWith('.svg');
+  const onPress = () => onItemPress(item);
+  const onDownloadPress = () => onItemDownload(item);
   return (
     <TouchableOpacity style={styles.resourceCard} onPress={onPress} activeOpacity={0.85}>
       {item.image_url ? (
@@ -306,7 +316,7 @@ const ResourceCard = ({item, onPress, onDownloadPress}: any) => {
       )}
     </TouchableOpacity>
   );
-};
+});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 const ResourcesScreen = ({navigation}: any) => {
@@ -314,6 +324,8 @@ const ResourcesScreen = ({navigation}: any) => {
   const [activeTab, setActiveTab] = useState(0);
   const [categories, setCategories] = useState<ResourceCategory[]>([{id: '', label: 'All Categories'}]);
   const [search, setSearch] = useState('');
+  // PERF: requests were firing on every keystroke; wait for typing to pause.
+  const debouncedSearch = useDebouncedValue(search, 400);
   const [resources, setResources] = useState<ResourceItem[]>([]);
   const [featuredItem, setFeaturedItem] = useState<ResourceItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -324,6 +336,7 @@ const ResourcesScreen = ({navigation}: any) => {
   const [filterVisible, setFilterVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const endReachedLock = useRef(false);
 
   const activeTabId = tabs[activeTab]?.id || 'all';
 
@@ -344,13 +357,13 @@ const ResourcesScreen = ({navigation}: any) => {
   useEffect(() => {
     loadResources(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabId, search, selectedCategory]);
+  }, [activeTabId, debouncedSearch, selectedCategory]);
 
   const loadResources = async (pageNum = 1, reset = false) => {
     if (reset) setLoading(true);
     else setLoadingMore(true);
     try {
-      const result = await getResources(activeTabId, pageNum, search, selectedCategory || null);
+      const result = await getResources(activeTabId, pageNum, debouncedSearch, selectedCategory || null);
 
       if (reset) {
         // Was only checking result.items[0].is_featured — meant the
@@ -376,21 +389,40 @@ const ResourcesScreen = ({navigation}: any) => {
       setPage(pageNum);
     } catch {
     } finally {
+      endReachedLock.current = false;
       setLoading(false);
       setLoadingMore(false);
       setRefreshing(false);
     }
   };
 
+  // PERF: replaces the manual onScroll pagination. Same loader, same guards
+  // (!loadingMore && hasMore) plus: not while the list is (re)loading / empty
+  // (onEndReached can fire on an empty list right after layout, which onScroll
+  // never did), and a synchronous ref lock so two calls in the same tick
+  // can't both start a fetch before `loadingMore` state has re-rendered.
+  // Not memoized on purpose: re-created each render so it always sees the
+  // latest page/hasMore/filters (no stale closure).
+  const handleEndReached = () => {
+    if (endReachedLock.current || loading || loadingMore || !hasMore || resources.length === 0) return;
+    endReachedLock.current = true;
+    loadResources(page + 1);
+  };
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadResources(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabId, search, selectedCategory]);
+  }, [activeTabId, debouncedSearch, selectedCategory]);
 
-  const handleItemPress = (item: ResourceItem) => {
-    navigation?.navigate('ResourceDetail', {resource: item});
-  };
+  // PERF: stable identity (only changes if `navigation` does) so memoized
+  // ResourceCard rows aren't invalidated by unrelated re-renders.
+  const handleItemPress = useCallback(
+    (item: ResourceItem) => {
+      navigation?.navigate('ResourceDetail', {resource: item});
+    },
+    [navigation],
+  );
 
   // Routes through POST /resources/items/{post_id}/download so the CRM
   // lead-capture side effect on the backend actually fires (see
@@ -399,7 +431,8 @@ const ResourcesScreen = ({navigation}: any) => {
   // documented for this endpoint was never being created. Falls back to
   // image_url if the endpoint call fails, so the download still works
   // (just without the CRM logging) rather than dead-ending the user.
-  const handleQuickDownload = async (item: ResourceItem) => {
+  // PERF: useCallback with [] — only touches its `item` arg and module imports.
+  const handleQuickDownload = useCallback(async (item: ResourceItem) => {
     try {
       const result = await downloadResource(item.id);
       const url = result?.downloadUrl || result?.fileUrl || item.image_url;
@@ -410,7 +443,19 @@ const ResourcesScreen = ({navigation}: any) => {
     } catch {
       Alert.alert('Download failed', 'Please try again.');
     }
-  };
+  }, []);
+
+  const keyExtractor = useCallback((item: ResourceItem) => `${item.type}-${item.id}`, []);
+
+  // PERF: row renderer for the virtualized list (was resources.map inside a ScrollView).
+  const renderItem = useCallback(
+    ({item}: {item: ResourceItem}) => (
+      <View style={styles.resourceRow}>
+        <ResourceCard item={item} onItemPress={handleItemPress} onItemDownload={handleQuickDownload} />
+      </View>
+    ),
+    [handleItemPress, handleQuickDownload],
+  );
 
   return (
     <View style={styles.container}>
@@ -418,107 +463,109 @@ const ResourcesScreen = ({navigation}: any) => {
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
-      <ScrollView
+      {/* PERF: was <ScrollView> + resources.map(...). Now a virtualized FlatList.
+          Everything above the rows lives in ListHeaderComponent, below in
+          ListFooterComponent. Both are passed as ELEMENTS (not inline
+          component functions), so React sees the same element type at the
+          same position on every render and the search TextInput below is
+          NOT remounted — it keeps focus/keyboard while typing. */}
+      <FlatList
+        data={loading ? EMPTY_RESOURCES : resources}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0C4D91']} />
         }
-        onScroll={({nativeEvent}) => {
-          const {layoutMeasurement, contentOffset, contentSize} = nativeEvent;
-          if (
-            layoutMeasurement.height + contentOffset.y >= contentSize.height - 200 &&
-            !loadingMore &&
-            hasMore
-          ) {
-            loadResources(page + 1);
-          }
-        }}
-        scrollEventThrottle={400}>
-
-        {/* Hero — Figma: Heading/H2, 18px 700, #192647, letterSpacing 0.09 */}
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>
-            {'Stay Current with the Latest Project Management Insights'}
-          </Text>
-          <Text style={styles.heroSubtitle}>
-            {'Find the resources you need to broaden your knowledge and boost your career.'}
-          </Text>
-        </View>
-
-        {/* Search + Filter — Figma: height 36, padding 12 16/12, radius 5, border #8F9098 */}
-        <View style={styles.searchSection}>
-          <View style={styles.searchBar}>
-            <SearchIcon />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search Resources..."
-              // Escalated twice already (#8F9098 -> #5C5E66) and still
-              // read as too faint on device, so this now matches the
-              // typed-text color exactly for maximum contrast. If you'd
-              // rather placeholder stay visually distinct from typed
-              // text, let me know a target color and I'll back it off.
-              placeholderTextColor="#192546"
-              value={search}
-              onChangeText={setSearch}
-            />
-          </View>
-          <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterVisible(true)}>
-            <FilterIcon />
-          </TouchableOpacity>
-        </View>
-
-        {/* Tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabsScroll}
-          contentContainerStyle={styles.tabsContent}>
-          {tabs.map((tab, i) => (
-            <TouchableOpacity
-              key={tab.id}
-              onPress={() => setActiveTab(i)}
-              style={[styles.tab, i === activeTab && styles.tabActive]}>
-              <Text style={[styles.tabText, i === activeTab && styles.tabTextActive]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {loading ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color="#0C4D91" />
-          </View>
-        ) : (
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.5}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ListHeaderComponent={
           <>
-            {/* Featured Article — only on All Resources tab */}
-            {featuredItem && activeTabId === 'all' && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>{'Featured Article'}</Text>
-                <FeaturedCard item={featuredItem} onPress={() => handleItemPress(featuredItem)} />
-              </View>
-            )}
-
-            {/* Resource list */}
-            <View style={styles.section}>
-              {resources.map(item => (
-                <ResourceCard
-                  key={`${item.type}-${item.id}`}
-                  item={item}
-                  onPress={() => handleItemPress(item)}
-                  onDownloadPress={() => handleQuickDownload(item)}
-                />
-              ))}
+            {/* Hero — Figma: Heading/H2, 18px 700, #192647, letterSpacing 0.09 */}
+            <View style={styles.hero}>
+              <Text style={styles.heroTitle}>
+                {'Stay Current with the Latest Project Management Insights'}
+              </Text>
+              <Text style={styles.heroSubtitle}>
+                {'Find the resources you need to broaden your knowledge and boost your career.'}
+              </Text>
             </View>
 
-            {resources.length === 0 && !featuredItem && (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>{'No resources found'}</Text>
-                <Text style={styles.emptySubtitle}>{'Try a different search or category.'}</Text>
+            {/* Search + Filter — Figma: height 36, padding 12 16/12, radius 5, border #8F9098 */}
+            <View style={styles.searchSection}>
+              <View style={styles.searchBar}>
+                <SearchIcon />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search Resources..."
+                  // Escalated twice already (#8F9098 -> #5C5E66) and still
+                  // read as too faint on device, so this now matches the
+                  // typed-text color exactly for maximum contrast. If you'd
+                  // rather placeholder stay visually distinct from typed
+                  // text, let me know a target color and I'll back it off.
+                  placeholderTextColor="#192546"
+                  value={search}
+                  onChangeText={setSearch}
+                />
               </View>
-            )}
+              <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterVisible(true)}>
+                <FilterIcon />
+              </TouchableOpacity>
+            </View>
 
-            {hasMore && resources.length > 0 && (
+            {/* Tabs (horizontal — not a vertical list, fine inside the header) */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tabsScroll}
+              contentContainerStyle={styles.tabsContent}>
+              {tabs.map((tab, i) => (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setActiveTab(i)}
+                  style={[styles.tab, i === activeTab && styles.tabActive]}>
+                  <Text style={[styles.tabText, i === activeTab && styles.tabTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {loading ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator size="large" color="#0C4D91" />
+              </View>
+            ) : (
+              <>
+                {/* Featured Article — only on All Resources tab */}
+                {featuredItem && activeTabId === 'all' && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>{'Featured Article'}</Text>
+                    <FeaturedCard item={featuredItem} onPress={() => handleItemPress(featuredItem)} />
+                  </View>
+                )}
+
+                {/* Top padding of the old `section` wrapper around the list
+                    (it was rendered even when the list was empty). */}
+                <View style={styles.sectionTopSpacer} />
+
+                {resources.length === 0 && !featuredItem && (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyTitle}>{'No resources found'}</Text>
+                    <Text style={styles.emptySubtitle}>{'Try a different search or category.'}</Text>
+                  </View>
+                )}
+              </>
+            )}
+          </>
+        }
+        ListFooterComponent={
+          <>
+            {!loading && hasMore && resources.length > 0 && (
               <TouchableOpacity
                 style={styles.loadMoreBtn}
                 onPress={() => loadResources(page + 1)}
@@ -530,11 +577,11 @@ const ResourcesScreen = ({navigation}: any) => {
                 )}
               </TouchableOpacity>
             )}
-          </>
-        )}
 
-        <View style={{height: 100}} />
-      </ScrollView>
+            <View style={{height: 100}} />
+          </>
+        }
+      />
 
       {/* Submit a Resource FAB */}
       <TouchableOpacity
@@ -657,6 +704,10 @@ const styles = StyleSheet.create({
 
   loadingWrap: {paddingVertical: 60, alignItems: 'center'},
   section: {paddingHorizontal: 16, paddingTop: 16},
+  // Row wrapper for virtualized list items (horizontal gutter of the old `section`).
+  resourceRow: {paddingHorizontal: 16},
+  // Replaces the old list `section`'s paddingTop: 16 (always rendered, even if empty).
+  sectionTopSpacer: {height: 16},
   sectionTitle: {
     color: '#192546',
     fontFamily: 'Runda',

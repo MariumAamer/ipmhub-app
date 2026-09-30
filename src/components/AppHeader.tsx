@@ -11,7 +11,7 @@
 import React, {useEffect, useState} from 'react';
 import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
 import Svg, {Path, Polygon} from 'react-native-svg';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from '../api/credentialsCache';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {apiRequest} from '../api/apiClient';
 import {getUserIdFromToken} from '../api/profileApi';
@@ -25,13 +25,24 @@ interface AppHeaderProps {
 
 const getStoredUser = async () => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds) return null;
     return JSON.parse(creds.password);
   } catch {
     return null;
   }
 };
+
+// PERF: AppHeader mounts on every tab screen (Feed, Forums, Intros, Resources,
+// Mentors) and used to re-fetch the member profile plus the notification and
+// message counts from scratch on each mount — 3-4 requests every time the
+// user switched tabs, competing with the screen's own content requests.
+// The profile/avatar is effectively static for a session, so it's cached at
+// module level; the unread counts are cached for a short TTL so rapid tab
+// switching doesn't re-hit the server while they're still fresh.
+const UNREAD_TTL_MS = 30 * 1000;
+let cachedProfile: {avatar: string | null; userId: number | null} | null = null;
+let cachedUnread: {notif: number; msg: number; at: number} | null = null;
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -148,8 +159,21 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    loadMyProfile();
-    loadUnreadCounts();
+    // Seed from cache synchronously so the avatar/badges render on the first
+    // frame instead of popping in after a network round trip.
+    if (cachedProfile) {
+      setMyAvatar(cachedProfile.avatar);
+      setMyUserId(cachedProfile.userId);
+    } else {
+      loadMyProfile();
+    }
+    if (cachedUnread) {
+      setUnreadNotifCount(cachedUnread.notif);
+      setUnreadMsgCount(cachedUnread.msg);
+    }
+    if (!cachedUnread || Date.now() - cachedUnread.at > UNREAD_TTL_MS) {
+      loadUnreadCounts();
+    }
   }, []);
 
   // Per Robby: both endpoints return the real total in a response header
@@ -164,6 +188,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
       ]);
       setUnreadNotifCount(notifCount);
       setUnreadMsgCount(msgCount);
+      cachedUnread = {notif: notifCount, msg: msgCount, at: Date.now()};
     } catch {
       // Fail silently — badges just stay hidden.
     }
@@ -178,10 +203,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
           `${BASE}/buddyboss/v1/members/${userId}`,
         );
         if (profile?.avatar_urls) {
-          setMyAvatar(
-            profile.avatar_urls?.thumb || profile.avatar_urls?.full || null,
-          );
-          setMyUserId(profile.id || userId);
+          const avatar =
+            profile.avatar_urls?.thumb || profile.avatar_urls?.full || null;
+          const id = profile.id || userId;
+          setMyAvatar(avatar);
+          setMyUserId(id);
+          cachedProfile = {avatar, userId: id};
           return;
         }
       }

@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import {getToken} from './apiClient';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from './credentialsCache';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -56,7 +56,7 @@ const b64decode = (str: string): string => {
 // Decodes JWT payload to extract user ID (no library needed)
 export const getUserIdFromToken = async (): Promise<number | null> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds) return null;
     const stored = JSON.parse(creds.password);
 
@@ -88,34 +88,34 @@ export const getMyProfile = async (): Promise<any> => {
 
     if (!token || !userId) return null;
 
-    // Try octopus user-info first (built for mobile app)
-    const octopusRes = await fetch(`${BASE}/octopus-react/v1/user-info`, {
-      headers: {Authorization: `Bearer ${token}`},
-    });
+    const authHeader = {Authorization: `Bearer ${token}`};
 
-    if (octopusRes.ok) {
+    // PERF: the octopus user-info and BuddyBoss member requests were made one
+    // after the other, but neither needs the other's result (the member call
+    // only needs userId, which we already have). Fire both at once so the
+    // profile pays one round trip instead of two. The member response is
+    // also the fallback when octopus has nothing, so it's never wasted.
+    const [octopusRes, memberRes] = await Promise.all([
+      fetch(`${BASE}/octopus-react/v1/user-info`, {headers: authHeader}).catch(
+        () => null,
+      ),
+      fetch(`${BASE}/buddyboss/v1/members/${userId}`, {
+        headers: authHeader,
+      }).catch(() => null),
+    ]);
+
+    const memberData = memberRes?.ok ? await memberRes.json() : null;
+
+    if (octopusRes?.ok) {
       const octopusData = await octopusRes.json();
       if (octopusData?.id || octopusData?.user_id) {
         // Supplement with BuddyBoss member data for avatar/followers
-        const memberRes = await fetch(
-          `${BASE}/buddyboss/v1/members/${userId}`,
-          {headers: {Authorization: `Bearer ${token}`}},
-        );
-        if (memberRes.ok) {
-          const memberData = await memberRes.json();
-          return {...octopusData, ...memberData};
-        }
-        return octopusData;
+        return memberData ? {...octopusData, ...memberData} : octopusData;
       }
     }
 
     // Fallback: direct BuddyBoss member endpoint with user ID
-    const response = await fetch(`${BASE}/buddyboss/v1/members/${userId}`, {
-      headers: {Authorization: `Bearer ${token}`},
-    });
-
-    if (!response.ok) return null;
-    return response.json();
+    return memberData;
   } catch (err) {
     console.log('getMyProfile error:', err);
     return null;

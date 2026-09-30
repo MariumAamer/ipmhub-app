@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, Image} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, Image, Linking, Platform} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -49,8 +49,23 @@ const VerifyEmailScreen = ({route, navigation}: any) => {
   // actual inbox screen (via ACTION_MAIN / CATEGORY_APP_EMAIL under the
   // hood), or shows a native chooser if more than one mail app is installed,
   // with no compose screen involved either way.
-  const handleOpenEmailApp = () => {
-    openInbox().catch(() => {});
+  //
+  // iOS: openInbox() shows an action sheet ("which email app?") listing every
+  // installed client declared in Info.plist LSApplicationQueriesSchemes. If it
+  // fails (no client detected) we fall back to Apple Mail's inbox scheme,
+  // then mailto:, instead of failing silently.
+  const handleOpenEmailApp = async () => {
+    try {
+      await openInbox({
+        title: 'Open email app',
+        message: 'Which email app do you want to open?',
+        cancelLabel: 'Cancel',
+      });
+    } catch {
+      try {
+        await Linking.openURL(Platform.OS === 'ios' ? 'message://' : 'mailto:');
+      } catch {}
+    }
   };
 
   const handleResend = async () => {

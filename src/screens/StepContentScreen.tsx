@@ -285,6 +285,7 @@ const StepContentScreen = ({route, navigation}: any) => {
   const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false; // PERF: drop stale results if params change mid-flight
     (async () => {
       if (!courseId || !stepId) {
         setLoading(false);
@@ -293,19 +294,29 @@ const StepContentScreen = ({route, navigation}: any) => {
       setLoading(true);
       const uid = await getUserIdFromToken();
       setUserId(uid || 0);
-      const [activityRes, contentRes] = await Promise.all([
-        getCourseActivity(courseId, uid || 0),
-        getStepContent(courseId, stepId, uid || 0),
-      ]);
-      setActivity(activityRes);
+      // PERF: comments were fetched only AFTER activity+content finished
+      // (a third sequential round trip). They only need uid, so fire them in
+      // parallel with the other two; the list fills in via commentsLoading.
+      setCommentsLoading(true);
+      getStepComments(courseId, stepId, uid || 0).then(commentsRes => {
+        if (cancelled) return;
+        setComments(commentsRes?.comments ?? []);
+        setCommentsLoading(false);
+      });
+      // PERF: getCourseActivity only feeds the breadcrumb + prev/next (all
+      // null-safe). Don't hold the full-screen spinner on it — the step
+      // content is the primary data; activity fills in when it arrives.
+      getCourseActivity(courseId, uid || 0).then(activityRes => {
+        if (!cancelled) setActivity(activityRes);
+      });
+      const contentRes = await getStepContent(courseId, stepId, uid || 0);
+      if (cancelled) return;
       setStepContent(contentRes?.step ?? null);
       setLoading(false);
-
-      setCommentsLoading(true);
-      const commentsRes = await getStepComments(courseId, stepId, uid || 0);
-      setComments(commentsRes?.comments ?? []);
-      setCommentsLoading(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [courseId, stepId]);
 
   const countComments = (list: StepComment[]): number =>

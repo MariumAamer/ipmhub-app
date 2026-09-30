@@ -2067,6 +2067,11 @@ const MemberProfileScreen = ({navigation, route}: any) => {
       setTargetId(tid);
       setIsOwn(!paramUserId || String(paramUserId) === String(myId));
       if (tid) {
+        // PERF: the two profile requests are independent (both only need
+        // the target id) but were awaited one after the other, so the
+        // profile paid for two sequential round trips. Start both now.
+        const mpPromise = apiRequest(`${BASE}/custom/v1/member-profile/${tid}`);
+        mpPromise.catch(() => {}); // avoid an unhandled rejection if awaited late
         const data = await apiRequest(`${BASE}/buddyboss/v1/members/${tid}?xprofile=1`);
         setProfile(data);
         setFollowing(data?.is_following || false);
@@ -2080,7 +2085,7 @@ const MemberProfileScreen = ({navigation, route}: any) => {
         // (e.g. Aulia) — likely a caching issue specific to the old route
         // that this new endpoint sidesteps.
         try {
-          const mp = await apiRequest(`${BASE}/custom/v1/member-profile/${tid}`);
+          const mp = await mpPromise;
           setProfileData(mp);
         } catch (e) {
           console.log('[member-profile] load error', e);

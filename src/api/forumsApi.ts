@@ -364,12 +364,16 @@ export const getTopics = async (
 export const getTopic = async (
   topicId: number,
   currentUserId: number | null = null,
+  skipAuthorPrefetch = false,
 ): Promise<ForumTopic | null> => {
   const headers = await authHeaders();
   const res = await fetch(`${BASE}/buddyboss/v1/topics/${topicId}?_embed=1`, {headers});
   if (!res.ok) return null;
   const data = await res.json();
-  await prefetchAuthors([data]);
+  // Callers that only need tags/voice count (Feed forum-card enrichment)
+  // pass skipAuthorPrefetch=true — otherwise every topic in a batch fires its
+  // own extra author-profile request that the caller never uses.
+  if (!skipAuthorPrefetch) await prefetchAuthors([data]);
   return mapTopic(data, currentUserId);
 };
 
@@ -390,7 +394,7 @@ export const getTopicTagsAndVoices = async (
   if (uniqueIds.length === 0) return result;
   await Promise.all(
     uniqueIds.map(async id => {
-      const topic = await getTopic(id);
+      const topic = await getTopic(id, null, true);
       if (topic) result.set(id, {tags: topic.tags, voiceCount: topic.voiceCount});
     }),
   );

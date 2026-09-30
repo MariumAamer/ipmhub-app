@@ -35,6 +35,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
   const [replies, setReplies] = useState<ForumReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [repliesLoading, setRepliesLoading] = useState(false); // PERF: replies load after the topic renders
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [reportVisible, setReportVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
@@ -48,11 +49,22 @@ const ForumTopicScreen = ({navigation, route}: any) => {
       isRefresh ? setRefreshing(true) : setLoading(true);
       const uid = currentUserId ?? (await getCurrentUserId());
       if (currentUserId == null) setCurrentUserId(uid);
-      const [t, r] = await Promise.all([getTopic(topicId, uid), getReplies(topicId, uid)]);
+      // PERF: both requests still fire in parallel, but the full-screen
+      // spinner now only waits for the topic itself — the replies list
+      // (with its own author-profile prefetch) fills in when it arrives
+      // instead of holding the whole screen hostage.
+      if (!isRefresh) setRepliesLoading(true);
+      const repliesPromise = getReplies(topicId, uid);
+      const t = await getTopic(topicId, uid);
       setTopic(t);
-      setReplies(r);
       setLoading(false);
-      setRefreshing(false);
+      try {
+        const r = await repliesPromise;
+        setReplies(r);
+      } finally {
+        setRepliesLoading(false);
+        setRefreshing(false);
+      }
     },
     [topicId, currentUserId],
   );
@@ -202,7 +214,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
         <View style={styles.dividerLine} />
         <View style={styles.repliesHeaderRow}>
           <Text style={styles.repliesCount}>
-            {`${replies.length} ${replies.length === 1 ? 'Reply' : 'Replies'}`}
+            {repliesLoading ? 'Replies' : `${replies.length} ${replies.length === 1 ? 'Reply' : 'Replies'}`}
           </Text>
           {replies.length > 0 ? (
             <TouchableOpacity onPress={jumpToLatestReply}>
@@ -214,6 +226,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
 
         {/* ── Replies list ── */}
         <View style={styles.repliesList}>
+          {repliesLoading ? <ActivityIndicator color="#0C4D91" style={{paddingVertical: 16}} /> : null}
           {replies.map(reply => (
             <View
               key={reply.id}

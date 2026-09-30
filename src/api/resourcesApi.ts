@@ -533,7 +533,23 @@ export interface ArticleSection {
   blocks: ContentBlock[];
 }
 
+// PERF: getResourceById() calls extractTOC() -> splitIntoSections(content) and
+// ResourceDetailScreen then calls splitIntoSections(content) again on the same
+// HTML, doubling the regex-heavy parse on the JS thread right as the article
+// loads. Single-entry memo so the second call for the same HTML is free.
+let lastSplitHtml: string | null = null;
+let lastSplitResult: ArticleSection[] = [];
 export const splitIntoSections = (html: string): ArticleSection[] => {
+  if (html && html === lastSplitHtml) return lastSplitResult;
+  const result = splitIntoSectionsUncached(html);
+  if (html) {
+    lastSplitHtml = html;
+    lastSplitResult = result;
+  }
+  return result;
+};
+
+const splitIntoSectionsUncached = (html: string): ArticleSection[] => {
   if (!html) return [];
 
   // CRITICAL: extract course-card banners (ipm-cta-banner) BEFORE
@@ -675,8 +691,8 @@ export const downloadResource = async (
   postId: number | string,
 ): Promise<ResourceDownloadResult | null> => {
   try {
-    const token = await getToken();
-    const userId = await getUserIdFromToken();
+    // PERF: independent lookups — run together instead of back-to-back.
+    const [token, userId] = await Promise.all([getToken(), getUserIdFromToken()]);
 
     const headers: Record<string, string> = {'Content-Type': 'application/json'};
     if (token) headers.Authorization = `Bearer ${token}`;

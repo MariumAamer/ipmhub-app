@@ -308,6 +308,7 @@ const QuizScreen = ({route, navigation}: any) => {
   const [reviewMode, setReviewMode] = useState<Record<number, boolean>>({}); // questionId -> is under review
 
   useEffect(() => {
+    let cancelled = false; // PERF: drop stale results if params change mid-flight
     (async () => {
       if (!courseId || !stepId) {
         setLoading(false);
@@ -315,14 +316,21 @@ const QuizScreen = ({route, navigation}: any) => {
       }
       setLoading(true);
       const uid = await getUserIdFromToken();
-      const [quizRes, activityRes] = await Promise.all([
-        getQuiz(courseId, stepId, uid || 0),
-        getCourseActivity(courseId, uid || 0),
-      ]);
+      // PERF: getCourseActivity only feeds the breadcrumb + prev/next pills
+      // (all null-safe, with route-param title fallbacks). Start it in
+      // parallel with getQuiz but don't block the quiz render on it — it
+      // fills in when it arrives instead of holding the full-screen spinner.
+      getCourseActivity(courseId, uid || 0).then(activityRes => {
+        if (!cancelled) setActivity(activityRes);
+      });
+      const quizRes = await getQuiz(courseId, stepId, uid || 0);
+      if (cancelled) return;
       setQuizData(quizRes);
-      setActivity(activityRes);
       setLoading(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [courseId, stepId]);
 
   if (loading) {

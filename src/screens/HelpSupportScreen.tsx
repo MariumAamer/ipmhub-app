@@ -161,8 +161,8 @@ const HelpSupportScreen = ({navigation}: any) => {
   const loadInitial = async () => {
     setLoading(true);
     setErrored(false);
-    const page = await getHubPage();
-    const cats = await getSupportCategories();
+    // PERF: hub page and categories are independent requests — run in parallel.
+    const [page, cats] = await Promise.all([getHubPage(), getSupportCategories()]);
     if (page) {
       setHeroTitle(page.banner_title || page.title || 'How can we help you?');
       if (page.banner_subtitle) setHeroSubtitle(page.banner_subtitle);

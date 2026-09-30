@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import {
   View,
   Text,
@@ -17,10 +17,11 @@ import {
   FlatList,
   Dimensions,
   Linking,
+  Platform,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from '../api/credentialsCache';
 import {
   getFeed,
   getNewestMembers,
@@ -231,7 +232,7 @@ const ForumBadgeLabel = ({text}: {text: string}) => (
 // ─── Get stored user ──────────────────────────────────────────────────────────
 const getStoredUser = async () => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds) return null;
     return JSON.parse(creds.password);
   } catch {
@@ -761,7 +762,10 @@ const PostSkeleton = () => (
 );
 
 // ─── Post Card ────────────────────────────────────────────────────────────────
-const PostCard = ({
+// PERF: memoised so a card only re-renders when its own props change (its post
+// object, expandedId, my* info, or a handler identity) instead of every card
+// re-rendering on each FeedScreen state change (modals, toast, pagination...).
+const PostCard = React.memo(({
   post,
   myUserId,
   myName,
@@ -971,7 +975,11 @@ const PostCard = ({
       )}
     </View>
   );
-};
+});
+
+// PERF: module-level constants so FlatList props keep a stable identity.
+const EMPTY_POSTS: FeedPost[] = [];
+const postKeyExtractor = (post: FeedPost) => String(post.id);
 
 // ─── Main FeedScreen ──────────────────────────────────────────────────────────
 const FeedScreen = ({navigation}: any) => {
@@ -994,6 +1002,22 @@ const FeedScreen = ({navigation}: any) => {
   const [myUserId, setMyUserId] = useState<number | null>(null);
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myName, setMyName] = useState<string | null>(null);
+
+  // PERF: latest pagination state for the FlatList onEndReached handler, which
+  // is a stable callback and so must read through refs (never stale closures).
+  const pageRef = useRef(page);
+  const hasMoreRef = useRef(hasMore);
+  const loadingMoreRef = useRef(loadingMore);
+  const loadingFeedRef = useRef(loadingFeed);
+  const postsCountRef = useRef(posts.length);
+  pageRef.current = page;
+  hasMoreRef.current = hasMore;
+  loadingMoreRef.current = loadingMore;
+  loadingFeedRef.current = loadingFeed;
+  postsCountRef.current = posts.length;
+  // Synchronous in-flight lock: loadingMore state only lands on the next
+  // render, so without this two rapid onEndReached calls could both pass.
+  const endReachedLockRef = useRef(false);
 
   // More options state
   const [moreOptionsPost, setMoreOptionsPost] = useState<FeedPost | null>(null);
@@ -1049,10 +1073,9 @@ const FeedScreen = ({navigation}: any) => {
   };
 
   const initUser = async () => {
-     const creds = await Keychain.getGenericPassword();
-  if (creds) {
-    console.log('BEARER TOKEN:', creds.password);
-  }
+    // NOTE: a debug console.log of the bearer token used to live here. Removed
+    // — it leaked the auth token to device logs and forced an extra Keychain
+    // read before the feed's first request could start.
     const userId = await getUserIdFromToken();
     setMyUserId(userId);
     if (userId) {
@@ -1074,65 +1097,27 @@ const FeedScreen = ({navigation}: any) => {
     try {
       const data = await getFeed(pageNum);
 
-      // Enrich author data with member profiles (designation + country flag).
-      // Was previously one getMemberProfile() call per post (15 requests per
-      // page, all fired in parallel but each doing its own Keychain read +
-      // round trip) — this is exactly the N+1 pattern getMembersBatch() was
-      // built to fix. Now it's a single request for the whole page's authors.
-      const authorIds = data.map(post => post.author.id);
-      const profiles = await getMembersBatch(authorIds);
-      const enriched = data.map(post => {
-        const profile = profiles.get(post.author.id);
-        if (!profile) return post;
-        const fullName = resolveFullName(profile, post.author.name);
-        const groups = profile?.xprofile?.groups?.['1']?.fields;
-        const title = groups?.['1097']?.value?.raw || '';
-        const country = groups?.['1099']?.value?.raw || '';
-        const flag = countryFlag(country);
-        return {
-          ...post,
-          author: {...post.author, name: fullName, title, flag, country},
-        };
-      });
-
-      // Enrich forum-type posts with their real tags + "People Involved"
-      // count. Feed's own activity endpoint doesn't carry topic_tags or
-      // voice_count on bbp_topic_create/bbp_reply_create items (confirmed
-      // against a real payload — those fields only exist on
-      // /buddyboss/v1/topics/{id}), so a follow-up per-topic fetch fills
-      // them in here, same enrichment pattern as the author profile fetch
-      // above. Only runs for the forum posts actually on this page (a
-      // handful out of 15, not all of them), and skips anything without a
-      // resolved topicId.
-      const forumTopicIds = enriched
-        .filter(p => p.type === 'forum' && p.topicId)
-        .map(p => p.topicId as number);
-      let withForumData = enriched;
-      if (forumTopicIds.length > 0) {
-        try {
-          const topicData = await getTopicTagsAndVoices(forumTopicIds);
-          withForumData = enriched.map(post => {
-            if (post.type !== 'forum' || !post.topicId) return post;
-            const extra = topicData.get(post.topicId);
-            if (!extra) return post;
-            return {
-              ...post,
-              forumTags: extra.tags.length ? extra.tags : post.forumTags,
-              forumMeta: post.forumMeta
-                ? {...post.forumMeta, people: extra.voiceCount || post.forumMeta.people}
-                : post.forumMeta,
-            };
-          });
-        } catch {
-          // Leave posts as-is (tags/people count just stay hidden) —
-          // this enrichment is best-effort, same as the author one above.
-        }
-      }
-
-      if (reset) setPosts(withForumData);
-      else setPosts(prev => [...prev, ...withForumData]);
+      // PERF: the feed used to block on THREE sequential network stages
+      // (activity list → author profile batch → per-topic tag fetches)
+      // before it rendered a single post, so every open of this screen paid
+      // for all three round trips back to back. The posts themselves are
+      // renderable as soon as the first request returns — author
+      // title/flag and forum tags are cosmetic extras — so we render
+      // immediately and fill those in below, in parallel, in the background.
+      if (reset) setPosts(data);
+      else setPosts(prev => [...prev, ...data]);
       setHasMore(data.length === 15);
       setPage(pageNum);
+      // PERF: keep the onEndReached guards' refs current immediately (state
+      // only lands on the next render) so a fast second fire can't re-request
+      // the same page.
+      pageRef.current = pageNum;
+      hasMoreRef.current = data.length === 15;
+      setLoadingFeed(false);
+      setLoadingMore(false);
+      setRefreshing(false);
+
+      enrichPosts(data);
     } catch (err: any) {
       if (err.message === 'UNAUTHORIZED') {
         navigation?.replace('SignIn');
@@ -1143,6 +1128,62 @@ const FeedScreen = ({navigation}: any) => {
       setLoadingFeed(false);
       setLoadingMore(false);
       setRefreshing(false);
+    }
+  };
+
+  // Best-effort background enrichment for a page of posts. Author profiles
+  // (designation + country flag, one batched request) and forum topic
+  // tags/"People Involved" (one request per forum post) are independent of
+  // each other, so they run in parallel and each patches the already-rendered
+  // posts by id when it lands. Failures are swallowed — the card just keeps
+  // showing the basic data it already has.
+  const enrichPosts = (pagePosts: FeedPost[]) => {
+    const authorIds = pagePosts.map(post => post.author.id);
+    getMembersBatch(authorIds)
+      .then(profiles => {
+        if (profiles.size === 0) return;
+        const byId = new Map<number, FeedPost['author']>();
+        pagePosts.forEach(post => {
+          const profile = profiles.get(post.author.id);
+          if (!profile) return;
+          const groups = profile?.xprofile?.groups?.['1']?.fields;
+          const country = groups?.['1099']?.value?.raw || '';
+          byId.set(post.id, {
+            ...post.author,
+            name: resolveFullName(profile, post.author.name),
+            title: groups?.['1097']?.value?.raw || '',
+            flag: countryFlag(country),
+            country,
+          });
+        });
+        setPosts(prev =>
+          prev.map(p => (byId.has(p.id) ? {...p, author: byId.get(p.id)!} : p)),
+        );
+      })
+      .catch(() => {});
+
+    const forumTopicIds = pagePosts
+      .filter(p => p.type === 'forum' && p.topicId)
+      .map(p => p.topicId as number);
+    if (forumTopicIds.length > 0) {
+      getTopicTagsAndVoices(forumTopicIds)
+        .then(topicData => {
+          setPosts(prev =>
+            prev.map(post => {
+              if (post.type !== 'forum' || !post.topicId) return post;
+              const extra = topicData.get(post.topicId);
+              if (!extra) return post;
+              return {
+                ...post,
+                forumTags: extra.tags.length ? extra.tags : post.forumTags,
+                forumMeta: post.forumMeta
+                  ? {...post.forumMeta, people: extra.voiceCount || post.forumMeta.people}
+                  : post.forumMeta,
+              };
+            }),
+          );
+        })
+        .catch(() => {});
     }
   };
 
@@ -1163,7 +1204,33 @@ const FeedScreen = ({navigation}: any) => {
     loadMembers();
   }, []);
 
-  const handleLike = async (postId: number, currentlyLiked: boolean) => {
+  // PERF: replaces the manual onScroll pagination. Same guards as before
+  // (+ posts.length > 0 && !loadingFeed), plus a ref lock so it can't double-fire.
+  const loadFeedRef = useRef(loadFeed);
+  loadFeedRef.current = loadFeed;
+  const handleEndReached = useCallback(() => {
+    if (
+      endReachedLockRef.current ||
+      loadingMoreRef.current ||
+      !hasMoreRef.current ||
+      postsCountRef.current === 0 ||
+      loadingFeedRef.current
+    ) {
+      return;
+    }
+    endReachedLockRef.current = true;
+    loadFeedRef
+      .current(pageRef.current + 1)
+      .catch(() => {})
+      .finally(() => {
+        endReachedLockRef.current = false;
+      });
+  }, []);
+
+  // PERF: handlers below are useCallback([]) so PostCard's memo holds. They
+  // only use functional setPosts/setExpandedPostId updaters and module-level
+  // APIs, so nothing they read can go stale.
+  const handleLike = useCallback(async (postId: number, currentlyLiked: boolean) => {
     setPosts(prev =>
       prev.map(p =>
         p.id === postId
@@ -1182,15 +1249,20 @@ const FeedScreen = ({navigation}: any) => {
         ),
       );
     }
-  };
+  }, []);
 
-  const handleCommentPosted = (postId: number, delta: number) => {
+  const handleCommentPosted = useCallback((postId: number, delta: number) => {
     setPosts(prev =>
       prev.map(p =>
         p.id === postId ? {...p, comments: Math.max(0, p.comments + delta)} : p,
       ),
     );
-  };
+  }, []);
+
+  // PERF: stable (was an inline arrow created per card per render).
+  const handleCommentPress = useCallback((id: number) => {
+    setExpandedPostId(prev => (prev === id ? null : id));
+  }, []);
 
   const handleFollow = async (memberId: number, currentlyFollowing: boolean) => {
     if (followBusy[memberId]) return; // already in flight, ignore repeat taps
@@ -1220,11 +1292,11 @@ const FeedScreen = ({navigation}: any) => {
     }
   };
 
-  const handleDotsPress = (post: FeedPost, isOwn: boolean) => {
+  const handleDotsPress = useCallback((post: FeedPost, isOwn: boolean) => {
     setMoreOptionsPost(post);
     setMoreOptionsIsOwn(isOwn);
     setShowMoreOptions(true);
-  };
+  }, []);
 
   const handleMuteToggle = async () => {
     if (!moreOptionsPost) return;
@@ -1284,6 +1356,50 @@ const FeedScreen = ({navigation}: any) => {
     } catch {}
   };
 
+  // PERF: renderItem is memoised; it changes identity only when something a
+  // card displays changes (expanded card, my profile info) or a handler does
+  // (they're all stable), so FlatList doesn't re-render cells needlessly.
+  const renderPost = useCallback(
+    ({item}: {item: FeedPost}) => (
+      <PostCard
+        post={item}
+        myUserId={myUserId}
+        myName={myName}
+        myAvatar={myAvatar}
+        onLike={handleLike}
+        onCommentPress={handleCommentPress}
+        onCommentPosted={handleCommentPosted}
+        expandedId={expandedPostId}
+        onDotsPress={handleDotsPress}
+        navigation={navigation}
+      />
+    ),
+    [
+      myUserId,
+      myName,
+      myAvatar,
+      expandedPostId,
+      handleLike,
+      handleCommentPress,
+      handleCommentPosted,
+      handleDotsPress,
+      navigation,
+    ],
+  );
+
+  // PERF: FlatList is a PureComponent — cards depend on state that isn't in
+  // `data`, so surface it via a memoised extraData (stable unless one changes).
+  const listExtraData = useMemo(
+    () => ({expandedPostId, myUserId, myName, myAvatar}),
+    [expandedPostId, myUserId, myName, myAvatar],
+  );
+
+  // PERF: stable array identity for the (non-memoised) members section.
+  const otherMembers = useMemo(
+    () => members.filter(m => m.id !== myUserId),
+    [members, myUserId],
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <StatusBar barStyle="dark-content" />
@@ -1293,7 +1409,17 @@ const FeedScreen = ({navigation}: any) => {
         onDrawerOpen={() => setDrawerOpen(true)}
       />
 
-      <ScrollView
+      {/* PERF: virtualized list replaces ScrollView + posts.map(). Only the
+          visible window of PostCards is mounted/rendered. Header = everything
+          above the posts, footer = everything below. Not nested in any other
+          vertical ScrollView. */}
+      <FlatList
+        // While the feed is (re)loading the skeletons replace the posts, exactly
+        // as before, so feed an empty list in that state.
+        data={loadingFeed ? EMPTY_POSTS : posts}
+        renderItem={renderPost}
+        keyExtractor={postKeyExtractor}
+        extraData={listExtraData}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -1303,80 +1429,66 @@ const FeedScreen = ({navigation}: any) => {
             tintColor="#1A3A6B"
           />
         }
-        onScroll={({nativeEvent}) => {
-          const {layoutMeasurement, contentOffset, contentSize} = nativeEvent;
-          if (
-            layoutMeasurement.height + contentOffset.y >= contentSize.height - 200 &&
-            !loadingMore &&
-            hasMore
-          ) {
-            loadFeed(page + 1);
-          }
-        }}
-        scrollEventThrottle={400}>
-
-        <CreatePostBar myAvatar={myAvatar} onPress={() => navigation?.navigate('CreatePost')} />
-
-        {error ? (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity onPress={loadInitialData}>
-              <Text style={styles.retryText}>{'Retry'}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {loadingFeed ? (
+        // PERF: onEndReached replaces the manual onScroll/scrollEventThrottle
+        // pagination (guarded + ref-locked in handleEndReached).
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.5}
+        // PERF: render/window tuning for faster first render and smoother scroll.
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ListHeaderComponent={
           <>
-            <PostSkeleton />
-            <PostSkeleton />
-            <PostSkeleton />
+            <CreatePostBar myAvatar={myAvatar} onPress={() => navigation?.navigate('CreatePost')} />
+
+            {error ? (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorText}>{error}</Text>
+                <TouchableOpacity onPress={loadInitialData}>
+                  <Text style={styles.retryText}>{'Retry'}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {loadingFeed ? (
+              <>
+                <PostSkeleton />
+                <PostSkeleton />
+                <PostSkeleton />
+              </>
+            ) : posts.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>{'📋'}</Text>
+                <Text style={styles.emptyTitle}>{'No posts yet'}</Text>
+                <Text style={styles.emptySubtitle}>
+                  {'Be the first to share something with the community!'}
+                </Text>
+              </View>
+            ) : null}
           </>
-        ) : posts.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>{'📋'}</Text>
-            <Text style={styles.emptyTitle}>{'No posts yet'}</Text>
-            <Text style={styles.emptySubtitle}>
-              {'Be the first to share something with the community!'}
-            </Text>
-          </View>
-        ) : (
-          posts.map(post => (
-            <PostCard
-              key={post.id}
-              post={post}
-              myUserId={myUserId}
-              myName={myName}
-              myAvatar={myAvatar}
-              onLike={handleLike}
-              onCommentPress={(id: number) =>
-                setExpandedPostId(prev => (prev === id ? null : id))
-              }
-              onCommentPosted={handleCommentPosted}
-              expandedId={expandedPostId}
-              onDotsPress={handleDotsPress}
+        }
+        ListFooterComponent={
+          <>
+            <NewestMembersSection
+              members={otherMembers}
+              loading={loadingMembers}
+              followBusy={followBusy}
+              onFollow={handleFollow}
               navigation={navigation}
             />
-          ))
-        )}
 
-        <NewestMembersSection
-          members={members.filter(m => m.id !== myUserId)}
-          loading={loadingMembers}
-          followBusy={followBusy}
-          onFollow={handleFollow}
-          navigation={navigation}
-        />
+            {!loadingFeed && loadingMore && hasMore && posts.length > 0 && (
+              <ActivityIndicator
+                color="#1A3A6B"
+                style={{marginVertical: 16}}
+              />
+            )}
 
-        {!loadingFeed && loadingMore && hasMore && posts.length > 0 && (
-          <ActivityIndicator
-            color="#1A3A6B"
-            style={{marginVertical: 16}}
-          />
-        )}
-
-        <View style={{height: 100}} />
-      </ScrollView>
+            <View style={{height: 100}} />
+          </>
+        }
+      />
 
       {/* Gradient FAB — 16px above nav bar, 16px from right edge.
           FeedScreen is tab content inside BottomTabNavigator, so its own

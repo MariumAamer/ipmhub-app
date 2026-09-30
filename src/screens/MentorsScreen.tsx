@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, ActivityIndicator, FlatList, Modal, Animated, Dimensions, Alert, Linking} from 'react-native';
+import React, {useState, useEffect, useCallback} from 'react';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, ActivityIndicator, FlatList, Modal, Animated, Dimensions, Alert, Linking, Platform} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle, G, Defs, ClipPath, Rect} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
@@ -178,7 +178,8 @@ const TitleDivider = () => (
 // detail screen, which is a separate file to be built later.
 const MAX_VISIBLE_TAGS = 3;
 
-const MentorCard = ({mentor, onRequestCall, navigation}: {mentor: MentorItem; onRequestCall: (m: MentorItem) => void; navigation: any}) => {
+// PERF: memoized — props are the mentor object plus stable handlers/navigation.
+const MentorCard = React.memo(({mentor, onRequestCall, navigation}: {mentor: MentorItem; onRequestCall: (m: MentorItem) => void; navigation: any}) => {
   const visibleTags = mentor.tags.slice(0, MAX_VISIBLE_TAGS);
   const extraTagCount = mentor.tags.length - visibleTags.length;
   const hasTitle = mentor.title.length > 0;
@@ -280,7 +281,7 @@ const MentorCard = ({mentor, onRequestCall, navigation}: {mentor: MentorItem; on
       </TouchableOpacity>
     </TouchableOpacity>
   );
-};
+});
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────
 const MentorSkeleton = () => (
@@ -417,6 +418,10 @@ const MentorshipPromoCard = ({navigation}: {navigation: any}) => (
   </LinearGradient>
 );
 
+// PERF: stable module-level refs for FlatList props.
+const EMPTY_MENTORS: MentorItem[] = [];
+const mentorKeyExtractor = (m: MentorItem) => String(m.id);
+
 // ─── Main Screen ──────────────────────────────────────────────────────────
 const MentorsScreen = ({navigation}: any) => {
   const [mentors, setMentors] = useState<MentorItem[]>([]);
@@ -458,7 +463,9 @@ const MentorsScreen = ({navigation}: any) => {
   // Request a Call opens the mentor's Calendly link (calendly_link, falling
   // back to request_call_url) once the backend field is populated — both
   // are confirmed real fields but empty for every mentor seen so far.
-  const handleRequestCall = (mentor: MentorItem) => {
+  // PERF: useCallback with [] — only uses its argument + module APIs (no stale
+  // closure possible), keeps the memoized MentorCard props stable.
+  const handleRequestCall = useCallback((mentor: MentorItem) => {
     const url = mentor.calendlyLink || mentor.requestCallUrl;
     if (url) {
       Linking.openURL(url).catch(() =>
@@ -470,17 +477,41 @@ const MentorsScreen = ({navigation}: any) => {
         `A booking link for ${mentor.name} hasn't been set up yet. We're working on this feature.`,
       );
     }
-  };
+  }, []);
 
   const getFilterLabel = (list: FilterOption[], value: string) =>
     list.find(i => i.value === value)?.name || 'All';
+
+  // PERF: rows keyed by String(id); each row gets the 16px side gutter that the old
+  // `listWrap` container provided (header/footer keep full width for hero/promo).
+  const renderMentor = useCallback(
+    ({item}: {item: MentorItem}) => (
+      <View style={styles.itemWrap}>
+        <MentorCard mentor={item} onRequestCall={handleRequestCall} navigation={navigation} />
+      </View>
+    ),
+    [handleRequestCall, navigation],
+  );
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      {/* PERF: virtualized list replaces ScrollView + mentors.map. No pull-to-refresh
+          and no onScroll pagination existed here, so none added (Load More button kept). */}
+      <FlatList
+        data={loading ? EMPTY_MENTORS : mentors}
+        renderItem={renderMentor}
+        keyExtractor={mentorKeyExtractor}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        // (no extraData needed: rows read only `item`; handlers/navigation are stable)
+        ListHeaderComponent={
+        <>
         {/* Hero */}
         <View style={styles.hero}>
           <Text style={styles.heroTitle}>{'IPM Mentorship Programme'}</Text>
@@ -533,7 +564,8 @@ const MentorsScreen = ({navigation}: any) => {
           </ScrollView>
         </View>
 
-        {/* Mentor list */}
+        {/* Mentor list top: skeletons / empty state (items render via renderItem).
+            listWrap keeps its paddingTop: 8 gap above the first card. */}
         <View style={styles.listWrap}>
           {loading ? (
             <>
@@ -545,13 +577,14 @@ const MentorsScreen = ({navigation}: any) => {
               <Text style={styles.emptyTitle}>{'No mentors found'}</Text>
               <Text style={styles.emptySubtitle}>{'Try adjusting your filters.'}</Text>
             </View>
-          ) : (
-            mentors.map(mentor => (
-              <MentorCard key={mentor.id} mentor={mentor} onRequestCall={handleRequestCall} navigation={navigation} />
-            ))
-          )}
-
-          {!loading && hasMore && (
+          ) : null}
+        </View>
+        </>
+        }
+        ListFooterComponent={
+        <>
+        {!loading && hasMore && (
+          <View style={styles.itemWrap}>
             <TouchableOpacity
               style={styles.loadMoreBtn}
               onPress={() => loadMentors(page + 1)}
@@ -562,13 +595,15 @@ const MentorsScreen = ({navigation}: any) => {
                 <Text style={styles.loadMoreText}>{'Load More Mentors'}</Text>
               )}
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        )}
 
         <MentorshipPromoCard navigation={navigation} />
 
         <View style={{height: 40}} />
-      </ScrollView>
+        </>
+        }
+      />
 
       <FilterSheet
         visible={activeSheet === 'industry'}
@@ -669,6 +704,8 @@ const styles = StyleSheet.create({
   filterChevron: {fontSize: 10, color: '#8F9098'},
 
   listWrap: {paddingHorizontal: 16, paddingTop: 8},
+  // PERF: per-row / footer-button side gutter (was listWrap's paddingHorizontal).
+  itemWrap: {paddingHorizontal: 16},
 
   // Figma "main card": padding 16, align-items center, gap 15, align-self
   // stretch, radius 15, bg #FFF, shadow 0 0 15 rgba(70,177,228,0.25).

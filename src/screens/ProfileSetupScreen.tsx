@@ -244,6 +244,8 @@ const ProfileSetupScreen = ({navigation}: any) => {
       const data = cached || (await fetchCountries());
       if (!cached) await cacheCountries(data);
       setCountries(data);
+      // PERF: show the country list as soon as it's loaded; GPS/permission/reverse-geocode (up to ~10s+) runs in the background and only adds the "Based on your location" row.
+      setLoadingCountries(false);
       await detectUserCountry(data);
     } catch {} finally { setLoadingCountries(false); }
   };
@@ -469,7 +471,8 @@ const ProfileSetupScreen = ({navigation}: any) => {
             <Text style={styles.searchIcon}>{'🔍'}</Text>
             <TextInput style={styles.searchInput} placeholder="Type your country name" placeholderTextColor="#999" value={countrySearch} onChangeText={setCountrySearch} />
           </View>
-          {loadingCountries || detectingLocation ? (
+          {/* PERF: don't block the list on location detection; only on the country list itself */}
+          {loadingCountries ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#0C4D91" />
               <Text style={styles.loadingText}>{detectingLocation ? 'Detecting your location...' : 'Loading countries...'}</Text>

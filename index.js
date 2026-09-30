@@ -3,6 +3,9 @@
  */
 
 import 'react-native-gesture-handler';
+// Must load before any screen/API module so every fetch() in the app goes
+// through the timeout / de-dupe / short-cache layer.
+import './src/api/networkLayer';
 
 import {AppRegistry} from 'react-native';
 import App from './App';

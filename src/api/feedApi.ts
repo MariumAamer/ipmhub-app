@@ -1,11 +1,11 @@
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from './credentialsCache';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
 // ─── Token helper ─────────────────────────────────────────────────────────────
 export const getToken = async (): Promise<string | null> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds?.password) return null;
     return JSON.parse(creds.password)?.token ?? null;
   } catch {
@@ -460,7 +460,7 @@ const mapMember = (item: any): Member => ({
 // ─── GET feed posts ───────────────────────────────────────────────────────────
 export const getFeed = async (page = 1): Promise<FeedPost[]> => {
   const headers = await authHeaders();
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${BASE}/buddyboss/v1/activity?per_page=15&page=${page}&display_comments=false`,
     {headers},
   );

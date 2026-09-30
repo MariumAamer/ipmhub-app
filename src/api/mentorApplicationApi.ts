@@ -140,8 +140,8 @@ export const submitMentorApplication = async (
   data: MentorApplicationData,
 ): Promise<boolean> => {
   try {
-    const token = await getToken();
-    const userId = await getUserIdFromToken();
+    // PERF: independent lookups - run in parallel instead of sequentially.
+    const [token, userId] = await Promise.all([getToken(), getUserIdFromToken()]);
 
     const formData = new FormData();
     formData.append('user_id', String(userId ?? ''));

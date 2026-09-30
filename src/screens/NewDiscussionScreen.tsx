@@ -113,18 +113,18 @@ const NewDiscussionScreen = ({navigation}: any) => {
     try {
       // Upload any selected media first — createTopic() needs the returned
       // media ids, not the local file uris.
-      const mediaIds = (
-        await Promise.all(images.map(uri => uploadForumMedia(uri, 'photo.jpg', 'image/jpeg')))
-      ).filter((id): id is number => id != null);
+      // PERF: image, video and document uploads are independent - run them concurrently instead of one after another.
+      const [imageUploads, videoUpload, documentUpload] = await Promise.all([
+        Promise.all(images.map(uri => uploadForumMedia(uri, 'photo.jpg', 'image/jpeg'))),
+        video ? uploadForumMedia(video.uri, video.name, 'video/mp4') : Promise.resolve(null),
+        document ? uploadForumMedia(document.uri, document.name, document.type) : Promise.resolve(null),
+      ]);
+      const mediaIds = imageUploads.filter((id): id is number => id != null);
       const videoIds = video
-        ? [await uploadForumMedia(video.uri, video.name, 'video/mp4')].filter(
-            (id): id is number => id != null,
-          )
+        ? [videoUpload].filter((id): id is number => id != null)
         : [];
       const documentIds = document
-        ? [await uploadForumMedia(document.uri, document.name, document.type)].filter(
-            (id): id is number => id != null,
-          )
+        ? [documentUpload].filter((id): id is number => id != null)
         : [];
 
       // Tags now use Robby's confirmed spec: comma-separated tag NAMES sent

@@ -253,7 +253,13 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
     };
   }, [showGifPicker, gifQuery]);
 
+  // PERF: the mount effect above already runs doSearch(''); skip this debounced effect's initial run so the same request isn't fired twice on open.
+  const skipInitialSearchRef = useRef(true);
   useEffect(() => {
+    if (skipInitialSearchRef.current) {
+      skipInitialSearchRef.current = false;
+      return;
+    }
     const timer = setTimeout(() => doSearch(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);

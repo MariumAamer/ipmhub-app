@@ -3,7 +3,7 @@ import React, {useState, useEffect, useCallback} from 'react';
 import {View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Image} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from '../api/credentialsCache';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -20,7 +20,8 @@ const NoPostsIcon = () => (
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const getToken = async (): Promise<string | null> => {
   try {
-    const c = await Keychain.getGenericPassword();
+    // PERF: in-memory cached credentials instead of a native Keychain read per call.
+    const c = await getCachedCredentials();
     if (!c?.password) return null;
     return JSON.parse(c.password)?.token ?? null;
   } catch {

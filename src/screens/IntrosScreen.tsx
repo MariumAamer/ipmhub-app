@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect, useCallback} from 'react';
-import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Alert, Dimensions} from 'react-native';
+import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
+import {View, Text, StyleSheet, ScrollView, FlatList, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Alert, Dimensions, Platform} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -20,6 +20,9 @@ import {
 import {getUserIdFromToken} from '../api/profileApi';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
+
+// PERF: stable empty array so FlatList `data` identity doesn't change while loading.
+const EMPTY_POSTS: IntroPost[] = [];
 
 // Card width leaves the next card peeking in from the right edge, matching Figma.
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
@@ -62,7 +65,7 @@ const SmileyIcon = () => (
 // NOTE: 'Expert Insights' card type has no backing data source on this site —
 // no matching WP category or post type exists. Only Articles (Blog post,
 // category id 37) and E-Book (Ebooks, category id 51) are wired to real data.
-const InsightCard = ({item}: any) => {
+const InsightCard = React.memo(({item}: any) => {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -101,20 +104,57 @@ const InsightCard = ({item}: any) => {
       </TouchableOpacity>
     </View>
   );
-};
+});
+
+// ─── New Member Insights section (horizontal strip) ──────────────────────────
+// Extracted unchanged from the old posts.map() so it can render inside a
+// FlatList row. `rowIndex` keeps the original per-row key suffix.
+const InsightsStrip = React.memo(({insights, rowIndex}: {insights: any[]; rowIndex: number}) => (
+  <View style={styles.insightsSection}>
+    <Text style={styles.insightsTitle}>{'New Member Insights'}</Text>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      decelerationRate="fast"
+      snapToInterval={INSIGHT_CARD_WIDTH + 16}
+      contentContainerStyle={styles.insightsScroll}>
+      {insights.map(item => (
+        <InsightCard key={`${item.type}-${item.id}-${rowIndex}`} item={item} />
+      ))}
+    </ScrollView>
+  </View>
+));
 
 // ─── Intro Post Card ──────────────────────────────────────────────────────────
-const IntroCard = ({post, myAvatar, navigation}: any) => {
-  const [textExpanded, setTextExpanded] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<any[]>(post.embeddedComments ?? []);
+// PERF: memoized. `stateCache` exists because FlatList unmounts rows that
+// scroll far out of the window, and this card keeps its like / comments /
+// draft-text state locally (unlike the old ScrollView where every card stayed
+// mounted). On unmount the latest state is saved into the screen-level ref
+// and restored on re-mount, so scrolling away and back does not revert an
+// optimistic like, a just-posted comment, or an unsent draft.
+const IntroCard = React.memo(({post, myAvatar, navigation, stateCache}: any) => {
+  const saved = stateCache?.current?.[post.id];
+  const [textExpanded, setTextExpanded] = useState<boolean>(saved?.textExpanded ?? false);
+  const [commentText, setCommentText] = useState<string>(saved?.commentText ?? '');
+  const [showComments, setShowComments] = useState<boolean>(saved?.showComments ?? false);
+  const [comments, setComments] = useState<any[]>(saved?.comments ?? post.embeddedComments ?? []);
   const [loadingComments, setLoadingComments] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [commentCount, setCommentCount] = useState(post.comments ?? post.commentCount ?? 0);
-  const [liked, setLiked] = useState(post.liked ?? false);
-  const [likeCount, setLikeCount] = useState(post.likes ?? 0);
+  const [commentCount, setCommentCount] = useState(saved?.commentCount ?? post.comments ?? post.commentCount ?? 0);
+  const [liked, setLiked] = useState(saved?.liked ?? post.liked ?? false);
+  const [likeCount, setLikeCount] = useState(saved?.likeCount ?? post.likes ?? 0);
   const [liking, setLiking] = useState(false);
+
+  // PERF: always-latest snapshot, flushed to the cache only on unmount.
+  const snapshot = useRef<any>(null);
+  snapshot.current = {textExpanded, commentText, showComments, comments, commentCount, liked, likeCount};
+  useEffect(
+    () => () => {
+      if (stateCache?.current) stateCache.current[post.id] = snapshot.current;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const displayedContent = textExpanded ? post.fullContent : post.content;
 
@@ -382,7 +422,7 @@ const IntroCard = ({post, myAvatar, navigation}: any) => {
       </View>
     </View>
   );
-};
+});
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 const PostSkeleton = () => (
@@ -421,6 +461,10 @@ const IntrosScreen = ({navigation}: any) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
+  // PERF: per-card state saved when a FlatList row unmounts (see IntroCard).
+  const cardStateCache = useRef<Record<string, any>>({});
+  // PERF: sync lock so onEndReached can't start two page fetches in one tick.
+  const endReachedLock = useRef(false);
 
   useEffect(() => {
     loadAll();
@@ -446,12 +490,16 @@ const IntrosScreen = ({navigation}: any) => {
     else setLoadingMore(true);
     try {
       const data = await getIntroductions(pageNum);
-      if (reset) setPosts(data);
-      else setPosts(prev => [...prev, ...data]);
+      if (reset) {
+        // Fresh server data — drop any saved per-card state from the old list.
+        cardStateCache.current = {};
+        setPosts(data);
+      } else setPosts(prev => [...prev, ...data]);
       setHasMore(data.length === 15);
       setPage(pageNum);
     } catch {
     } finally {
+      endReachedLock.current = false;
       setLoading(false);
       setLoadingMore(false);
       setRefreshing(false);
@@ -477,31 +525,23 @@ const IntrosScreen = ({navigation}: any) => {
         const posts = await res.json();
         if (!Array.isArray(posts)) return [];
 
-        return Promise.all(
-          posts.map(async (p: any) => {
+        // PERF: build cards from the embedded WP author immediately — the
+        // per-post getMemberByUsername lookups (N+1) are done afterwards in
+        // the background (see enrichInsights below) instead of blocking the
+        // Insights section from appearing until every lookup has returned.
+        return posts.map((p: any) => {
             const wpAuthor = p._embedded?.author?.[0];
             const username = wpAuthor?.slug || wpAuthor?.name || '';
-            let name = wpAuthor?.name || 'IPM Member';
-            let avatar =
+            const name = wpAuthor?.name || 'IPM Member';
+            const avatar =
               wpAuthor?.avatar_urls?.['96'] ||
               `https://www.gravatar.com/avatar/${p.id}?s=96&d=identicon`;
-            let role = 'IPM Member';
-            let flag = '';
-
-            try {
-              const member = await getMemberByUsername(username);
-              if (member) {
-                name = resolveFullName(member, name);
-                avatar = member.avatar_urls?.thumb || avatar;
-                const groups = member?.xprofile?.groups?.['1']?.fields;
-                role = groups?.['1097']?.value?.raw || role;
-                const country = groups?.['1099']?.value?.raw || '';
-                flag = countryFlag(country);
-              }
-            } catch {}
+            const role = 'IPM Member';
+            const flag = '';
 
             return {
               id: p.id,
+              username,
               type: label,
               // resolveFullName() already decodes entities; the wpAuthor.name
               // fallback above and role/title below did not — WordPress post
@@ -521,8 +561,7 @@ const IntrosScreen = ({navigation}: any) => {
               // this file) strips tags AND decodes entities.
               title: stripHtml(p.title?.rendered || '') || 'Untitled',
             };
-          }),
-        );
+          });
       };
 
       const [articles, ebooks] = await Promise.all([
@@ -530,7 +569,33 @@ const IntrosScreen = ({navigation}: any) => {
         fetchCategory(51, 'E-Book'),
       ]);
 
-      setInsights([...articles, ...ebooks]);
+      const baseInsights = [...articles, ...ebooks];
+      setInsights(baseInsights);
+      setLoadingInsights(false);
+
+      // PERF: background enrichment — same member lookups as before (real
+      // name/avatar/role/flag), all in parallel, applied after first paint.
+      const enriched = await Promise.all(
+        baseInsights.map(async (item: any) => {
+          try {
+            const member = await getMemberByUsername(item.username);
+            if (!member) return item;
+            const groups = member?.xprofile?.groups?.['1']?.fields;
+            const role = groups?.['1097']?.value?.raw || 'IPM Member';
+            const country = groups?.['1099']?.value?.raw || '';
+            return {
+              ...item,
+              name: stripHtml(resolveFullName(member, item.name)),
+              role: stripHtml(role),
+              flag: countryFlag(country),
+              avatar: member.avatar_urls?.thumb || item.avatar,
+            };
+          } catch {
+            return item;
+          }
+        }),
+      );
+      setInsights(enriched);
     } catch {
     } finally {
       setLoadingInsights(false);
@@ -542,63 +607,104 @@ const IntrosScreen = ({navigation}: any) => {
     loadAll();
   }, []);
 
+  // PERF: replaces the manual onScroll pagination. Same loader + same guards
+  // (!loadingMore && hasMore), plus: not while (re)loading / empty (onEndReached
+  // can fire on an empty list right after layout; onScroll never did), and a
+  // sync ref lock against double-firing before `loadingMore` re-renders.
+  // Re-created each render on purpose so it always sees the latest page/hasMore.
+  const handleEndReached = () => {
+    if (endReachedLock.current || loading || loadingMore || !hasMore || posts.length === 0) return;
+    endReachedLock.current = true;
+    loadPosts(page + 1);
+  };
+
+  const keyExtractor = useCallback((post: IntroPost) => String(post.id), []);
+
+  // PERF: row = IntroCard (+ the Insights strip after every 3rd post, as before).
+  // Reads `insights`, `myAvatar`, `navigation` -> all in deps, so no stale closure.
+  const renderItem = useCallback(
+    ({item, index}: {item: IntroPost; index: number}) => (
+      <>
+        <IntroCard post={item} myAvatar={myAvatar} navigation={navigation} stateCache={cardStateCache} />
+        {(index + 1) % 3 === 0 && insights.length > 0 && (
+          <InsightsStrip insights={insights} rowIndex={index} />
+        )}
+      </>
+    ),
+    [insights, myAvatar, navigation],
+  );
+  // PERF: state that row rendering reads (also invalidates rows if it changes).
+  const rowExtraData = useMemo(() => ({insights, myAvatar}), [insights, myAvatar]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
-      <ScrollView
+      {/* PERF: was <ScrollView> + posts.map(...). Now a virtualized FlatList;
+          hero / skeletons / empty state -> ListHeaderComponent, fallback
+          insights / Load More / spacer -> ListFooterComponent. No TextInput
+          lives in the header/footer (the comment inputs are inside rows and
+          rows are keyed by post.id), so nothing here can steal keyboard focus. */}
+      <FlatList
+        data={loading ? EMPTY_POSTS : posts}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        extraData={rowExtraData}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1A3A6B']} />
         }
-        onScroll={({nativeEvent}) => {
-          const {layoutMeasurement, contentOffset, contentSize} = nativeEvent;
-          if (
-            layoutMeasurement.height + contentOffset.y >= contentSize.height - 200 &&
-            !loadingMore &&
-            hasMore
-          ) {
-            loadPosts(page + 1);
-          }
-        }}
-        scrollEventThrottle={400}>
-
-        {/* Hero — Figma: Heading/H2, 18px 700, #192647, letterSpacing 0.09 */}
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>
-            {'Introduce Yourself to Our Growing Community'}
-          </Text>
-          <View style={styles.heroUnderline} />
-          <Text style={styles.heroSubtitle}>
-            {"Welcome! Share a bit about yourself, we can't wait to learn more about you."}
-          </Text>
-        </View>
-
-        {/* Posts, with New Member Insights re-inserted after every 3 posts so
-            they don't get buried at the bottom once infinite scroll/Load More
-            pulls in many pages of intros. */}
-        {loading ? (
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.5}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ListHeaderComponent={
           <>
-            <PostSkeleton />
-            <PostSkeleton />
+            {/* Hero — Figma: Heading/H2, 18px 700, #192647, letterSpacing 0.09 */}
+            <View style={styles.hero}>
+              <Text style={styles.heroTitle}>
+                {'Introduce Yourself to Our Growing Community'}
+              </Text>
+              <View style={styles.heroUnderline} />
+              <Text style={styles.heroSubtitle}>
+                {"Welcome! Share a bit about yourself, we can't wait to learn more about you."}
+              </Text>
+            </View>
+
+            {/* Posts (rows below), with New Member Insights re-inserted after
+                every 3 posts so they don't get buried at the bottom once
+                infinite scroll/Load More pulls in many pages of intros. */}
+            {loading ? (
+              <>
+                <PostSkeleton />
+                <PostSkeleton />
+              </>
+            ) : posts.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>{'👋'}</Text>
+                <Text style={styles.emptyTitle}>{'No intros yet'}</Text>
+                <Text style={styles.emptySubtitle}>
+                  {'Be the first to introduce yourself!'}
+                </Text>
+              </View>
+            ) : null}
           </>
-        ) : posts.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>{'👋'}</Text>
-            <Text style={styles.emptyTitle}>{'No intros yet'}</Text>
-            <Text style={styles.emptySubtitle}>
-              {'Be the first to introduce yourself!'}
-            </Text>
-          </View>
-        ) : (
-          posts.map((post, index) => (
-            <React.Fragment key={post.id}>
-              <IntroCard post={post} myAvatar={myAvatar} navigation={navigation} />
-              {(index + 1) % 3 === 0 && insights.length > 0 && (
-                <View style={styles.insightsSection}>
-                  <Text style={styles.insightsTitle}>{'New Member Insights'}</Text>
+        }
+        ListFooterComponent={
+          <>
+            {/* Fallback: if there aren't at least 3 posts yet, still surface
+                Insights once rather than losing them entirely. Shown while
+                insights are loading too, so the section doesn't pop in/out. */}
+            {!loading && posts.length < 3 && (loadingInsights || insights.length > 0) && (
+              <View style={styles.insightsSection}>
+                <Text style={styles.insightsTitle}>{'New Member Insights'}</Text>
+                {loadingInsights ? (
+                  <ActivityIndicator color="#1A3A6B" style={{paddingVertical: 20}} />
+                ) : (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -606,53 +712,30 @@ const IntrosScreen = ({navigation}: any) => {
                     snapToInterval={INSIGHT_CARD_WIDTH + 16}
                     contentContainerStyle={styles.insightsScroll}>
                     {insights.map(item => (
-                      <InsightCard key={`${item.type}-${item.id}-${index}`} item={item} />
+                      <InsightCard key={`${item.type}-${item.id}-fallback`} item={item} />
                     ))}
                   </ScrollView>
-                </View>
-              )}
-            </React.Fragment>
-          ))
-        )}
-
-        {/* Fallback: if there aren't at least 3 posts yet, still surface
-            Insights once rather than losing them entirely. Shown while
-            insights are loading too, so the section doesn't pop in/out. */}
-        {!loading && posts.length < 3 && (loadingInsights || insights.length > 0) && (
-          <View style={styles.insightsSection}>
-            <Text style={styles.insightsTitle}>{'New Member Insights'}</Text>
-            {loadingInsights ? (
-              <ActivityIndicator color="#1A3A6B" style={{paddingVertical: 20}} />
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                decelerationRate="fast"
-                snapToInterval={INSIGHT_CARD_WIDTH + 16}
-                contentContainerStyle={styles.insightsScroll}>
-                {insights.map(item => (
-                  <InsightCard key={`${item.type}-${item.id}-fallback`} item={item} />
-                ))}
-              </ScrollView>
+                )}
+              </View>
             )}
-          </View>
-        )}
 
-        {!loading && hasMore && posts.length > 0 && (
-          <TouchableOpacity
-            style={styles.loadMoreBtn}
-            onPress={() => loadPosts(page + 1)}
-            disabled={loadingMore}>
-            {loadingMore ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.loadMoreText}>{'Load More'}</Text>
+            {!loading && hasMore && posts.length > 0 && (
+              <TouchableOpacity
+                style={styles.loadMoreBtn}
+                onPress={() => loadPosts(page + 1)}
+                disabled={loadingMore}>
+                {loadingMore ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.loadMoreText}>{'Load More'}</Text>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
-        )}
 
-        <View style={{height: 60}} />
-      </ScrollView>
+            <View style={{height: 60}} />
+          </>
+        }
+      />
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
     </View>

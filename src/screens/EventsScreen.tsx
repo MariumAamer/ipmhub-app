@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect, useCallback, useMemo} from 'react';
+import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image, TouchableOpacity,
   StatusBar, ActivityIndicator, Linking, Alert, TextInput,
@@ -266,10 +266,13 @@ const EventsScreen = ({navigation}: any) => {
     return unsub;
   }, [navigation]);
 
+  const eventsLoadedRef = useRef(false);
   const loadEvents = useCallback(async (pageNum = 1, reset = false) => {
-    reset ? setLoading(true) : setLoadingMore(true);
+    // PERF: don't blank the list with skeletons when returning to this tab if events are
+    // already loaded — keep showing them and swap in the fresh data when it arrives.
+    if (reset) {if (!eventsLoadedRef.current) setLoading(true);} else setLoadingMore(true);
     const result = await getEvents(pageNum);
-    if (reset) {setUpcomingEvents(result.events); setPastEvents(result.pastEvents);}
+    if (reset) {eventsLoadedRef.current = true; setUpcomingEvents(result.events); setPastEvents(result.pastEvents);}
     else {setUpcomingEvents(p => [...p, ...result.events]); setPastEvents(p => [...p, ...result.pastEvents]);}
     setHasMore(result.hasMore);
     setPage(pageNum);

@@ -41,6 +41,24 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Required by react-native-email-link on iOS: canOpenURL() only returns
+	     true for schemes listed here, so without this the email-app picker
+	     finds no clients and openInbox() fails silently. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>message</string>
+		<string>googlegmail</string>
+		<string>ms-outlook</string>
+		<string>readdle-spark</string>
+		<string>airmail</string>
+		<string>ymail</string>
+		<string>protonmail</string>
+		<string>superhuman</string>
+		<string>inbox-gmail</string>
+		<string>fastmail</string>
+		<string>x-dispatch</string>
+		<string>msoutlook</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>

@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import {apiRequest, BASE_URL} from './apiClient';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from './credentialsCache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Webinar tag taxonomy ───────────────────────────────────────────────────
@@ -175,7 +175,8 @@ const decodeEntities = (str: string): string =>
 
 const getStoredUserId = async (): Promise<string> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    // PERF: in-memory credentials cache instead of a native Keychain read per call.
+    const creds = await getCachedCredentials();
     if (!creds) return '';
     const user = JSON.parse(creds.password);
     return String(user?.id ?? user?.userId ?? user?.user_id ?? '');
@@ -216,7 +217,8 @@ const parseXprofile = (xprofile: any): Record<string, string> => {
 
 export const getStoredUserFields = async (): Promise<Partial<EventRegistrationPayload>> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    // PERF: in-memory credentials cache instead of a native Keychain read per call.
+    const creds = await getCachedCredentials();
     if (!creds) return {};
     const user = JSON.parse(creds.password);
     const email  = user?.email ?? user?.user_email ?? '';
@@ -387,7 +389,7 @@ export const getRecommendedEvents = async (page = 1): Promise<{events: EventItem
   try {
     const json = await apiRequest(`${BASE_URL}/custom/v1/recommended-upcoming-events?page=${page}&per_page=${PAGE_SIZE}`);
     const items: any[] = Array.isArray(json) ? json : json.events ?? json.data ?? [];
-    if (__DEV__) console.log('[eventsApi] upcoming count:', items.length, 'raw[0]:', JSON.stringify(items[0])?.slice(0, 200));
+    // PERF: removed per-load dev console.log that JSON.stringify'd a raw event object.
     return {events: items.map(e => mapEvent(e, false)), hasMore: items.length === PAGE_SIZE};
   } catch (err) {
     console.error('[eventsApi] getRecommendedEvents', err);
@@ -510,10 +512,11 @@ export const toggleSavedWebinar = async (webinarId: string): Promise<boolean> =>
 };
 
 export const getEvents = async (page = 1): Promise<GetEventsResult> => {
-  const userId = await getStoredUserId();
+  // PERF: upcoming events don't depend on userId — start that request immediately
+  // instead of waiting for the Keychain lookup first; past events chain off userId.
   const [upcoming, past] = await Promise.all([
     getRecommendedEvents(page),
-    getPastEventRecordings(userId, page),
+    getStoredUserId().then(userId => getPastEventRecordings(userId, page)),
   ]);
   return {events: upcoming.events, pastEvents: past.events, hasMore: upcoming.hasMore || past.hasMore};
 };

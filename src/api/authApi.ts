@@ -1,5 +1,10 @@
 /* eslint-disable prettier/prettier */
 import * as Keychain from 'react-native-keychain';
+import {
+  getCachedCredentials,
+  invalidateCredentialsCache,
+} from './credentialsCache';
+import {clearNetworkCache} from './networkLayer';
 
 const BASE_URL = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -34,7 +39,9 @@ const extractLink = (msg: string): string | null => {
 };
 
 const saveUser = async (user: AuthUser) => {
+  invalidateCredentialsCache();
   await Keychain.setGenericPassword(user.email, JSON.stringify(user));
+  invalidateCredentialsCache();
 };
 
 // ─── Hermes-safe base64 decode (atob not available in React Native) ───────────
@@ -105,7 +112,6 @@ export const loginUser = async (
     username: data.user_nicename,
     userId,
   };
-  console.log('AUTH TOKEN:', user.token); // TEMP — remove before commit
   await saveUser(user);
   return user;
 };
@@ -188,7 +194,6 @@ const buildSocialAuthUser = async (data: any): Promise<AuthUser> => {
     username,
     userId: data.user_id || extractUserIdFromToken(data.token),
   };
-  console.log('AUTH TOKEN:', user.token); // TEMP — remove before commit
   await saveUser(user);
   return user;
 };
@@ -465,7 +470,7 @@ export const getPostAuthRoute = async (
 // ─── Token helpers ────────────────────────────────────────────────────────────
 export const getStoredUser = async (): Promise<AuthUser | null> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    const creds = await getCachedCredentials();
     if (!creds?.password) return null;
     return JSON.parse(creds.password) as AuthUser;
   } catch {
@@ -479,7 +484,10 @@ export const getToken = async (): Promise<string | null> => {
 };
 
 export const logoutUser = async (): Promise<void> => {
+  invalidateCredentialsCache();
+  clearNetworkCache();
   await Keychain.resetGenericPassword();
+  invalidateCredentialsCache();
 };
 
 export const validateToken = async (token: string): Promise<boolean> => {

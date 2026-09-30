@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Mask, Rect, G } from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from '../api/credentialsCache';
 import AppHeader from '../components/AppHeader';
 import BackButton from '../components/BackButton';
 // Drives the side drawer opened by AppHeader's chevron — this screen never
@@ -29,7 +29,8 @@ import ProfileDrawer from '../components/ProfileDrawer';
 
 const getSavedToken = async (): Promise<string | null> => {
   try {
-    const creds = await Keychain.getGenericPassword();
+    // PERF: in-memory credentials cache instead of a native Keychain read on every mount.
+    const creds = await getCachedCredentials();
     if (!creds?.password) return null;
     const parsed = JSON.parse(creds.password);
     return parsed?.token ?? null;

@@ -2,7 +2,7 @@
 import React, {useState, useRef, useEffect} from 'react';
 import {View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, StatusBar, ActivityIndicator, Alert} from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from '../api/credentialsCache';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import {logoutUser} from '../api/authApi';
@@ -376,7 +376,8 @@ const AccountSettingsScreen = ({navigation}: any) => {
 
   const loadCurrentEmail = async () => {
     try {
-      const creds = await Keychain.getGenericPassword();
+      // PERF: in-memory cached credentials instead of a native Keychain read.
+      const creds = await getCachedCredentials();
       const token = creds ? JSON.parse(creds.password)?.token : null;
       if (token) {
         const res = await fetch(
@@ -417,7 +418,8 @@ const AccountSettingsScreen = ({navigation}: any) => {
     }
     setSaving(true);
     try {
-      const creds = await Keychain.getGenericPassword();
+      // PERF: in-memory cached credentials instead of a native Keychain read.
+      const creds = await getCachedCredentials();
       const token = creds ? JSON.parse(creds.password)?.token : null;
       if (!token) throw new Error('Not authenticated');
       const body: any = {};

@@ -1,10 +1,10 @@
 /* eslint-disable prettier/prettier */
-import * as Keychain from 'react-native-keychain';
+import {getCachedCredentials} from './credentialsCache';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json/buddyboss/v1';
 
 async function getToken(): Promise<string> {
-  const creds = await Keychain.getGenericPassword();
+  const creds = await getCachedCredentials();
   if (!creds) throw new Error('UNAUTHORIZED');
   const stored = JSON.parse(creds.password);
   return stored.token ?? creds.password;

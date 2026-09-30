@@ -1,6 +1,7 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Linking, Modal, FlatList} from 'react-native';
+import {useDebouncedValue} from '../hooks/useDebouncedValue';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Linking, Modal, FlatList, Platform} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -289,15 +290,20 @@ const SortSheet = ({
 };
 
 // ─── Forum topic card ─────────────────────────────────────────────────────────
-const TopicCard = ({
+// PERF: memoized; takes stable id/topic-based handlers (instead of per-row inline
+// closures) so rows only re-render when their `topic` object changes.
+const TopicCard = React.memo(({
   topic,
-  onPress,
+  onOpen,
   onMenuPress,
 }: {
   topic: ForumTopic;
-  onPress: () => void;
-  onMenuPress: () => void;
-}) => (
+  onOpen: (topicId: number) => void;
+  onMenuPress: (topic: ForumTopic) => void;
+}) => {
+  const onPress = () => onOpen(topic.id);
+  const onMenu = () => onMenuPress(topic);
+  return (
   <TouchableOpacity style={styles.forumCard} onPress={onPress} activeOpacity={0.9}>
     <View style={styles.cardHeader}>
       <Image source={{uri: topic.author.avatar}} style={styles.cardAvatar} />
@@ -312,7 +318,7 @@ const TopicCard = ({
           {topic.author.title ? `${topic.author.title}, ${topic.time}` : topic.time}
         </Text>
       </View>
-      <TouchableOpacity style={styles.moreBtn} onPress={onMenuPress}>
+      <TouchableOpacity style={styles.moreBtn} onPress={onMenu}>
         <Text style={styles.moreDots}>{'•••'}</Text>
       </TouchableOpacity>
     </View>
@@ -353,7 +359,8 @@ const TopicCard = ({
       <Text style={styles.cardJoinBtnText}>{'Join Discussion'}</Text>
     </TouchableOpacity>
   </TouchableOpacity>
-);
+  );
+});
 
 // ─── Explore Forums card (Trending / Latest — shown only for Most Popular sort) ─
 const ExploreCard = ({topic, onJoin}: {topic: ForumTopic; onJoin: () => void}) => (
@@ -383,10 +390,16 @@ const ExploreSectionLabel = ({label}: {label: string}) => (
   </MaskedView>
 );
 
+// PERF: stable module-level refs for FlatList props.
+const EMPTY_TOPICS: ForumTopic[] = [];
+const topicKeyExtractor = (t: ForumTopic) => String(t.id);
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 const ForumsScreen = ({navigation}: any) => {
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
+  // PERF: a topics request (plus author batch) used to fire on every keystroke.
+  const debouncedSearch = useDebouncedValue(search, 400);
   const [topics, setTopics] = useState<ForumTopic[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -442,7 +455,7 @@ const ForumsScreen = ({navigation}: any) => {
       try {
         const tagTermId = resolveTagTermId();
         const {topics: fetched, hasMore: more} = await getTopics(pageNum, {
-          search: search || undefined,
+          search: debouncedSearch || undefined,
           tagTermId,
           currentUserId,
           sortBy,
@@ -457,7 +470,7 @@ const ForumsScreen = ({navigation}: any) => {
         setRefreshing(false);
       }
     },
-    [activeTab, search, selectedFilters, currentUserId, sortBy],
+    [activeTab, debouncedSearch, selectedFilters, currentUserId, sortBy],
   );
 
   useEffect(() => {
@@ -513,27 +526,60 @@ const ForumsScreen = ({navigation}: any) => {
     }
   };
 
+  // PERF: stable row handlers (no per-row closures) so memoized TopicCard rows
+  // don't re-render. `navigation` is the only captured value; setMenuTopic is stable.
+  const openTopic = useCallback(
+    (topicId: number) => navigation?.navigate('ForumTopic', {topicId}),
+    [navigation],
+  );
+  const openTopicMenu = useCallback((topic: ForumTopic) => setMenuTopic(topic), []);
+  const renderTopic = useCallback(
+    ({item}: {item: ForumTopic}) => (
+      <TopicCard topic={item} onOpen={openTopic} onMenuPress={openTopicMenu} />
+    ),
+    [openTopic, openTopicMenu],
+  );
+
+  // PERF: replaces the onScroll check. Same guards as before (!loadingMore && hasMore)
+  // plus !loading (the list is empty while loading, so the end is "reached"
+  // immediately), and an in-flight ref so a burst of onEndReached calls can't
+  // request the same next page twice before state re-renders.
+  const loadMoreInFlight = useRef(false);
+  const handleEndReached = useCallback(() => {
+    if (loading || loadingMore || !hasMore || loadMoreInFlight.current) return;
+    loadMoreInFlight.current = true;
+    loadTopics(page + 1).finally(() => {
+      loadMoreInFlight.current = false;
+    });
+  }, [loading, loadingMore, hasMore, page, loadTopics]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
-      <ScrollView
+      {/* PERF: virtualized list replaces ScrollView + topics.map. Header/footer are
+          passed as ELEMENTS (not inline component functions), so React reconciles
+          them in place: the search TextInput keeps focus/keyboard across keystrokes
+          and is never remounted. */}
+      <FlatList
+        data={loading ? EMPTY_TOPICS : topics}
+        renderItem={renderTopic}
+        keyExtractor={topicKeyExtractor}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#084D92']} />
         }
-        onScroll={({nativeEvent}) => {
-          const {layoutMeasurement, contentOffset, contentSize} = nativeEvent;
-          if (
-            layoutMeasurement.height + contentOffset.y >= contentSize.height - 200 &&
-            !loadingMore &&
-            hasMore
-          ) {
-            loadTopics(page + 1);
-          }
-        }}
-        scrollEventThrottle={400}>
+        // PERF: onEndReached replaces the throttled onScroll pagination check.
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.5}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        // (no extraData needed: rows read only their `topic` prop; handlers are stable)
+        ListHeaderComponent={
+        <>
         {/* Hero */}
         <View style={styles.hero}>
           <Text style={styles.heroTitle}>{'Join the Discussion & Expand Your Network'}</Text>
@@ -652,7 +698,7 @@ const ForumsScreen = ({navigation}: any) => {
           </View>
         ) : null}
 
-        {/* Topics list */}
+        {/* Topics loading / empty state (items themselves render via renderItem) */}
         {loading ? (
           <View style={{paddingVertical: 40, alignItems: 'center'}}>
             <ActivityIndicator color="#084D92" />
@@ -664,17 +710,11 @@ const ForumsScreen = ({navigation}: any) => {
               {'Start the first discussion in this category!'}
             </Text>
           </View>
-        ) : (
-          topics.map(topic => (
-            <TopicCard
-              key={topic.id}
-              topic={topic}
-              onPress={() => navigation?.navigate('ForumTopic', {topicId: topic.id})}
-              onMenuPress={() => setMenuTopic(topic)}
-            />
-          ))
-        )}
-
+        ) : null}
+        </>
+        }
+        ListFooterComponent={
+        <>
         {!loading && hasMore && (
           <TouchableOpacity
             style={styles.loadMoreBtn}
@@ -689,7 +729,9 @@ const ForumsScreen = ({navigation}: any) => {
         )}
 
         <View style={{height: 40}} />
-      </ScrollView>
+        </>
+        }
+      />
 
       {/* Filter sheets, one per category, mounted lazily */}
       {filterSheetKey

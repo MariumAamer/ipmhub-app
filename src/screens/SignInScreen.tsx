@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useRef} from 'react';
+import React, {useState, useRef, useEffect} from 'react';
 import {
   View,
   Text,
@@ -105,6 +105,26 @@ const SignInScreen = ({navigation, route}: any) => {
   // to resend it" text in the error banner dead and unclickable.
   const [resendUrl, setResendUrl] = useState<string | null>(null);
   const passRef = useRef<TextInput>(null);
+
+  // The activation deep link does navigate('SignIn', {verified: true}). If
+  // SignIn is already in the stack (user tried to sign in before activating),
+  // React Navigation reuses that instance and only updates route.params —
+  // useState initializers above never re-run, so the old "account has not
+  // been activated" error stayed on screen and the verified banner never
+  // appeared. Re-sync state whenever the params change.
+  useEffect(() => {
+    if (route?.params?.verified) {
+      setVerified(true);
+      setError('');
+      setResendUrl(null);
+    } else if (route?.params?.activationFailed) {
+      setVerified(false);
+      setResendUrl(null);
+      setError(
+        'That activation link looks invalid or has expired. Please request a new verification email and try again.',
+      );
+    }
+  }, [route?.params?.verified, route?.params?.activationFailed]);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password) {
