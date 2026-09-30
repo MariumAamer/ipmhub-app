@@ -184,10 +184,8 @@ const SignInScreen = ({navigation, route}: any) => {
       const user = await socialLogin('google', idToken);
       await handlePostLogin(user, navigation);
     } catch (err: any) {
-      // TEMP DEBUG: show the real error/code instead of a generic message
-      // so this can be diagnosed from a screenshot alone, no Logcat needed.
       if (err.code !== statusCodes.SIGN_IN_CANCELLED)
-        setError(`DEBUG Google: code=${err?.code} msg=${err?.message}`);
+        setError('Google sign-in failed. Please try again.');
     } finally {
       setGoogleLoading(false);
     }
