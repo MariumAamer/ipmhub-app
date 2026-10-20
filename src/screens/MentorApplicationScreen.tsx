@@ -5,6 +5,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import {TIMEZONES, submitMentorApplication} from '../api/mentorApplicationApi';
+import {ChevronDownIcon} from '../components/forumsIcons';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
@@ -437,14 +438,14 @@ const MentorApplicationScreen = ({navigation}: any) => {
               <Text style={[s.selectInputText, !timezone && s.placeholderText]}>
                 {timezone || 'Select your time zone'}
               </Text>
-              <Text style={s.chevron}>{'⌄'}</Text>
+              <ChevronDownIcon color="#192546" />
             </TouchableOpacity>
             <Text style={s.fieldLabel}>{'Years of Experience*'}</Text>
             <TouchableOpacity style={s.selectInput} onPress={() => setActiveSheet('years')}>
               <Text style={[s.selectInputText, !yearsExperience && s.placeholderText]}>
                 {yearsExperience || 'Select years of experience'}
               </Text>
-              <Text style={s.chevron}>{'⌄'}</Text>
+              <ChevronDownIcon color="#192546" />
             </TouchableOpacity>
             <Text style={s.helperText}>
               {'Years working in project management roles, not total career length'}
@@ -536,7 +537,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
               <Text style={[s.selectInputText, !sessionDuration && s.placeholderText]}>
                 {sessionDuration || 'Select duration'}
               </Text>
-              <Text style={s.chevron}>{'⌄'}</Text>
+              <ChevronDownIcon color="#192546" />
             </TouchableOpacity>
 
             <Text style={s.fieldLabel}>{'Languages Spoken*'}</Text>
@@ -551,7 +552,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
               <Text style={[s.selectInputText, !responseTime && s.placeholderText]}>
                 {responseTime || 'Select response time'}
               </Text>
-              <Text style={s.chevron}>{'⌄'}</Text>
+              <ChevronDownIcon color="#192546" />
             </TouchableOpacity>
           </>
         );
@@ -566,7 +567,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
               <Text style={[s.selectInputText, !sessionsPerMonth && s.placeholderText]}>
                 {sessionsPerMonth || 'Select number of sessions'}
               </Text>
-              <Text style={s.chevron}>{'⌄'}</Text>
+              <ChevronDownIcon color="#192546" />
             </TouchableOpacity>
 
             <Text style={s.fieldLabel}>
@@ -576,7 +577,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
               <Text style={[s.selectInputText, !availability && s.placeholderText]}>
                 {availability || 'Select availability'}
               </Text>
-              <Text style={s.chevron}>{'⌄'}</Text>
+              <ChevronDownIcon color="#192546" />
             </TouchableOpacity>
           </>
         );

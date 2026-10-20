@@ -13,6 +13,7 @@
 // apiClient.ts's getToken(). All fetch calls below now attach it when
 // available, same pattern as certificationsApi.ts's authHeaders().
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {getToken} from './apiClient';
 
 const BASE_URL = 'https://hub.instituteprojectmanagement.com/wp-json';
@@ -20,6 +21,38 @@ const BASE_URL = 'https://hub.instituteprojectmanagement.com/wp-json';
 const authHeaders = async (): Promise<Record<string, string>> => {
   const token = await getToken();
   return token ? {Authorization: `Bearer ${token}`} : {};
+};
+
+// ─── Pricing country ────────────────────────────────────────────────────────
+// Every courses response reports the country the server used for pricing
+// (`pricing.country_code`). Sending it back on later calls saves the server
+// a visitor-location lookup per request (Robby, Oct 2026). Remembered in
+// memory and AsyncStorage; it self-corrects because each response reports
+// the country actually used.
+const COUNTRY_KEY = 'ipm_courses_country';
+let knownCountry: string | null | undefined; // undefined = not loaded yet
+
+const loadCountry = async (): Promise<string | null> => {
+  if (knownCountry !== undefined) return knownCountry;
+  try {
+    knownCountry = (await AsyncStorage.getItem(COUNTRY_KEY)) || null;
+  } catch {
+    knownCountry = null;
+  }
+  return knownCountry;
+};
+
+const rememberCountry = (code?: string | null): void => {
+  if (code && code !== knownCountry) {
+    knownCountry = code;
+    AsyncStorage.setItem(COUNTRY_KEY, code).catch(() => {});
+  }
+};
+
+const withCountry = async (path: string): Promise<string> => {
+  const code = await loadCountry();
+  if (!code) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}country_code=${encodeURIComponent(code)}`;
 };
 
 async function apiFetch(path: string): Promise<any> {
@@ -119,7 +152,8 @@ export interface UpcomingCoursesResponse {
 /** GET /custom/v1/courses/upcoming/tabs — tab list + counts, no course data */
 export const getUpcomingCoursesTabs = async (): Promise<CourseTab[]> => {
   try {
-    const json = await apiFetch('/custom/v1/courses/upcoming/tabs');
+    const json = await apiFetch(await withCountry('/custom/v1/courses/upcoming/tabs'));
+    rememberCountry(json?.pricing?.country_code);
     return Array.isArray(json?.tabs) ? json.tabs : [];
   } catch (err) {
     console.error('[coursesApi] getUpcomingCoursesTabs', err);
@@ -132,6 +166,9 @@ export const getUpcomingCourses = async (
   tab: string = 'all',
   page: number = 1,
   perPage: number = 10,
+  // Pass false once the tabs are already known — the server then skips
+  // building them (faster).
+  includeTabs: boolean = true,
 ): Promise<UpcomingCoursesResponse> => {
   const empty: UpcomingCoursesResponse = {
     tab,
@@ -149,8 +186,13 @@ export const getUpcomingCourses = async (
   };
   try {
     const json = await apiFetch(
-      `/custom/v1/courses/upcoming?tab=${encodeURIComponent(tab)}&page=${page}&per_page=${perPage}`,
+      await withCountry(
+        `/custom/v1/courses/upcoming?tab=${encodeURIComponent(tab)}&page=${page}&per_page=${perPage}${
+          includeTabs ? '' : '&include_tabs=false'
+        }`,
+      ),
     );
+    rememberCountry(json?.pricing?.country_code);
     return {
       tab: json?.tab ?? tab,
       format: json?.format ?? tab,
@@ -293,8 +335,11 @@ export const searchCourses = async (
   Object.entries(filters).forEach(([key, value]) => {
     if (value) qs.append(key, String(value));
   });
+  // The filter groups come from getSearchFilters(); skip building them here.
+  qs.append('include_filters', 'false');
   try {
-    const json = await apiFetch(`/custom/v1/courses/search?${qs.toString()}`);
+    const json = await apiFetch(await withCountry(`/custom/v1/courses/search?${qs.toString()}`));
+    rememberCountry(json?.pricing?.country_code);
     const merged = {...emptySearchResponse(page, per_page), ...json};
     return {
       ...merged,
@@ -326,7 +371,8 @@ export const getSearchFilters = async (
   });
   const empty = {filters: [], sort_options: [], active_filters: {}};
   try {
-    const json = await apiFetch(`/custom/v1/courses/search/filters?${qs.toString()}`);
+    const json = await apiFetch(await withCountry(`/custom/v1/courses/search/filters?${qs.toString()}`));
+    rememberCountry(json?.pricing?.country_code);
     return {
       filters: Array.isArray(json?.filters) ? json.filters : [],
       sort_options: Array.isArray(json?.sort_options) ? json.sort_options : [],

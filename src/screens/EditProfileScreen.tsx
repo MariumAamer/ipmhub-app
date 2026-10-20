@@ -3,6 +3,7 @@ import {View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar} from 'r
 import Svg, {Path, Mask, G, Rect} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import BackButton from '../components/BackButton';
 
 // ─── Exact SVG icons from Figma ───────────────────────────────────────────────
 const ProfileIcon = () => (
@@ -80,12 +81,8 @@ const EditProfileScreen = ({navigation}: any) => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.bodyPadding}>
-          {/* Back button */}
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation?.goBack()}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-              <Path d="M15 18L9 12L15 6" stroke="#444" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
-          </TouchableOpacity>
+          {/* Back button — shared 28x28 component used on every screen */}
+          <BackButton navigation={navigation} style={styles.backBtn} />
 
           {/* Title block */}
           <Text style={styles.pageTitle}>{'Edit Profile'}</Text>
@@ -118,16 +115,13 @@ const EditProfileScreen = ({navigation}: any) => {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container:   {flex: 1, backgroundColor: '#FFFFFF'},
-  bodyPadding: {paddingHorizontal: 20, paddingTop: 20},
+  // Figma: 16px page padding
+  bodyPadding: {paddingHorizontal: 16, paddingTop: 20},
 
-  backBtn: {
-    width: 32, height: 32, borderRadius: 8,
-    borderWidth: 1, borderColor: '#E0E0E0',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 20,
-  },
+  backBtn: {alignSelf: 'flex-start', marginBottom: 20},
 
   pageTitle: {
+    fontFamily: 'Runda-Bold',
     fontSize: 18,
     fontWeight: '700',
     color: '#192546',
@@ -135,6 +129,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.09,
   },
   pageSubtitle: {
+    fontFamily: 'Runda-Normal',
     fontSize: 14,
     fontWeight: '400',
     color: '#888888',
@@ -144,17 +139,24 @@ const styles = StyleSheet.create({
 
   divider: {height: 1, backgroundColor: '#F0F0F0', marginTop: 4},
 
-  sectionsContainer: {paddingHorizontal: 20, paddingTop: 4},
+  // Row spec (Figma): padding 12 20, gap 10, icon 15x15, stretch — inside the
+  // 16px page padding, so icons start 36px from the screen edge.
+  sectionsContainer: {paddingHorizontal: 16, paddingTop: 4},
   sectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 18,
-    gap: 14,
+    alignSelf: 'stretch',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    gap: 10,
+    borderRadius: 5,
   },
-  sectionIconWrap: {width: 20, alignItems: 'center'},
+  sectionIconWrap: {width: 15, height: 15, alignItems: 'center', justifyContent: 'center'},
   sectionLabel: {
     flex: 1,
+    fontFamily: 'Runda-Medium',
     fontSize: 14,
+    lineHeight: 20, // measured: Figma row is ~43.5px tall (12 + 20 + 12)
     fontWeight: '500',
     color: '#192546',
   },

@@ -24,6 +24,7 @@ import {WebView} from 'react-native-webview';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import {SearchFilterRow, FilterSheet} from '../components/forumStyleControls';
 import {
   getResources,
   getResourceTabs,
@@ -51,18 +52,6 @@ const FALLBACK_TABS: ResourceTab[] = [
 ];
 
 // ─── SVG Icons — exact from Figma ─────────────────────────────────────────────
-const SearchIcon = () => (
-  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-    <Path fillRule="evenodd" clipRule="evenodd" d="M6.42668 0.333374C3.06384 0.333374 0.333008 3.03777 0.333008 6.3796C0.333008 9.72143 3.06384 12.4258 6.42668 12.4258C7.68042 12.4258 8.84667 12.0498 9.81595 11.405L13.7914 15.3477C14.2203 15.7731 14.9146 15.7731 15.3435 15.3477C15.774 14.9207 15.774 14.2274 15.3435 13.8005L11.3936 9.88316C12.1028 8.89491 12.5203 7.68535 12.5203 6.3796C12.5203 3.03777 9.78951 0.333374 6.42668 0.333374ZM2.53084 6.3796C2.53084 4.24982 4.27246 2.5186 6.42668 2.5186C8.58089 2.5186 10.3225 4.24982 10.3225 6.3796C10.3225 8.50938 8.58089 10.2406 6.42668 10.2406C4.27246 10.2406 2.53084 8.50938 2.53084 6.3796Z" fill="#192546" />
-  </Svg>
-);
-
-const FilterIcon = () => (
-  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-    <Path fillRule="evenodd" clipRule="evenodd" d="M1.33301 3C1.33301 2.73478 1.43335 2.48043 1.61195 2.29289C1.79056 2.10536 2.0328 2 2.28539 2H13.714C13.9665 2 14.2088 2.10536 14.3874 2.29289C14.566 2.48043 14.6663 2.73478 14.6663 3C14.6663 3.26522 14.566 3.51957 14.3874 3.70711C14.2088 3.89464 13.9665 4 13.714 4H2.28539C2.0328 4 1.79056 3.89464 1.61195 3.70711C1.43335 3.51957 1.33301 3.26522 1.33301 3ZM3.43162 8C3.43162 7.73478 3.53196 7.48043 3.71057 7.29289C3.88918 7.10536 4.13142 7 4.38401 7H11.6617C11.9142 7 12.1565 7.10536 12.3351 7.29289C12.5137 7.48043 12.614 7.73478 12.614 8C12.614 8.26522 12.5137 8.51957 12.3351 8.70711C12.1565 8.89464 11.9142 9 11.6617 9H4.38401C4.13142 9 3.88918 8.89464 3.71057 8.70711C3.53196 8.51957 3.43162 8.26522 3.43162 8ZM5.87944 13.1322C5.87944 12.867 5.97978 12.6127 6.15838 12.4251C6.33699 12.2376 6.57923 12.1322 6.83182 12.1322H9.21571C9.4683 12.1322 9.71054 12.2376 9.88915 12.4251C10.0678 12.6127 10.1681 12.867 10.1681 13.1322C10.1681 13.3974 10.0678 13.6518 9.88915 13.8393C9.71054 14.0269 9.4683 14.1322 9.21571 14.1322H6.83182C6.57923 14.1322 6.33699 14.0269 6.15838 13.8393C5.97978 13.6518 5.87944 13.3974 5.87944 13.1322Z" fill="#192546" />
-  </Svg>
-);
-
 // Close (X) icon — exact from Figma. Used consistently across every sheet
 // in Resources (Filter by Category, Share, Table of Contents) so the same
 // icon/position/size doesn't have to be re-solved per screen.
@@ -95,111 +84,6 @@ const DownloadCircleIcon = () => (
     </Svg>
   </View>
 );
-
-// ─── Filter by Category Sheet ─────────────────────────────────────────────────
-const FilterSheet = ({visible, onClose, categories, selected, onSelect, onContinue}: any) => {
-  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  useEffect(() => {
-    Animated.spring(slideAnim, {
-      toValue: visible ? 0 : SCREEN_HEIGHT,
-      tension: 65,
-      friction: 11,
-      useNativeDriver: true,
-    }).start();
-  }, [visible]);
-  if (!visible) return null;
-  return (
-    <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
-      <View style={fs.backdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
-      </View>
-      <Animated.View style={[fs.sheet, {transform: [{translateY: slideAnim}]}]}>
-        <View style={fs.header}>
-          <Text style={fs.title}>{'Filter by Category'}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-            <CloseIcon size={20} />
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={categories}
-          keyExtractor={(i: ResourceCategory) => i.id || 'all'}
-          style={fs.list}
-          contentContainerStyle={fs.listContent}
-          renderItem={({item}: {item: ResourceCategory}) => (
-            <TouchableOpacity
-              style={[fs.item, selected === item.id && fs.itemActive]}
-              onPress={() => onSelect(item.id)}>
-              <Text style={fs.itemText}>{item.label}</Text>
-            </TouchableOpacity>
-          )}
-        />
-        <TouchableOpacity style={fs.btn} onPress={onContinue}>
-          <Text style={fs.btnText}>{'Continue'}</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </Modal>
-  );
-};
-
-const fs = StyleSheet.create({
-  backdrop: {...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)'},
-  sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: SCREEN_HEIGHT * 0.75,
-    paddingBottom: 32,
-  },
-  // Figma: height 56, padding 18 24 16.5 126.5, justify flex-end, gap 83.5
-  // The large asymmetric left padding + flex-end is what visually centers
-  // the title while keeping the X pinned to the right edge — a plain
-  // "justify: center" (previous implementation) pushes the X off-position.
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-end',
-    height: 56,
-    paddingTop: 18,
-    paddingRight: 24,
-    paddingBottom: 16.5,
-    paddingLeft: 126.5,
-    backgroundColor: '#FFFFFF',
-  },
-  title: {fontSize: 17, fontWeight: '700', color: '#0C4D91', fontFamily: 'Runda', marginRight: 83.5},
-  list: {maxHeight: 371},
-  // Figma: padding 0 16, no dividers between rows. Vertical spacing
-  // between rows now comes from marginBottom on `item` below instead of
-  // gap (unreliable on Android/Hermes per project rules).
-  listContent: {paddingHorizontal: 16, paddingVertical: 6},
-  item: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    marginBottom: 6,
-  },
-  itemActive: {backgroundColor: '#EEF3FB'},
-  // Figma originally specced weight 500 (no bold on any state), but
-  // confirmed via follow-up feedback that category items should be bold.
-  itemText: {
-    color: '#192546',
-    fontFamily: 'Runda',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  btn: {
-    backgroundColor: '#0C4D91',
-    marginHorizontal: 20,
-    marginTop: 16,
-    borderRadius: 50,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  btnText: {color: '#FFF', fontSize: 16, fontWeight: '700', fontFamily: 'Runda'},
-});
 
 // ─── Featured Article Card ────────────────────────────────────────────────────
 const FeaturedCard = ({item, onPress}: any) => (
@@ -343,7 +227,12 @@ const ResourcesScreen = ({navigation}: any) => {
   // Load tabs + categories once from the live endpoints (falls back to
   // static defaults above if the network calls fail) so the app always
   // reflects Robby's actual tab/category config instead of guessed values.
+  // PERF: static defaults are already showing, so wait for the first list to
+  // load instead of racing it (and each other) on the server at screen open.
+  const metaLoadedRef = useRef(false);
   useEffect(() => {
+    if (loading || metaLoadedRef.current) return;
+    metaLoadedRef.current = true;
     (async () => {
       const [liveTabs, liveCategories] = await Promise.all([
         getResourceTabs(),
@@ -352,7 +241,7 @@ const ResourcesScreen = ({navigation}: any) => {
       if (liveTabs.length) setTabs(liveTabs);
       if (liveCategories.length) setCategories(liveCategories);
     })();
-  }, []);
+  }, [loading]);
 
   useEffect(() => {
     loadResources(1, true);
@@ -496,26 +385,13 @@ const ResourcesScreen = ({navigation}: any) => {
             </View>
 
             {/* Search + Filter — Figma: height 36, padding 12 16/12, radius 5, border #8F9098 */}
-            <View style={styles.searchSection}>
-              <View style={styles.searchBar}>
-                <SearchIcon />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search Resources..."
-                  // Escalated twice already (#8F9098 -> #5C5E66) and still
-                  // read as too faint on device, so this now matches the
-                  // typed-text color exactly for maximum contrast. If you'd
-                  // rather placeholder stay visually distinct from typed
-                  // text, let me know a target color and I'll back it off.
-                  placeholderTextColor="#192546"
-                  value={search}
-                  onChangeText={setSearch}
-                />
-              </View>
-              <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterVisible(true)}>
-                <FilterIcon />
-              </TouchableOpacity>
-            </View>
+            <SearchFilterRow
+              style={{paddingHorizontal: 16}}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search Resources..."
+              buttons={[{onPress: () => setFilterVisible(true)}]}
+            />
 
             {/* Tabs (horizontal — not a vertical list, fine inside the header) */}
             <ScrollView
@@ -593,11 +469,11 @@ const ResourcesScreen = ({navigation}: any) => {
 
       <FilterSheet
         visible={filterVisible}
-        categories={categories}
-        selected={selectedCategory}
-        onSelect={setSelectedCategory}
+        title="Filter by Category"
+        items={categories.map((c: ResourceCategory) => ({id: c.id, label: c.label}))}
+        selectedId={selectedCategory}
+        onApply={setSelectedCategory}
         onClose={() => setFilterVisible(false)}
-        onContinue={() => setFilterVisible(false)}
       />
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
@@ -633,64 +509,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Runda',
   },
 
-  searchSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  // Figma spec: height 36, padding 12 16. Using minHeight instead of a
-  // fixed height — height + paddingVertical together on the same element
-  // is a documented anti-pattern in this project (causes text to not
-  // render), so padding drives the actual sizing here instead.
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 36,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: '#192546',
-    backgroundColor: '#FFFFFF',
-    marginRight: 12,
-  },
-  // IMPORTANT: Android doesn't apply fontWeight to custom fonts the way
-  // iOS does — it needs the exact linked family name. Your project links
-  // "Runda Bold" and "Runda Normal" as separate TTFs (react.native.config.js),
-  // so fontFamily:'Runda' + fontWeight:'700' was silently falling back to
-  // the normal weight on Android. Using the bold family directly here.
-  // VERIFY the exact linked name matches — I'm assuming "Runda-Bold"
-  // based on your file naming; if react-native.config.js registered a
-  // different exact string, swap it in here (and anywhere else
-  // fontWeight was used with fontFamily:'Runda' throughout Resources —
-  // same bug likely affected resourceTitle, itemText, featuredTitle,
-  // sectionTitle, etc.)
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#192546',
-    fontFamily: 'Runda-Bold',
-    padding: 0,
-    marginLeft: 10,
-  },
-  // Figma originally specced #8F9098 border — darkened per follow-up
-  // feedback ("search bar, filter etc are supposed to be bold and dark").
-  // Same minHeight fix as searchBar above (was height+paddingVertical).
-  filterBtn: {
-    minHeight: 36,
-    width: 36,
-    paddingVertical: 10,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: '#192546',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
+  // Matches ForumsScreen search row exactly (Forums is the reference UI).
   tabsScroll: {
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,

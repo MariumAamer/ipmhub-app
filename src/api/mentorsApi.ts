@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
 import {getToken} from './feedApi';
+import {registerSessionReset} from './sessionReset';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -98,6 +99,49 @@ export const INDUSTRY_FILTERS: FilterOption[] = [
   {value: 'tech-telecom', name: 'Tech & Telecom'},
   {value: 'transportation-logistics', name: 'Transportation & Logistics'},
 ];
+
+// ─── Live filter options: GET /custom/v1/mentors/filters ───────────────────
+// Response shape (confirmed): {filters: [{taxonomy, label, options: [{slug, name}]}]}
+// with taxonomy 'industry' | 'expertise' | 'experience'; the 'All' option comes
+// back from the server as slug ''. The hardcoded *_FILTERS constants above are
+// only the instant-render fallback if this request fails or hasn't returned yet.
+let mentorFiltersCache: Record<string, FilterOption[]> | null = null;
+registerSessionReset(() => {
+  mentorFiltersCache = null;
+});
+
+export const getMentorFilterOptions = async (
+  taxonomy: 'industry' | 'expertise' | 'experience',
+): Promise<FilterOption[] | null> => {
+  try {
+    if (!mentorFiltersCache) {
+      const token = await getToken();
+      const res = await fetch(`${BASE}/custom/v1/mentors/filters`, {
+        headers: token ? {Authorization: `Bearer ${token}`} : {},
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data?.filters)) return null;
+      const next: Record<string, FilterOption[]> = {};
+      data.filters.forEach((f: any) => {
+        if (!f?.taxonomy || !Array.isArray(f.options)) return;
+        const opts: FilterOption[] = f.options.map((o: any) => ({
+          value: o?.slug || '',
+          name: decodeEntities(o?.name || ''),
+        }));
+        // Guarantee an "All" entry so the pill can always be reset.
+        if (!opts.some(o => o.value === '')) opts.unshift({value: '', name: 'All'});
+        next[f.taxonomy] = opts;
+      });
+      mentorFiltersCache = next;
+    }
+    const list = mentorFiltersCache[taxonomy];
+    return list && list.length > 1 ? list : null;
+  } catch (err) {
+    console.log('getMentorFilterOptions error:', err);
+    return null;
+  }
+};
 
 // "Who You Help" is NOT a filterable taxonomy on this endpoint — confirmed
 // via GET /custom/v1/mentors/filters, which only returns industry,

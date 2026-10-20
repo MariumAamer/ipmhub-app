@@ -4,12 +4,13 @@ import {View, Text, StyleSheet, ScrollView, FlatList, Image, TouchableOpacity, T
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import EmojiPickerSheet from '../components/EmojiPickerSheet';
 import {
   getIntroductions,
   getActivityComments,
   postActivityComment,
   toggleLike,
-  getMemberByUsername,
+  getMembersBatch,
   getMemberProfile,
   resolveFullName,
   countryFlag,
@@ -18,6 +19,7 @@ import {
   IntroPost,
 } from '../api/feedApi';
 import {getUserIdFromToken} from '../api/profileApi';
+import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -136,6 +138,7 @@ const IntroCard = React.memo(({post, myAvatar, navigation, stateCache}: any) => 
   const saved = stateCache?.current?.[post.id];
   const [textExpanded, setTextExpanded] = useState<boolean>(saved?.textExpanded ?? false);
   const [commentText, setCommentText] = useState<string>(saved?.commentText ?? '');
+  const [showEmoji, setShowEmoji] = useState(false);
   const [showComments, setShowComments] = useState<boolean>(saved?.showComments ?? false);
   const [comments, setComments] = useState<any[]>(saved?.comments ?? post.embeddedComments ?? []);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -407,7 +410,14 @@ const IntroCard = React.memo(({post, myAvatar, navigation, stateCache}: any) => 
             onFocus={() => setShowComments(true)}
             editable={!!post.activityId}
           />
-          <SmileyIcon />
+          <TouchableOpacity onPress={() => post.activityId && setShowEmoji(true)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+            <SmileyIcon />
+          </TouchableOpacity>
+          <EmojiPickerSheet
+            visible={showEmoji}
+            onClose={() => setShowEmoji(false)}
+            onSelect={e => setCommentText(prev => prev + e)}
+          />
         </View>
         <TouchableOpacity
           style={[styles.commentSubmitBtn, submitting && {opacity: 0.85}]}
@@ -466,6 +476,23 @@ const IntrosScreen = ({navigation}: any) => {
   // PERF: sync lock so onEndReached can't start two page fetches in one tick.
   const endReachedLock = useRef(false);
 
+  // PERF: last-seen first page, shown instantly while the real request runs.
+  const snapshotShownRef = useRef(false);
+  const freshRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    readSnapshot<IntroPost[]>('intros').then(snap => {
+      if (!alive || !snap || !snap.length || freshRef.current) return;
+      snapshotShownRef.current = true;
+      setPosts(snap);
+      setHasMore(false); // no paging off stale data; the fresh load sets it
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     loadAll();
     initUser();
@@ -480,17 +507,21 @@ const IntrosScreen = ({navigation}: any) => {
   };
 
   const loadAll = async () => {
-    setLoading(true);
+    if (!snapshotShownRef.current) setLoading(true);
     await Promise.all([loadPosts(1, true), loadInsights()]);
   };
 
   // Real introduction CPT — not BuddyBoss activity.
   const loadPosts = async (pageNum = 1, reset = false) => {
-    if (reset) setLoading(true);
-    else setLoadingMore(true);
+    if (reset) {
+      if (!snapshotShownRef.current) setLoading(true);
+    } else setLoadingMore(true);
     try {
       const data = await getIntroductions(pageNum);
       if (reset) {
+        freshRef.current = true;
+        snapshotShownRef.current = false;
+        if (pageNum === 1) writeSnapshot('intros', data);
         // Fresh server data — drop any saved per-card state from the old list.
         cardStateCache.current = {};
         setPosts(data);
@@ -542,6 +573,7 @@ const IntrosScreen = ({navigation}: any) => {
             return {
               id: p.id,
               username,
+              authorId: Number(p.author) || 0,
               type: label,
               // resolveFullName() already decodes entities; the wpAuthor.name
               // fallback above and role/title below did not — WordPress post
@@ -575,26 +607,27 @@ const IntrosScreen = ({navigation}: any) => {
 
       // PERF: background enrichment — same member lookups as before (real
       // name/avatar/role/flag), all in parallel, applied after first paint.
-      const enriched = await Promise.all(
-        baseInsights.map(async (item: any) => {
-          try {
-            const member = await getMemberByUsername(item.username);
-            if (!member) return item;
-            const groups = member?.xprofile?.groups?.['1']?.fields;
-            const role = groups?.['1097']?.value?.raw || 'IPM Member';
-            const country = groups?.['1099']?.value?.raw || '';
-            return {
-              ...item,
-              name: stripHtml(resolveFullName(member, item.name)),
-              role: stripHtml(role),
-              flag: countryFlag(country),
-              avatar: member.avatar_urls?.thumb || item.avatar,
-            };
-          } catch {
-            return item;
-          }
-        }),
-      );
+      // PERF: was one getMemberByUsername() search per post (up to 6 calls,
+      // each a full server round trip). The WP post's `author` field is the
+      // user id, so one batched members request covers all of them.
+      let members = new Map<number, any>();
+      try {
+        members = await getMembersBatch(baseInsights.map((i: any) => i.authorId));
+      } catch {}
+      const enriched = baseInsights.map((item: any) => {
+        const member = members.get(item.authorId);
+        if (!member) return item;
+        const groups = member?.xprofile?.groups?.['1']?.fields;
+        const role = groups?.['1097']?.value?.raw || 'IPM Member';
+        const country = groups?.['1099']?.value?.raw || '';
+        return {
+          ...item,
+          name: stripHtml(resolveFullName(member, item.name)),
+          role: stripHtml(role),
+          flag: countryFlag(country),
+          avatar: member.avatar_urls?.thumb || item.avatar,
+        };
+      });
       setInsights(enriched);
     } catch {
     } finally {

@@ -17,6 +17,7 @@ import {
   QualificationItem,
   CertificationsIpmResponse,
 } from '../api/certificationsApi';
+import {registerSessionReset} from '../api/sessionReset';
 
 type TabKey = 'my' | 'overview' | 'ipm';
 
@@ -27,20 +28,26 @@ const TABS: {key: TabKey; label: string}[] = [
 ];
 
 // ─── Tab bar ────────────────────────────────────────────────────────────────
+// Horizontally scrollable so the last tab is never clipped on narrow screens.
 const TabBar = ({active, onChange}: {active: TabKey; onChange: (k: TabKey) => void}) => (
   <View style={styles.tabBar}>
-    {TABS.map(tab => (
-      <TouchableOpacity
-        key={tab.key}
-        style={styles.tabItem}
-        onPress={() => onChange(tab.key)}
-        activeOpacity={0.7}>
-        <Text style={[styles.tabLabel, active === tab.key && styles.tabLabelActive]}>
-          {tab.label}
-        </Text>
-        {active === tab.key && <View style={styles.tabUnderline} />}
-      </TouchableOpacity>
-    ))}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.tabBarContent}>
+      {TABS.map(tab => (
+        <TouchableOpacity
+          key={tab.key}
+          style={styles.tabItem}
+          onPress={() => onChange(tab.key)}
+          activeOpacity={0.7}>
+          <Text style={[styles.tabLabel, active === tab.key && styles.tabLabelActive]}>
+            {tab.label}
+          </Text>
+          {active === tab.key && <View style={styles.tabUnderline} />}
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
   </View>
 );
 
@@ -334,14 +341,25 @@ const MyCertificationCard = ({cert}: {cert: MyCertification}) => {
   );
 };
 
+// PERF: stale-while-revalidate like the other two tabs. This one is
+// account-specific, so it is wiped on logout/login via registerSessionReset
+// (see the registration below) and can never show another user's certificates.
+let myCertsCache: MyCertificationsResponse | null = null;
+registerSessionReset(() => {
+  myCertsCache = null;
+  overviewCache = null;
+  ipmCache = null;
+});
+
 const MyCertificationsTab = () => {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<MyCertificationsResponse | null>(null);
+  const [loading, setLoading] = useState(!myCertsCache);
+  const [data, setData] = useState<MyCertificationsResponse | null>(myCertsCache);
 
   const load = async () => {
-    setLoading(true);
+    if (!myCertsCache) setLoading(true);
     const result = await getMyCertifications();
-    setData(result);
+    if (result) myCertsCache = result;
+    setData(result ?? myCertsCache);
     setLoading(false);
   };
 
@@ -557,6 +575,7 @@ const CertificationsOverviewTab = () => {
       {/* Newsletter signup — UI only. No backend endpoint for this yet
           (confirmed with Robby separately), so submit currently does
           nothing. Wire up once that endpoint exists. */}
+      {SHOW_NEWSLETTER && (
       <LinearGradient
         colors={['#BEE6F9', 'rgba(235,249,255,0.26)']}
         start={{x: 0.15, y: 0}}
@@ -586,6 +605,7 @@ const CertificationsOverviewTab = () => {
           </TouchableOpacity>
         </View>
       </LinearGradient>
+      )}
     </View>
   );
 };
@@ -799,6 +819,10 @@ const IpmCertificationsTab = () => {
 };
 
 // ─── Main screen ────────────────────────────────────────────────────────────
+// Newsletter signup has no backend endpoint yet, so the section is hidden rather
+// than shipping a submit arrow that does nothing. Set true once one exists.
+const SHOW_NEWSLETTER = false;
+
 const CertificationsScreen = ({navigation}: any) => {
   const [activeTab, setActiveTab] = useState<TabKey>('my');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -834,7 +858,15 @@ const CertificationsScreen = ({navigation}: any) => {
             style={styles.floatingScrollTopBtn}
             activeOpacity={0.85}
             onPress={scrollToTop}>
-            <Text style={styles.scrollTopBtnIcon}>{'↑'}</Text>
+            <Svg width={14} height={16} viewBox="0 0 14 16" fill="none">
+              <Path
+                d="M1 7L7 1L13 7M7 1L7 15"
+                stroke="white"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
           </TouchableOpacity>
         )}
       </View>
@@ -854,13 +886,16 @@ const styles = StyleSheet.create({
   scrollContent: {flexGrow: 1, width: '100%'},
 
   tabBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     height: 45,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#EBEBEB',
+  },
+  tabBarContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingLeft: 16,
+    paddingRight: 4, // + last tab's marginRight 12 = 16 trailing space
   },
   // Figma gap:12 between tabs — using marginRight per project rule
   // (never use `gap` in StyleSheet, unreliable on Android/Hermes).
@@ -1075,7 +1110,7 @@ const styles = StyleSheet.create({
   // against the emulator.
   floatingScrollTopBtn: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 50,
     right: 16,
     width: 45,
     height: 45,
@@ -1090,7 +1125,6 @@ const styles = StyleSheet.create({
     elevation: 6,
     zIndex: 10,
   },
-  scrollTopBtnIcon: {color: '#FFFFFF', fontSize: 18, fontWeight: '700'},
   whoIsIpmTitle: {fontSize: 18, fontWeight: '800', color: '#192546', fontFamily: 'Runda', textAlign: 'center'},
 
   // "Globally Recognised Credentials" / Philosophy / IPM diploma blocks —

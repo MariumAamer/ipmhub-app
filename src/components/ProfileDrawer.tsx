@@ -11,13 +11,14 @@ import {
   Dimensions,
   TouchableWithoutFeedback,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path} from 'react-native-svg';
 import {getCachedCredentials} from '../api/credentialsCache';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {logoutUser} from '../api/authApi';
+import LogoutConfirmDialog from './LogoutConfirmDialog';
+import {drawerCache, isDrawerFresh, DRAWER_TTL_MS} from '../api/drawerCache';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.85;
@@ -116,6 +117,14 @@ const getXProfileById = (data: any, fieldId: number): string => {
 };
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
+
+// "<<" close icon — the exact mirror of AppHeader's ">>" drawer-open icon (same paths, flipped), in the drawer blue.
+const DoubleChevronLeft = () => (
+  <Svg width={16} height={15} viewBox="0 0 16 15" fill="none" style={{transform: [{scaleX: -1}]}}>
+    <Path fillRule="evenodd" clipRule="evenodd" d="M15.7695 7.50167C15.7695 7.85162 15.5892 8.03823 15.4053 8.22106C15.215 8.40998 15.0533 8.5729 14.8635 8.76265L11.5944 12.0319C10.8567 12.7697 10.1464 13.4799 9.40875 14.2177C9.09969 14.5266 8.68329 15.1267 8.07461 14.9736C7.70496 14.8805 7.02668 14.3272 7.02668 13.7414C7.02668 13.2692 7.33322 13.08 7.5779 12.8354L12.355 8.04766C12.8476 7.40376 12.3454 6.93576 12.0053 6.59567L7.59656 2.18686C7.27661 1.8669 7.02668 1.75242 7.02668 1.18735C7.02668 0.731095 7.71608 0.117171 8.04337 0.0364461C8.6879 -0.122487 9.05776 0.434826 9.38988 0.76695L14.8449 6.22203C15.0346 6.41158 15.1967 6.57429 15.3867 6.76383C15.5766 6.95317 15.7695 7.13873 15.7695 7.50167Z" fill="#0C4D91" />
+    <Path fillRule="evenodd" clipRule="evenodd" d="M8.74512 7.42702C8.74512 7.91241 8.66314 7.93862 8.34339 8.25837L2.34659 14.255C2.02999 14.5719 1.6421 15.1634 0.990654 14.9575C0.71326 14.8698 0.00226593 14.2519 0.00226593 13.7413C0.00226593 13.3128 0.327254 13.0614 0.55328 12.8353L4.94337 8.44519C5.2497 8.13886 5.53191 7.97867 5.53191 7.46434C5.53191 7.04855 5.18428 6.79925 4.96203 6.577C4.35608 5.97083 0.437752 2.09878 0.219904 1.82893C-0.144713 1.37793 -0.0235243 0.928594 0.347803 0.561455C0.533571 0.377571 0.68118 0.166849 0.935511 0.0655768C1.60059 -0.199032 1.99938 0.401055 2.32793 0.729614L8.32473 6.72628C8.51029 6.91185 8.74512 7.07371 8.74512 7.42702Z" fill="#0C4D91" />
+  </Svg>
+);
 
 const ChevronLeft = () => (
   <Svg width={8.743} height={14.99} viewBox="0 0 9 15" fill="none">
@@ -250,16 +259,19 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
   // system nav bar and be unreliable to tap.
   const insets = useSafeAreaInsets();
 
-  const [profile, setProfile] = useState<any>(null);
-  const [activeMembers, setActiveMembers] = useState<any[]>([]);
-  const [totalMembers, setTotalMembers] = useState<string>('...');
+  // PERF: state is seeded from the shared drawer cache so re-opening the
+  // drawer (or opening it from another screen) shows data instantly.
+  const [profile, setProfile] = useState<any>(drawerCache.profile);
+  const [activeMembers, setActiveMembers] = useState<any[]>(drawerCache.activeMembers);
+  const [totalMembers, setTotalMembers] = useState<string>(drawerCache.totalMembers ?? '...');
   const [badgeProgress, setBadgeProgress] = useState<{
     unlock_points: number;
     percentage: number;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
+  } | null>(drawerCache.badgeProgress);
+  const [loading, setLoading] = useState(!drawerCache.profile);
   // Logged-in user's account email — shown next to Log Out, right-aligned.
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(drawerCache.email);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // ── Animate open / close ──────────────────────────────────────────────────
   useEffect(() => {
@@ -278,10 +290,24 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
   }, [visible]);
 
   const loadAll = async () => {
-    // PERF: only show the loading placeholders on the first open; on re-open keep the existing data visible while it refreshes silently.
-    if (!profile) setLoading(true);
-    await Promise.allSettled([loadProfile(), loadActiveMembers(), loadBadgeProgress(), loadEmail()]);
+    // PERF: show whatever is cached right away.
+    if (drawerCache.profile) {
+      setProfile(drawerCache.profile);
+      setActiveMembers(drawerCache.activeMembers);
+      if (drawerCache.totalMembers) setTotalMembers(drawerCache.totalMembers);
+      setBadgeProgress(drawerCache.badgeProgress);
+      setEmail(drawerCache.email);
+      setLoading(false);
+    }
+    if (isDrawerFresh()) return; // refreshed within the last few minutes
+    if (!profile && !drawerCache.profile) setLoading(true);
+    // PERF: the server answers one request at a time, so five at once just
+    // queue up. Fetch what the top of the drawer needs first, show it, then
+    // fill in the rest.
+    await Promise.allSettled([loadProfile(), loadBadgeProgress()]);
     setLoading(false);
+    await Promise.allSettled([loadEmail(), loadActiveMembers()]);
+    drawerCache.at = Date.now();
   };
 
   // ── Current user BuddyBoss profile ───────────────────────────────────────
@@ -290,6 +316,13 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
       const token = await getSavedToken();
       const userId = await getSavedUserId();
       if (!token) {setProfile({name: 'IPM Member', avatar_urls: {}}); return;}
+
+      // AppHeader already fetched this profile for the avatar and primed the
+      // cache — reuse it instead of requesting it again.
+      if (drawerCache.profile && Date.now() - drawerCache.profileAt < DRAWER_TTL_MS) {
+        setProfile(drawerCache.profile);
+        return;
+      }
 
       let realUserId = userId;
       if (!realUserId) {
@@ -307,7 +340,10 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
         headers: {Authorization: `Bearer ${token}`},
       });
       if (res.ok) {
-        setProfile(await res.json());
+        const p = await res.json();
+        drawerCache.profile = p;
+        drawerCache.profileAt = Date.now();
+        setProfile(p);
       } else {
         setProfile({name: 'IPM Member', avatar_urls: {}});
       }
@@ -329,12 +365,17 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
 
       if (countRes.ok) {
         const countData = await countRes.json();
-        setTotalMembers(Number(countData.count ?? 0).toLocaleString());
+        const total = Number(countData.count ?? 0).toLocaleString();
+        drawerCache.totalMembers = total;
+        setTotalMembers(total);
       }
 
       if (activeRes.ok) {
         const data = await activeRes.json();
-        if (Array.isArray(data)) setActiveMembers(data.slice(0, 3));
+        if (Array.isArray(data)) {
+          drawerCache.activeMembers = data.slice(0, 3);
+          setActiveMembers(data.slice(0, 3));
+        }
       }
     } catch {
       setTotalMembers('...');
@@ -353,10 +394,12 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
       if (res.ok) {
         const data = await res.json();
         if (data?.progress) {
-          setBadgeProgress({
+          const bp = {
             unlock_points: data.progress.unlock_points ?? 0,
             percentage: data.progress.percentage ?? 0,
-          });
+          };
+          drawerCache.badgeProgress = bp;
+          setBadgeProgress(bp);
         }
       }
     } catch {}
@@ -384,6 +427,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
         if (__DEV__ && !data?.email) {
           console.log('[ProfileDrawer] /wp/v2/users/me returned no email field:', data);
         }
+        drawerCache.email = data?.email || '';
         setEmail(data?.email || '');
       } else if (__DEV__) {
         console.log('[ProfileDrawer] loadEmail request failed:', res.status);
@@ -399,21 +443,13 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
   };
 
   // ── Log out — same confirm-then-logout flow as AccountSettingsScreen ───────
-  const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
-      {text: 'Cancel', style: 'cancel'},
-      {
-        text: 'Log Out',
-        style: 'destructive',
-        onPress: async () => {
-          onClose();
-          await logoutUser();
-          // TODO(Marium): confirm this matches the actual Auth-stack screen
-          // name registered in AppNavigator — using 'SignIn' as a placeholder.
-          navigation?.reset?.({index: 0, routes: [{name: 'SignIn'}]});
-        },
-      },
-    ]);
+  const handleLogout = () => setLogoutConfirmOpen(true);
+
+  const handleConfirmLogout = async () => {
+    setLogoutConfirmOpen(false);
+    onClose();
+    await logoutUser();
+    navigation?.reset?.({index: 0, routes: [{name: 'SignIn'}]});
   };
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -430,7 +466,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
   if (!visible) return null;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+    <View style={[StyleSheet.absoluteFill, {zIndex: 9999, elevation: 9999}]} pointerEvents="box-none">
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[styles.backdrop, {opacity: backdropOpacity}]} />
       </TouchableWithoutFeedback>
@@ -444,11 +480,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
         {/* ── Header: 56px, << left / logo right ── */}
         <View style={styles.drawerHeader}>
           <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtn}>
-            <View style={styles.chevronPair}>
-              <ChevronLeft />
-              <View style={{width: 3}} />
-              <ChevronLeft />
-            </View>
+            <DoubleChevronLeft />
           </TouchableOpacity>
           <Image
             source={require('../assets/images/ipmlogodrawer.png')}
@@ -629,6 +661,12 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
           <View style={{height: 40 + insets.bottom}} />
         </ScrollView>
       </Animated.View>
+
+      <LogoutConfirmDialog
+        visible={logoutConfirmOpen}
+        onCancel={() => setLogoutConfirmOpen(false)}
+        onConfirm={handleConfirmLogout}
+      />
     </View>
   );
 };

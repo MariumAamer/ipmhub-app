@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import BackButton from '../components/BackButton';
+import EyeClosedIcon from '../components/EyeClosedIcon';
+import EyeOpenIcon from '../components/EyeOpenIcon';
 import {forgotPassword, resetPassword} from '../api/authApi';
 
 // ─── Success tick icon — exact Figma SVG ──────────────────────────────────
@@ -28,17 +30,13 @@ const SuccessTick = () => (
   </Svg>
 );
 
-// ─── Eye icons (matches SignInScreen's local-asset pattern) ──────────────
+// ─── Eye toggle (shared closed-eye icon) ─────────────────────────────────
 const EyeToggle = ({visible, onPress}: {visible: boolean; onPress: () => void}) => (
   <TouchableOpacity
     onPress={onPress}
     hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}
     style={styles.eyeBtn}>
-    <Image
-      source={require('../assets/images/eyeinvisible.png')}
-      style={[styles.eyeIcon, visible && styles.eyeVisible]}
-      resizeMode="contain"
-    />
+    {visible ? <EyeOpenIcon /> : <EyeClosedIcon />}
   </TouchableOpacity>
 );
 
@@ -466,8 +464,6 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   eyeBtn: {paddingLeft: 8},
-  eyeIcon: {width: 18, height: 18, opacity: 0.45},
-  eyeVisible: {opacity: 0.8},
 
   errorText: {
     width: '100%',

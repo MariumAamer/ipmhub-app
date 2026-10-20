@@ -3,9 +3,9 @@ import React, {useState} from 'react';
 import {View, Text, StyleSheet, TextInput, TouchableOpacity, StatusBar, Linking, Alert} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
+import {BRAND_GRADIENT} from '../config/brandGradient';
 import {LinkedInIcon} from '../components/forumsIcons';
 
-const GRADIENT = ['#E257E4', '#084D92'];
 const SITE_BASE = 'https://hub.instituteprojectmanagement.com';
 
 const ShareLinkedInScreen = ({navigation, route}: any) => {
@@ -71,7 +71,7 @@ const ShareLinkedInScreen = ({navigation, route}: any) => {
         />
 
         <TouchableOpacity onPress={handleShareLinkedIn} style={{marginTop: 16}}>
-          <LinearGradient colors={GRADIENT} style={styles.linkedInBtn}>
+          <LinearGradient {...BRAND_GRADIENT} style={styles.linkedInBtn}>
             <LinkedInIcon />
             <Text style={styles.linkedInBtnText}>{'Share on LinkedIn'}</Text>
           </LinearGradient>
@@ -96,7 +96,7 @@ const ShareLinkedInScreen = ({navigation, route}: any) => {
         />
 
         <TouchableOpacity onPress={handleInvite} style={{marginTop: 16}}>
-          <LinearGradient colors={GRADIENT} style={styles.inviteBtn}>
+          <LinearGradient {...BRAND_GRADIENT} style={styles.inviteBtn}>
             <Text style={styles.inviteBtnText}>{'Invite'}</Text>
           </LinearGradient>
         </TouchableOpacity>

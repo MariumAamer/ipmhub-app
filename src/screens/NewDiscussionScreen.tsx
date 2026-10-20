@@ -17,12 +17,13 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
+import {BRAND_GRADIENT, BRAND_GRADIENT_DISABLED} from '../config/brandGradient';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import {createTopic, uploadForumMedia, FILTER_SETS, FilterItem} from '../api/forumsApi';
-import {CameraIcon, VideoIcon, AttachmentIcon} from '../components/forumsIcons';
+import {CameraIcon, VideoIcon, AttachmentIcon, ChevronDownIcon} from '../components/forumsIcons';
+import {getIndustryIcon} from '../config/industries';
 
-const GRADIENT = ['#E257E4', '#084D92'];
 const GENERAL_DISCUSSION_FORUM_ID = 39013; // web's "New Discussion" form has no
 // forum picker — confirmed via Postman that createTopic always needs a
 // "parent" and web always posts to General Discussion, so this is fixed.
@@ -169,11 +170,9 @@ const NewDiscussionScreen = ({navigation}: any) => {
             disabled={!canPublish}
             onPress={handlePublish}
             activeOpacity={0.85}
-            style={[styles.publishBtnWrap, !canPublish && {opacity: 0.5}]}>
+            style={styles.publishBtnWrap}>
             <LinearGradient
-              colors={GRADIENT}
-              start={{x: 0, y: 0}}
-              end={{x: 1, y: 0}}
+              {...(canPublish || publishing ? BRAND_GRADIENT : BRAND_GRADIENT_DISABLED)}
               style={styles.publishBtn}>
               {publishing ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
@@ -253,9 +252,6 @@ const NewDiscussionScreen = ({navigation}: any) => {
               ) : null}
 
               <View style={styles.messageFooter}>
-                <TouchableOpacity style={styles.footerIconBtn}>
-                  <Text style={styles.aaText}>{'Aa'}</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={styles.footerIconBtn} onPress={handlePickImages}>
                   <CameraIcon size={15} />
                 </TouchableOpacity>
@@ -281,7 +277,7 @@ const NewDiscussionScreen = ({navigation}: any) => {
                   <Text style={styles.categoryTabText} numberOfLines={1}>
                     {group.label}
                   </Text>
-                  <Text style={styles.chevron}>{'▾'}</Text>
+                  <ChevronDownIcon color="#192546" />
                 </TouchableOpacity>
               ))}
             </View>
@@ -346,10 +342,20 @@ const NewDiscussionScreen = ({navigation}: any) => {
                         key={item.termId}
                         style={[styles.pickerRow, isSelected && styles.pickerRowActive]}
                         onPress={() => toggleTag(openGroup, item)}>
-                        <Text
-                          style={[styles.pickerRowText, isSelected && styles.pickerRowTextActive]}>
-                          {item.name}
-                        </Text>
+                        <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                          {openGroup === 'industry' ? (
+                            <View style={{width: 22, height: 22, marginRight: 10, alignItems: 'center', justifyContent: 'center'}}>
+                              {(() => {
+                                const Icon = getIndustryIcon(item.name);
+                                return Icon ? <Icon size={16} color={isSelected ? '#0C4D91' : '#192546'} /> : null;
+                              })()}
+                            </View>
+                          ) : null}
+                          <Text
+                            style={[styles.pickerRowText, isSelected && styles.pickerRowTextActive]}>
+                            {item.name}
+                          </Text>
+                        </View>
                         <Text style={styles.pickerRowCount}>{`(${item.count})`}</Text>
                       </TouchableOpacity>
                     );
@@ -483,7 +489,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   categoryTabText: {color: '#192546', fontFamily: 'Runda', fontSize: 14, fontWeight: '500'},
-  chevron: {color: '#192546', fontSize: 10},
 
   selectedRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 12},
   selectedChip: {

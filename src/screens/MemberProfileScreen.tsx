@@ -32,15 +32,15 @@ import {
   Linking,
   Alert,
 } from 'react-native';
-import {launchImageLibrary} from 'react-native-image-picker';
 import Svg, {Path, Rect, Mask, G, Circle, Defs, LinearGradient as SvgLinearGradient, Stop} from 'react-native-svg';
 import MaskedView from '@react-native-masked-view/masked-view';
 import {apiRequest, API} from '../api/apiClient';
-import {getUserIdFromToken, uploadAvatar} from '../api/profileApi';
+import {getUserIdFromToken} from '../api/profileApi';
 import {getThreadList} from '../api/dmApi';
 import {getResources, ResourceItem} from '../api/resourcesApi';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import BackButton from '../components/BackButton';
 import LinearGradient from 'react-native-linear-gradient';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
@@ -56,27 +56,29 @@ const BASE_TABS = [
 ];
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
+// Drawn directly with a solid fill. The Figma export wrapped this path in an
+// SVG <Mask>; react-native-svg masks by luminance, so the mid-tone mask fill
+// made the pencil render faint/washed-out.
 const EditIcon = () => (
   <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
-    <Mask id="ei" maskUnits="userSpaceOnUse" x={1} y={1} width={10} height={10}>
-      <Path d="M4.07066 10.3043L9.07078 5.30418L6.69582 2.92922L1.6957 7.92934C1.62686 7.99826 1.57797 8.08453 1.55419 8.17899L1 11L3.82047 10.4458C3.91516 10.4221 4.00179 10.3732 4.07066 10.3043ZM10.6849 3.69003C10.8867 3.48823 11 3.21457 11 2.92922C11 2.64388 10.8867 2.37022 10.6849 2.16842L9.83158 1.31507C9.62978 1.11333 9.35612 1 9.07078 1C8.78543 1 8.51177 1.11333 8.30997 1.31507L7.45662 2.16842L9.83158 4.54338L10.6849 3.69003Z" fill="#006FFD" />
-    </Mask>
-    <G mask="url(#ei)"><Rect width={12} height={12} fill="#0C4D91" /></G>
+    <Path d="M4.07066 10.3043L9.07078 5.30418L6.69582 2.92922L1.6957 7.92934C1.62686 7.99826 1.57797 8.08453 1.55419 8.17899L1 11L3.82047 10.4458C3.91516 10.4221 4.00179 10.3732 4.07066 10.3043ZM10.6849 3.69003C10.8867 3.48823 11 3.21457 11 2.92922C11 2.64388 10.8867 2.37022 10.6849 2.16842L9.83158 1.31507C9.62978 1.11333 9.35612 1 9.07078 1C8.78543 1 8.51177 1.11333 8.30997 1.31507L7.45662 2.16842L9.83158 4.54338L10.6849 3.69003Z" fill="#0C4D91" />
   </Svg>
 );
 
 const PencilIcon = () => (
   <Svg width={14} height={14} viewBox="0 0 12 12" fill="none">
-    <Mask id="pi" maskUnits="userSpaceOnUse" x={1} y={1} width={10} height={10}>
-      <Path d="M4.07066 10.3043L9.07078 5.30418L6.69582 2.92922L1.6957 7.92934C1.62686 7.99826 1.57797 8.08453 1.55419 8.17899L1 11L3.82047 10.4458C3.91516 10.4221 4.00179 10.3732 4.07066 10.3043ZM10.6849 3.69003C10.8867 3.48823 11 3.21457 11 2.92922C11 2.64388 10.8867 2.37022 10.6849 2.16842L9.83158 1.31507C9.62978 1.11333 9.35612 1 9.07078 1C8.78543 1 8.51177 1.11333 8.30997 1.31507L7.45662 2.16842L9.83158 4.54338L10.6849 3.69003Z" fill="#0C4D91" />
-    </Mask>
-    <G mask="url(#pi)"><Rect width={12} height={12} fill="#0C4D91" /></G>
+    <Path d="M4.07066 10.3043L9.07078 5.30418L6.69582 2.92922L1.6957 7.92934C1.62686 7.99826 1.57797 8.08453 1.55419 8.17899L1 11L3.82047 10.4458C3.91516 10.4221 4.00179 10.3732 4.07066 10.3043ZM10.6849 3.69003C10.8867 3.48823 11 3.21457 11 2.92922C11 2.64388 10.8867 2.37022 10.6849 2.16842L9.83158 1.31507C9.62978 1.11333 9.35612 1 9.07078 1C8.78543 1 8.51177 1.11333 8.30997 1.31507L7.45662 2.16842L9.83158 4.54338L10.6849 3.69003Z" fill="#0C4D91" />
   </Svg>
 );
 
+// Round "in" badge (Figma) — filled #0C4D91 circle with a white "in".
+// Hand-drawn approximation; swap in the exact Figma SVG if you have it.
 const LinkedInIcon = () => (
   <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-    <Path d="M14.5 1.5H1.5C1.22386 1.5 1 1.72386 1 2V14C1 14.2761 1.22386 14.5 1.5 14.5H14.5C14.7761 14.5 15 14.2761 15 14V2C15 1.72386 14.7761 1.5 14.5 1.5ZM5.2 12.5H3.2V6.5H5.2V12.5ZM4.2 5.6C3.53726 5.6 3 5.06274 3 4.4C3 3.73726 3.53726 3.2 4.2 3.2C4.86274 3.2 5.4 3.73726 5.4 4.4C5.4 5.06274 4.86274 5.6 4.2 5.6ZM13 12.5H11V9.4C11 8.57 10.9867 7.49 9.8 7.49C8.6 7.49 8.42 8.4 8.42 9.34V12.5H6.42V6.5H8.34V7.48H8.36C8.64 6.96 9.32 6.4 10.36 6.4C12.4 6.4 13 7.74 13 9.5V12.5Z" fill="#0C4D91"/>
+    <Circle cx={8} cy={8} r={8} fill="#0C4D91" />
+    <Circle cx={4.95} cy={4.9} r={1} fill="#FFFFFF" />
+    <Path d="M4.15 6.7H5.75V11.9H4.15Z" fill="#FFFFFF" />
+    <Path d="M7 6.7H8.6V7.5C8.9 7 9.5 6.55 10.4 6.55C12 6.55 12.4 7.6 12.4 9V11.9H10.8V9.3C10.8 8.6 10.6 8.05 9.9 8.05C9.1 8.05 8.6 8.6 8.6 9.4V11.9H7Z" fill="#FFFFFF" />
   </Svg>
 );
 
@@ -1356,16 +1358,23 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
       <View style={s.connSelectorWrap}>
         <View style={s.subTabRow}>
           <TouchableOpacity style={s.subTabBox} onPress={() => setSubTab('followers')}>
-            <Text style={[s.subTabLabel, subTab==='followers' && s.subTabLabelActive]}>{'Followers'}</Text>
-            <View style={[s.subTabCount, subTab==='followers' && s.subTabCountActive]}>
-              <Text style={s.subTabCountText}>{fCnt}</Text>
+            <View style={s.subTabInner}>
+              <Text style={[s.subTabLabel, subTab==='followers' && s.subTabLabelActive]}>{'Followers'}</Text>
+              <View style={[s.subTabCount, subTab==='followers' && s.subTabCountActive]}>
+                <Text style={s.subTabCountText}>{fCnt}</Text>
+              </View>
             </View>
+            {/* Selected indicator — 2px #0C4D91 line across the tab's width */}
+            <View style={[s.subTabLine, subTab==='followers' && s.subTabLineActive]} />
           </TouchableOpacity>
           <TouchableOpacity style={s.subTabBox} onPress={() => setSubTab('following')}>
-            <Text style={[s.subTabLabel, subTab==='following' && s.subTabLabelActive]}>{'Following'}</Text>
-            <View style={[s.subTabCount, subTab==='following' && s.subTabCountActive]}>
-              <Text style={s.subTabCountText}>{fgCnt}</Text>
+            <View style={s.subTabInner}>
+              <Text style={[s.subTabLabel, subTab==='following' && s.subTabLabelActive]}>{'Following'}</Text>
+              <View style={[s.subTabCount, subTab==='following' && s.subTabCountActive]}>
+                <Text style={s.subTabCountText}>{fgCnt}</Text>
+              </View>
             </View>
+            <View style={[s.subTabLine, subTab==='following' && s.subTabLineActive]} />
           </TouchableOpacity>
         </View>
 
@@ -1389,6 +1398,95 @@ const ConnectionsTab = ({userId, isOwn, totalFollowers, totalFollowing, displayN
           : list.map(item => <MemberRow key={item.id} item={item} />)
         }
       </View>
+    </View>
+  );
+};
+
+// ─── Certification card ───────────────────────────────────────────────────────
+// Same layout as the "My Certifications" card in CertificationsScreen, per the
+// Figma handoff: 110x219 gradient panel with an 80x80 logo on the left; title
+// + 24x24 badge, light-blue rule, subtitle, status, and a "See Certificate"
+// button on the right; optional coloured footer banner below.
+const CertBadgeIcon = () => (
+  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+    <Path fillRule="evenodd" clipRule="evenodd" d="M12.1206 6.69147C11.7359 6.05435 11.2866 7.21208 11.2448 7.29537C10.6658 8.45344 10.9381 8.23121 10.2612 8.32975C9.68868 8.41301 8.73981 8.41769 8.73934 8.82662C8.73934 9.0309 9.90787 10.1067 10.1136 10.2446C10.1099 10.4096 10.0587 10.5761 10.0339 10.7227C10.0057 10.8899 9.97707 11.0647 9.95418 11.2016C9.91531 11.4346 9.61324 12.3922 10.0714 12.3922C10.4156 12.3917 11.609 11.5528 11.8323 11.5524L13.0956 12.2024C14.3799 12.9736 13.6282 11.181 13.5503 10.2446C13.7571 10.106 14.9245 9.03136 14.9245 8.82662C14.9242 8.43591 14.3192 8.47431 13.9604 8.41647C13.7524 8.38279 13.5388 8.34864 13.3651 8.32428C12.904 8.25909 12.965 8.31721 12.8612 8.18443L12.1768 6.80709C12.1701 6.79247 12.1303 6.70757 12.1206 6.69147ZM11.8753 7.53834C11.9027 7.6561 12.3993 8.67241 12.4667 8.75006C12.593 8.89332 12.9438 8.8955 13.1878 8.93131C13.4366 8.96798 13.7155 9.02303 13.937 9.04147L13.0011 9.95397C12.7779 10.2212 13.1084 10.9486 13.1206 11.4899C12.7784 11.4099 12.112 10.8886 11.8323 10.8883C11.543 10.8883 10.8798 11.4115 10.5432 11.4899C10.5482 11.2681 10.6344 10.9012 10.6722 10.6743C10.7147 10.4181 10.8239 10.1466 10.6628 9.95397L9.94168 9.25709C9.83615 9.17763 9.80328 9.15421 9.72762 9.04147C10.0124 9.01766 11.0833 8.90591 11.2159 8.72584C11.2943 8.61881 11.7614 7.65908 11.7893 7.53834H11.8753Z" fill="#084D92" />
+    <Path fillRule="evenodd" clipRule="evenodd" d="M11.5737 4.05944C10.1523 4.05949 8.70241 4.81082 7.76121 5.74459C7.62451 5.88002 7.57011 5.97352 7.43934 6.11022C7.18458 6.37689 6.77045 7.05166 6.64012 7.37272C6.50217 7.71153 6.37688 7.99696 6.28153 8.38834C5.92812 9.8381 6.16203 11.4374 6.90965 12.6751C7.27737 13.2835 7.31055 13.2384 7.65262 13.6508C8.12602 14.2211 8.80657 14.6431 9.46824 14.9696C10.867 15.6596 12.8305 15.6527 14.2229 14.9555C15.2057 14.4634 15.5401 14.1927 16.2229 13.4329C17.1552 12.3957 17.544 10.9857 17.544 9.60006C17.544 8.7352 17.3135 8.08796 17.0229 7.37272C16.8928 7.05189 16.4785 6.37671 16.2237 6.11022L15.5362 5.42272C15.3999 5.29569 15.3164 5.22622 15.1565 5.11569C13.9981 4.31582 13.0617 4.05944 11.5737 4.05944ZM7.95574 6.45397C9.61054 4.59186 12.1118 4.12707 14.3659 5.34772C14.786 5.57513 15.0924 5.83829 15.4292 6.17506C17.4416 8.18787 17.4355 11.3635 15.4292 13.3696C14.4958 14.303 13.1807 14.8837 11.8315 14.8837C11.1828 14.8836 10.2733 14.6816 9.72606 14.4118C9.42349 14.2624 9.17051 14.142 8.90418 13.9454C8.78151 13.8547 8.65459 13.7678 8.53699 13.668C7.67762 12.9413 7.1186 11.9631 6.84793 10.8469C6.60103 9.82818 6.74454 8.56154 7.20653 7.63834C7.36755 7.31671 7.4701 7.09684 7.67684 6.82037C7.77009 6.69575 7.85592 6.5663 7.95574 6.45397Z" fill="#084D92" />
+    <Path fillRule="evenodd" clipRule="evenodd" d="M14.7854 2.17975C13.593 0.89788 12.849 2.14098 11.8323 2.1485C10.978 2.15464 9.93213 0.878906 8.86121 2.20553C8.61691 2.50832 8.45842 2.7914 8.17137 3.06178C7.66801 3.53589 6.47695 3.20485 5.87059 3.811C5.25648 4.42511 5.60945 5.61117 5.10028 6.13287C4.81606 6.42344 4.54334 6.56456 4.2409 6.82037C2.96071 7.90336 4.20731 8.8799 4.20731 9.77194C4.2073 10.3895 3.67065 10.9225 3.67059 11.5758C3.67059 12.8951 4.95185 12.8334 5.30418 13.7649C5.46801 14.1983 5.41423 14.8177 5.59012 15.2829C5.83716 15.9359 6.27155 15.9534 6.54793 16.086L5.19168 19.7555C5.05653 20.1077 4.68025 20.811 5.25965 20.811C5.51758 20.811 7.53402 20.0033 7.92293 19.9946L8.65028 21.243C8.76526 21.4349 9.26984 22.4001 9.46903 22.4001C9.81503 22.4001 9.78673 22.2914 9.9659 21.8235L10.7026 19.8532C10.7916 19.6261 10.863 19.4264 10.9456 19.1946L11.4386 17.8837C11.5666 17.5395 11.5443 17.3924 11.837 17.3852C12.1195 17.3782 12.1086 17.5817 12.2362 17.9149L13.7089 21.854C13.8833 22.3003 13.8469 22.4001 14.194 22.4001C14.3935 22.3993 14.897 21.4353 15.012 21.243C15.1345 21.0381 15.2525 20.8438 15.3831 20.6251C15.4735 20.4734 15.7026 20.1354 15.7401 19.9946C15.9014 19.9982 16.8745 20.3223 17.0987 20.3977C17.4921 20.5301 19.0031 21.2591 18.68 20.3227C18.4434 19.6375 17.1976 16.4406 17.1151 16.086C17.3665 15.9654 17.4884 15.9803 17.7237 15.793C18.2868 15.345 18.1524 14.3216 18.3651 13.7282C18.7263 12.7208 20.744 12.7564 19.7065 10.6165C19.0135 9.18677 19.9925 9.17402 19.9925 7.75319C19.9925 7.00326 18.8956 6.52013 18.544 6.10944C18.061 5.54441 18.3954 4.41397 17.7925 3.811C17.1728 3.19128 16.0406 3.55181 15.4714 3.03912C15.1689 2.76668 15.0476 2.46151 14.7854 2.17975ZM17.7214 19.5165C17.7758 19.6807 17.8458 19.814 17.8878 19.9946C17.2526 19.9416 15.7398 19.0928 15.4253 19.379L14.5136 20.8719C14.4284 21.0132 14.2746 21.2281 14.237 21.3688C14.1194 21.2828 14.0779 21.0758 14.0268 20.9344C13.8655 20.4871 12.876 17.9305 12.862 17.761C13.0641 17.7779 13.2028 17.8665 13.4432 17.9102C14.5638 18.1141 14.8116 17.1611 15.4495 16.5251C15.6905 16.285 16.1169 16.1798 16.4706 16.1719L17.7214 19.5165ZM7.19246 16.1719C7.97024 16.2366 8.23286 16.456 8.58465 16.9704C8.81779 17.3118 9.29034 17.9329 9.81278 17.9329C10.6279 17.9329 10.3517 17.8327 10.844 17.718L10.1495 19.5587C10.085 19.7319 9.55963 21.2708 9.42606 21.3688C9.38672 21.2249 8.27383 19.399 8.18699 19.3399C8.01333 19.2223 7.80714 19.338 7.59559 19.4094L5.77528 19.9946C5.82123 19.7979 5.88662 19.6644 5.95184 19.4844L7.19246 16.1719ZM12.8198 2.51334C14.4208 1.70966 14.1167 2.74535 15.1745 3.59459C15.8599 4.14423 16.9448 3.84943 17.3495 4.25397C17.9537 4.858 17.032 5.90016 18.7643 7.09147C18.9945 7.24981 19.3909 7.53438 19.3909 7.88209C19.3909 8.61624 18.3945 9.32935 19.0761 10.7313C19.8102 12.2411 19.0341 12.0761 18.3487 12.7672C17.9874 13.1315 17.6914 13.39 17.6331 14.1563C17.5409 15.3716 17.4311 15.4813 16.2159 15.5735C15.3406 15.64 14.9687 16.0867 14.5073 16.7001C13.9537 17.4361 13.8165 17.5147 12.7909 17.0165C10.8932 16.0944 10.3155 18.1741 9.30262 16.8962C8.74354 16.1906 8.48377 15.667 7.44715 15.5743C6.24531 15.4668 6.1247 15.4021 6.02996 14.1563C5.97168 13.3874 5.6695 13.1205 5.29246 12.7454C4.60016 12.0564 3.85215 12.2327 4.58699 10.7321C4.91275 10.0674 4.89423 9.43897 4.57293 8.78365C3.78177 7.17016 4.80769 7.48337 5.65418 6.42897C6.2167 5.72765 5.90878 4.65874 6.31356 4.25397C6.85528 3.71225 7.75515 4.41126 8.85809 3.23287C9.54361 2.5001 9.39916 1.81136 10.8722 2.5274C11.5329 2.84885 12.1711 2.8388 12.8198 2.51334Z" fill="#084D92" />
+  </Svg>
+);
+
+const DEFAULT_CERT_BANNER = 'Add relevant specialised certifications for better career prospects.';
+
+const CertificationCard = ({cert, navigation, isOwn}: {cert: any; navigation?: any; isOwn?: boolean}) => {
+  // Field names follow the My Certifications payload (title/name/status/footer),
+  // with fallbacks for the older member-profile shape (name/status_label).
+  const title = stripHtml(cert.title || cert.name || '');
+  const subtitle = cert.title && cert.name && cert.name !== cert.title ? stripHtml(cert.name) : '';
+  const statusLabel = stripHtml(cert.status?.label || cert.status_label || '');
+  const isExpired = cert.status?.code === 'expired' || /expired/i.test(statusLabel);
+  const footerStyle = cert.footer?.style;
+  const footerLink = cert.footer?.link && typeof cert.footer.link === 'object' ? cert.footer.link : null;
+  const bannerBg = footerStyle === 'red' ? '#ED3241' : footerStyle === 'default' || !footerStyle ? '#46B0E3' : '#192546';
+  // Banner copy comes from the API's footer when present. If the member-profile
+  // payload doesn't carry one, fall back to the design's default light-blue
+  // upsell — own profile only — with "Browse Options" opening Certifications.
+  const bannerMessage = cert.footer?.message || (isOwn ? DEFAULT_CERT_BANNER : '');
+  const bannerLink = footerLink
+    ? {label: footerLink.label, onPress: () => Linking.openURL(footerLink.url)}
+    : !cert.footer?.message && isOwn
+    ? {label: 'Browse Options', onPress: () => navigation?.navigate('Certifications')}
+    : null;
+
+  return (
+    <View style={s.courseCardShadowWrap}>
+      <View style={s.certCardV3}>
+        <LinearGradient colors={['#ABE4FF', '#FFFFFF']} style={s.certPanelV3}>
+          {cert.logo_url ? (
+            <Image source={{uri: cert.logo_url}} style={s.certImgV3} resizeMode="cover" />
+          ) : (
+            <View style={[s.certImgV3, {backgroundColor: '#0C4D91'}]} />
+          )}
+        </LinearGradient>
+
+        <View style={s.certInfoV3}>
+          {/* Title + badge */}
+          <View style={s.certTitleRowV3}>
+            <View style={{flex: 1}}>
+              <Text style={s.certTitleV3}>{title}</Text>
+              <View style={s.certRuleV3} />
+            </View>
+            <CertBadgeIcon />
+          </View>
+
+          {subtitle ? <Text style={s.certSubtitleV3}>{subtitle}</Text> : null}
+
+          {statusLabel ? (
+            <Text style={[s.certStatusV3, isExpired && {color: '#ED3241'}]}>{statusLabel}</Text>
+          ) : null}
+
+          {cert.certificate_url ? (
+            <TouchableOpacity
+              style={s.certBtnV3}
+              activeOpacity={0.85}
+              onPress={() => Linking.openURL(cert.certificate_url)}>
+              <Text style={s.certBtnTextV3}>{'See Certificate'}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+
+      {bannerMessage ? (
+        <View style={[s.certBannerV3, {backgroundColor: bannerBg}]}>
+          <Text style={s.certBannerTextV3}>
+            {bannerMessage}
+            {bannerLink ? (
+              <Text style={s.certBannerLinkV3} onPress={bannerLink.onPress}>
+                {` ${bannerLink.label}`}
+              </Text>
+            ) : null}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -1448,20 +1546,6 @@ const CoursesTab = ({userId, isOwn, displayName, navigation, profileData}: {user
                 ) : null}
                 <View style={s.courseStatusBtnRow}>
                   {c.status ? <Text style={s.courseStatusV2}>{stripHtml(c.status)}</Text> : null}
-                  <TouchableOpacity
-                    style={s.courseContinueBtn}
-                    onPress={() => {
-                      // Robby added certificate_url/has_certificate directly
-                      // on completed courses — opens the real certificate now
-                      // instead of just the course page.
-                      if (c.status_slug === 'completed' && c.has_certificate && c.certificate_url) {
-                        Linking.openURL(c.certificate_url);
-                      } else {
-                        navigation?.navigate('CourseDetail', {courseId: c.id});
-                      }
-                    }}>
-                    <Text style={s.courseContinueBtnText}>{c.status_slug === 'completed' ? 'See Certificate' : 'Continue Course'}</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -1476,32 +1560,7 @@ const CoursesTab = ({userId, isOwn, displayName, navigation, profileData}: {user
         <Text style={s.emptyCardDesc}>{isOwn ? 'You don’t have any Certifications yet.' : `${displayName || 'This member'} doesn't have any Certifications yet.`}</Text>
       ) : (
         certifications.map((cert, i) => (
-          <View key={cert.certificate_id || i} style={s.courseCardShadowWrap}>
-            <View style={s.certCardClip}>
-              {cert.logo_url ? (
-                <Image source={{uri: cert.logo_url}} style={s.certLogo} resizeMode="contain" />
-              ) : null}
-              <View style={s.courseCardContent}>
-                <Text style={s.courseTitleV2} numberOfLines={2}>{stripHtml(cert.name || cert.title)}</Text>
-                {cert.issue_on ? (
-                  <View style={s.courseMetaRow}>
-                    <CalendarIcon />
-                    <Text style={s.courseMetaTextV2}>{`Issued ${cert.issue_on}`}</Text>
-                  </View>
-                ) : null}
-                <View style={s.courseStatusBtnRow}>
-                  {cert.status_label ? <Text style={s.courseStatusV2}>{stripHtml(cert.status_label)}</Text> : null}
-                  {cert.certificate_url ? (
-                    <TouchableOpacity
-                      style={s.courseContinueBtn}
-                      onPress={() => Linking.openURL(cert.certificate_url)}>
-                      <Text style={s.courseContinueBtnText}>{'View Certificate'}</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              </View>
-            </View>
-          </View>
+          <CertificationCard key={cert.certificate_id || i} cert={cert} navigation={navigation} isOwn={isOwn} />
         ))
       )}
     </View>
@@ -1694,15 +1753,14 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
               </Text>
             </View>
           ) : null}
-          <TouchableOpacity
-            style={s.mtRequestCallBtn}
-            onPress={() => {
-              if (mentor.request_call_url) { Linking.openURL(mentor.request_call_url); }
-              else { Alert.alert('Not Available Yet', 'This mentor hasn’t set up call requests yet.'); }
-            }}>
-            <CallIcon />
-            <Text style={s.mtRequestCallBtnText}>{'Request a Call'}</Text>
-          </TouchableOpacity>
+          {(mentor.calendly_link || mentor.request_call_url) ? (
+            <TouchableOpacity
+              style={s.mtRequestCallBtn}
+              onPress={() => Linking.openURL(mentor.calendly_link || mentor.request_call_url).catch(() => {})}>
+              <CallIcon />
+              <Text style={s.mtRequestCallBtnText}>{'Request a Call'}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
 
@@ -1830,7 +1888,7 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
 };
 
 // ─── Profile Header ───────────────────────────────────────────────────────────
-const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollow, navigation, onAvatarChange, userId}: any) => {
+const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollow, navigation, userId}: any) => {
   const xmap = parseXprofile(profile?.xprofile);
   const basic = profileData?.basic;
 
@@ -1870,23 +1928,11 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
     console.log('[Header] name:', displayName, '| job:', designation, '| country:', country, '| bio:', bio?.slice(0,50));
   }
 
+  // Opens the Change Profile Photo screen (upload / take photo / delete).
+  // It hands the result back through the `avatarUpdate` route param, which
+  // MemberProfileScreen applies below.
   const handleCameraPress = () => {
-    try {
-      launchImageLibrary(
-        {mediaType: 'photo', quality: 0.8, includeBase64: false},
-        response => {
-          if (response.didCancel) return;
-          if (response.errorCode) {
-            console.log('[Camera] error:', response.errorMessage);
-            return;
-          }
-          const asset = response.assets?.[0];
-          if (asset?.uri) onAvatarChange?.(asset.uri);
-        },
-      );
-    } catch (e) {
-      Alert.alert('Info', 'Image picker not available. Please install react-native-image-picker.');
-    }
+    navigation?.navigate('ChangeProfilePhoto');
   };
 
   const handleLinkedIn = () => {
@@ -1906,6 +1952,8 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
           ? <Image source={{uri: coverUrl}} style={s.coverImg} resizeMode="cover" />
           : <View style={[s.coverImg, {backgroundColor:'#1A3A6B'}]} />
         }
+        {/* Back button — shared component on a white chip, top-left of the cover (Figma) */}
+        <BackButton navigation={navigation} style={s.coverBack} />
       </View>
 
       {/* Profile block */}
@@ -2095,21 +2143,21 @@ const MemberProfileScreen = ({navigation, route}: any) => {
     finally { setLoading(false); }
   };
 
+  // null = no local change; '' = photo was removed; otherwise a local file uri.
   const [localAvatar, setLocalAvatar] = useState<string | null>(null);
 
-  const handleAvatarChange = async (uri: string) => {
-    setLocalAvatar(uri);
-    // apiRequest always JSON.stringifies its body and forces
-    // Content-Type: application/json — fundamentally incompatible with a
-    // multipart FormData avatar upload (separate from the {method:...}
-    // object-as-2nd-arg crash this also had). uploadAvatar in
-    // profileApi.ts already does this correctly with a raw fetch call.
-    try {
-      await uploadAvatar(uri);
-    } catch (e) {
-      console.log('[Avatar] upload error', e);
-    }
-  };
+  // ChangeProfilePhotoScreen does the upload/delete itself, then navigates
+  // back here with {avatarUpdate: {uri, ts}}. Apply it locally right away —
+  // basic.avatar_url (from the member-profile endpoint) takes precedence in
+  // ProfileHeader, so it is overridden too.
+  const avatarUpdate = route?.params?.avatarUpdate;
+  useEffect(() => {
+    if (!avatarUpdate) return;
+    setLocalAvatar(avatarUpdate.uri);
+    setProfileData((prev: any) =>
+      prev ? {...prev, basic: {...prev.basic, avatar_url: avatarUpdate.uri}} : prev,
+    );
+  }, [avatarUpdate?.ts]);
 
   const handleFollow = async () => {
     const next = !following;
@@ -2135,14 +2183,13 @@ const MemberProfileScreen = ({navigation, route}: any) => {
 
       <ScrollView showsVerticalScrollIndicator={false} bounces>
         <ProfileHeader
-          profile={localAvatar ? {...profile, avatar_urls: {full: localAvatar, thumb: localAvatar}} : profile}
+          profile={localAvatar !== null ? {...profile, avatar_urls: {full: localAvatar, thumb: localAvatar}} : profile}
           profileData={profileData}
           loading={loading}
           isOwn={isOwn}
           following={following}
           onFollow={handleFollow}
           navigation={navigation}
-          onAvatarChange={handleAvatarChange}
           userId={targetId}
         />
 
@@ -2194,14 +2241,17 @@ const s = StyleSheet.create({
   // Cover + profile block
   cover:        {width:'100%', height:130},
   coverImg:     {width:'100%', height:'100%'},
+  // 28x28 chip, 16px from the cover's top-left, white fill (Figma)
+  coverBack:    {position:'absolute', top:16, left:16, backgroundColor:'#FFF', borderRadius:7},
   profileBlock: {backgroundColor:'#FFF', paddingHorizontal:16, paddingBottom:16},
+  // Figma (measured): avatar ≈112px, overlapping the cover by ≈55px
   avatarRow: {
     flexDirection:'row', alignItems:'flex-end', justifyContent:'space-between',
-    marginTop:-44, marginBottom:10,
+    marginTop:-55, marginBottom:10,
   },
   avatarWrap: {position:'relative'},
   avatar: {
-    width:88, height:88, borderRadius:44,
+    width:112, height:112, borderRadius:56,
     borderWidth:3, borderColor:'#FFF', backgroundColor:'#E0E0E0',
   },
   cameraBtn: {
@@ -2224,15 +2274,17 @@ const s = StyleSheet.create({
     alignSelf:'flex-start', marginTop:10,
   },
   editProfileBtnText: {fontSize:13, color:'#192546', fontWeight:'600'},
-  name:        {fontSize:18, fontWeight:'700', color:'#192647', letterSpacing:0.09},
-  designation: {fontSize:13, color:'#555', marginBottom:2},
-  location:    {fontSize:12, color:'#888', marginBottom:5},
-  bioText:     {fontSize:13, color:'#192546', lineHeight:18, marginBottom:10},
+  // Runda + sizes measured from the Figma screenshot (name ≈20, designation and
+  // location ≈16, bio 13/18) — approximate; confirm in Dev Mode.
+  name:        {fontFamily:'Runda-Bold', fontSize:20, fontWeight:'700', color:'#192647', letterSpacing:0.09},
+  designation: {fontFamily:'Runda-Normal', fontSize:16, color:'#192546', marginBottom:2},
+  location:    {fontFamily:'Runda-Normal', fontSize:16, color:'#8F9098', marginBottom:5},
+  bioText:     {fontFamily:'Runda-Normal', fontSize:13, color:'#192546', lineHeight:18, marginBottom:10},
   bio:         {fontSize:13, color:'#555', lineHeight:19, marginBottom:10},
   badgesRow:   {flexDirection:'row', alignItems:'center', marginBottom:12},
-  badgesText:  {fontSize:14, color:'#46B0E3', fontWeight:'500'},
-  badgesDot:   {fontSize:14, color:'#46B0E3'},
-  pdusText:    {fontSize:14, color:'#46B0E3', fontWeight:'400'},
+  badgesText:  {fontFamily:'Runda-Medium', fontSize:14, color:'#46B0E3', fontWeight:'500'},
+  badgesDot:   {fontFamily:'Runda-Medium', fontSize:14, color:'#46B0E3'},
+  pdusText:    {fontFamily:'Runda-Normal', fontSize:14, color:'#46B0E3', fontWeight:'400'},
 
   // Action buttons — Figma exact. Note: parent (profileBlock) already has
   // paddingHorizontal:16, which satisfies the "padding: 0 16px" spec for
@@ -2247,7 +2299,7 @@ const s = StyleSheet.create({
     borderRadius:50, borderWidth:1, borderColor:'#0C4D91',
     backgroundColor:'#FFF',
   },
-  headerBtnText: {color:'#0C4D91', fontSize:14, fontWeight:'500'},
+  headerBtnText: {fontFamily:'Runda-Medium', color:'#0C4D91', fontSize:12, fontWeight:'500'},
   headerBtnDisabled: {opacity:0.4},
   // Follow button
   followBtn: {
@@ -2298,16 +2350,22 @@ const s = StyleSheet.create({
     shadowRadius:12,
     elevation:6,
   },
-  tabItem: {paddingTop:12, position:'relative', alignItems:'center'},
-  tabLabel: {fontSize:14, color:'#192546', fontWeight:'500', lineHeight:18},
+  // height 45 = the tab bar's inner height, so the underline can sit INSIDE the
+  // item. The tabs live in a horizontal ScrollView, which clips anything drawn
+  // outside its content box — the old bottom:-10 / -14 offsets were clipped,
+  // so no underline showed at all.
+  tabItem: {paddingTop:12, height:45, position:'relative', alignItems:'center'},
+  tabLabel: {fontFamily:'Runda-Medium', fontSize:14, color:'#192546', fontWeight:'500', lineHeight:18},
   // Selected tab — Figma spec: same weight/size/color as inactive, the
   // only visual difference is the underline below (drawn as a separate
   // View since RN's native text-decoration can't carry a custom
   // thickness/offset/color independent of the text itself).
   tabLabelActive: {color:'#192546', fontWeight:'500'},
+  // Underline spans the label's width, 2px thick, at the bottom of the 45px
+  // item (≈43px from the top, measured from a zoomed Figma screenshot).
   tabUnderline: {
-    position:'absolute', bottom:-10, left:0, right:0,
-    height:2.5, backgroundColor:'#084D92', borderRadius:1,
+    position:'absolute', bottom:0, left:0, right:0,
+    height:2, backgroundColor:'#0C4D91', borderRadius:1,
   },
 
   // Tab content
@@ -2482,7 +2540,14 @@ const s = StyleSheet.create({
   // Connections — per Marium's Figma spec
   connSelectorWrap: {flexDirection:'column', alignItems:'flex-start', gap:16, alignSelf:'stretch', marginTop:12},
   subTabRow:  {flexDirection:'row', alignItems:'flex-start', alignSelf:'stretch'},
-  subTabBox:  {flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, flex:1},
+  subTabBox:  {flex:1, alignItems:'stretch'},
+  subTabInner: {flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8},
+  // Selected-tab indicator: stretch, #0C4D91. The handoff SVG is 1px tall
+  // (a 2px stroke centred on the bottom edge of a 1px viewBox, so half is
+  // clipped) — i.e. 1px visible. Inactive keeps the same 1px height
+  // (transparent) so switching tabs doesn't shift the layout.
+  subTabLine: {height:1, marginTop:8, alignSelf:'stretch', backgroundColor:'transparent'},
+  subTabLineActive: {backgroundColor:'#0C4D91'},
   subTabLabel: {color:'#8F9098', fontFamily:'Runda-Medium', fontSize:14},
   subTabLabelActive: {color:'#0C4D91'},
   subTabCount: {
@@ -2569,6 +2634,41 @@ const s = StyleSheet.create({
     transform: [{rotate: '0.864deg'}],
   },
   certLogo: {width:56, height:56},
+
+  // Certification card — Figma handoff (Oct 2026)
+  // padding-right 16, gap 16, radius 5 5 0 0, white. Gap done with margins
+  // (unreliable on Android/Hermes in a row with a fixed-width panel).
+  certCardV3: {
+    flexDirection:'row', alignItems:'center', paddingRight:16,
+    backgroundColor:'#FFF', borderTopLeftRadius:5, borderTopRightRadius:5, overflow:'hidden',
+  },
+  // Left background: 110 x 219, gradient #ABE4FF -> #FFF (set on LinearGradient)
+  certPanelV3: {width:110, height:219, alignItems:'center', justifyContent:'center', marginRight:16},
+  certImgV3: {width:80, height:80, borderRadius:40, backgroundColor:'lightgray'},
+  certInfoV3: {flex:1, paddingVertical:16},
+  certTitleRowV3: {flexDirection:'row', alignItems:'flex-start', gap:12, alignSelf:'stretch'},
+  // Heading/H4: Runda 500 14, navy
+  certTitleV3: {fontFamily:'Runda-Medium', fontSize:14, fontWeight:'500', color:'#192546'},
+  // blue line 42.954 x 1.5, #46B0E3
+  certRuleV3: {width:42.954, height:1.5, backgroundColor:'#46B0E3', marginTop:4},
+  // Body/Body S: Runda 400 12 / 16, #8F9098
+  certSubtitleV3: {fontFamily:'Runda-Normal', fontSize:12, fontWeight:'400', lineHeight:16, color:'#8F9098', marginTop:8},
+  // Heading/H5: Runda 500 12, light blue
+  certStatusV3: {fontFamily:'Runda-Medium', fontSize:12, fontWeight:'500', color:'#46B0E3', marginTop:16},
+  // UNSPEC: button label style — Runda 500 12 white, like the other action buttons
+  certBtnV3: {
+    alignSelf:'stretch', marginTop:12, paddingVertical:12, paddingHorizontal:16,
+    borderRadius:5, backgroundColor:'#0C4D91', alignItems:'center', justifyContent:'center',
+  },
+  certBtnTextV3: {fontFamily:'Runda-Medium', fontSize:12, fontWeight:'500', color:'#FFF'},
+  // Banner: padding 10, radius 0 0 5 5, #46B0E3 (default); text Heading/H4
+  // Runda 500 13 / 16, white, centered; link same style + underline.
+  certBannerV3: {
+    alignSelf:'stretch', padding:10, alignItems:'center', justifyContent:'center',
+    borderBottomLeftRadius:5, borderBottomRightRadius:5,
+  },
+  certBannerTextV3: {fontFamily:'Runda-Medium', fontSize:13, fontWeight:'500', lineHeight:16, color:'#FFF', textAlign:'center'},
+  certBannerLinkV3: {fontFamily:'Runda-Medium', fontWeight:'500', textDecorationLine:'underline'},
   courseCardContent: {flex:1, gap:4},
   courseTitleV2:   {fontSize:14, fontFamily:'Runda-Medium', color:'#192546'},
   courseMetaRow:   {flexDirection:'row', alignItems:'center', gap:5},

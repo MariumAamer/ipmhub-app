@@ -44,6 +44,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ProfileDrawer from '../components/ProfileDrawer';
 import FabMenu from '../components/FabMenu';
+import EmojiPickerSheet from '../components/EmojiPickerSheet';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import {requestUserPermissionAndRegister} from '../api/pushNotifications';
 import {getUserIdFromToken} from '../api/profileApi';
@@ -155,20 +156,23 @@ const CheckCircleIcon = () => (
 );
 
 const MuteIcon = () => (
-  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-    <Path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="#192546" />
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path d="M8.55798 12.3253C8.61346 12.0489 8.88273 11.8691 9.15918 11.9243C9.43556 11.9798 9.61472 12.2491 9.55957 12.5255C9.357 13.5364 8.4116 14.2498 7.33606 14.2498C6.26067 14.2496 5.3151 13.5363 5.11255 12.5255C5.0575 12.2492 5.23727 11.9798 5.51355 11.9243C5.78997 11.8691 6.05922 12.049 6.11475 12.3253C6.21178 12.8087 6.69491 13.2279 7.33606 13.228C7.97743 13.228 8.46097 12.8089 8.55798 12.3253ZM7.40869 0.75C9.86691 0.750215 11.86 2.74304 11.86 5.20129V7.64575C12.6926 7.81489 13.3193 8.55159 13.3193 9.43408C13.3192 10.4414 12.5023 11.2577 11.495 11.2578H3.32239C2.31494 11.2578 1.49821 10.4415 1.49805 9.43408C1.49805 8.55149 2.12469 7.81478 2.9574 7.64575V5.20129C2.95743 2.7429 4.9503 0.75 7.40869 0.75ZM7.40869 1.77173C5.51452 1.77173 3.97915 3.30713 3.97913 5.20129V7.8844C3.97912 8.23132 3.73433 8.53054 3.39441 8.59973L3.16064 8.64734C2.79469 8.72162 2.51917 9.04692 2.51917 9.43408C2.51933 9.87726 2.87917 10.2367 3.32239 10.2367H11.495C11.9381 10.2365 12.2974 9.87717 12.2976 9.43408C12.2976 9.04705 12.0225 8.72176 11.6567 8.64734L11.423 8.59973C11.0829 8.53067 10.8383 8.23144 10.8383 7.8844V5.20129C10.8382 3.30726 9.30268 1.77194 7.40869 1.77173Z" fill="#192546" />
+    <Path d="M2.83316 1.57193C3.07946 1.32563 3.4792 1.32563 3.72549 1.57193L13.3117 11.1587C13.5578 11.405 13.5579 11.8042 13.3117 12.0504C13.0654 12.2967 12.6663 12.2966 12.42 12.0504L2.83316 2.46426C2.58686 2.21797 2.58686 1.81823 2.83316 1.57193Z" fill="#192546" />
   </Svg>
 );
 
 const TrashIcon = () => (
-  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-    <Path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="#192546" />
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path d="M12.3438 3.125C12.6026 3.125 12.8125 3.33487 12.8125 3.59375C12.8125 3.85263 12.6026 4.0625 12.3438 4.0625H2.34375C2.08487 4.0625 1.875 3.85263 1.875 3.59375C1.875 3.33487 2.08487 3.125 2.34375 3.125H12.3438Z" fill="#192546" />
+    <Path d="M12.22 3.125L11.62 12.1246C11.5707 12.8633 10.9571 13.4375 10.2168 13.4375H4.47095C3.73061 13.4375 3.117 12.8633 3.06775 12.1246L2.46777 3.125H12.22ZM4.00342 12.0624C4.01983 12.3086 4.22417 12.5 4.47095 12.5H10.2168C10.4636 12.5 10.6679 12.3086 10.6843 12.0624L11.2178 4.0625H3.46997L4.00342 12.0624Z" fill="#192546" />
+    <Path d="M5.62438 9.84375V6.71875C5.62438 6.45987 5.83425 6.25 6.09313 6.25C6.35202 6.25 6.56188 6.45987 6.56188 6.71875V9.84375C6.56188 10.1026 6.35202 10.3125 6.09313 10.3125C5.83425 10.3125 5.62438 10.1026 5.62438 9.84375ZM8.12438 9.84375V6.71875C8.12438 6.45987 8.33425 6.25 8.59313 6.25C8.85202 6.25 9.06188 6.45987 9.06188 6.71875V9.84375C9.06188 10.1026 8.85202 10.3125 8.59313 10.3125C8.33425 10.3125 8.12438 10.1026 8.12438 9.84375ZM8.54247 1.25C9.14769 1.25002 9.68525 1.63718 9.8767 2.2113L10.2881 3.44543C10.3699 3.69103 10.237 3.95683 9.99145 4.0387C9.74585 4.12056 9.48005 3.98766 9.39819 3.74207L8.98742 2.50793C8.92362 2.31654 8.74422 2.18752 8.54247 2.1875H6.14379C5.94205 2.18752 5.76265 2.31654 5.69885 2.50793L5.28808 3.74207C5.20621 3.98766 4.94042 4.12056 4.69482 4.0387C4.44922 3.95683 4.31632 3.69103 4.39819 3.44543L4.80956 2.2113C5.00102 1.63718 5.53858 1.25002 6.14379 1.25H8.54247Z" fill="#192546" />
   </Svg>
 );
 
 const EditIcon = () => (
-  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-    <Path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="#192546" />
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path d="M1.63965 10.8735V5.19114C1.63968 3.68144 2.8637 2.45738 4.37341 2.45738H7.54236C7.84497 2.45738 8.0904 2.70287 8.09045 3.00547C8.09045 3.30812 7.84501 3.55357 7.54236 3.55357H4.37341C3.469 3.55357 2.73587 4.28673 2.73584 5.19114V10.8735C2.73584 11.778 3.46898 12.5117 4.37341 12.5117H10.0558C10.9602 12.5117 11.6934 11.778 11.6934 10.8735V7.81382C11.6934 7.51127 11.9389 7.2658 12.2415 7.26573C12.5441 7.26573 12.7895 7.51123 12.7896 7.81382V10.8735C12.7896 12.3832 11.5655 13.6073 10.0558 13.6073H4.37341C2.86368 13.6073 1.63965 12.3832 1.63965 10.8735ZM11.4327 1.31236C11.8294 0.915737 12.4723 0.915737 12.8689 1.31236L14.0182 2.46104C14.4147 2.85762 14.4147 3.50058 14.0182 3.8972L8.19421 9.72117C8.01516 9.90014 7.77572 10.0056 7.52283 10.0172L6.3186 10.0727C5.7217 10.1 5.23049 9.60824 5.25781 9.01133L5.31274 7.80772L5.32129 7.71312C5.35175 7.49535 5.45269 7.29241 5.60938 7.13572L11.4327 1.31236ZM6.40588 7.88829L6.35583 8.97349L7.44104 8.92405L13.1863 3.17881L12.1505 2.14366L6.40588 7.88829Z" fill="#192546" />
   </Svg>
 );
 
@@ -437,7 +441,7 @@ const MoreOptionsSheet = ({
           </>
         ) : (
           <TouchableOpacity style={ms.optionRow} onPress={onReport}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+            <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
               <Path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="#192546" />
             </Svg>
             <Text style={ms.optionText}>{'Report'}</Text>
@@ -544,8 +548,8 @@ const NewestMembersSection = ({members, loading, followBusy, onFollow, navigatio
               activeOpacity={0.85}
               onPress={() => navigation?.push('MemberProfile', {userId: m.id})}>
               <Image source={{uri: m.avatar}} style={styles.newestMemberAvatar} />
-              <Text style={styles.newestMemberName} numberOfLines={2}>{m.name}</Text>
-              <Text style={styles.newestMemberRole} numberOfLines={2}>{m.title}</Text>
+              <Text style={styles.newestMemberName} numberOfLines={1} ellipsizeMode="tail">{m.name}</Text>
+              <Text style={styles.newestMemberRole} numberOfLines={1} ellipsizeMode="tail">{m.title || ' '}</Text>
               <TouchableOpacity
                 style={[styles.newestFollowBtn, m.following && styles.newestFollowingBtn]}
                 onPress={() => onFollow(m.id, m.following)}
@@ -588,6 +592,7 @@ const CommentsPanel = ({
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState('');
+  const [showEmoji, setShowEmoji] = useState(false);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -682,7 +687,14 @@ const CommentsPanel = ({
             value={text}
             onChangeText={setText}
           />
-          <SmileyIcon />
+          <TouchableOpacity onPress={() => setShowEmoji(true)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+            <SmileyIcon />
+          </TouchableOpacity>
+          <EmojiPickerSheet
+            visible={showEmoji}
+            onClose={() => setShowEmoji(false)}
+            onSelect={e => setText(prev => prev + e)}
+          />
         </View>
         <TouchableOpacity
           style={[styles.commentSubmitBtn, sending && {opacity: 0.85}]}
@@ -857,7 +869,9 @@ const PostCard = React.memo(({
       ) : null}
 
       {post.linkPreview ? (
-        <TouchableOpacity style={styles.linkPreview}>
+        <TouchableOpacity
+          style={styles.linkPreview}
+          onPress={() => post.linkPreview?.url && Linking.openURL(post.linkPreview.url).catch(() => {})}>
           <Image source={{uri: post.linkPreview.image}} style={styles.linkPreviewImage} />
           <View style={styles.linkPreviewContent}>
             <Text style={styles.linkPreviewTitle} numberOfLines={2}>{post.linkPreview.title}</Text>
@@ -955,7 +969,9 @@ const PostCard = React.memo(({
           </TouchableOpacity>
 
           {isIntro && (
-            <TouchableOpacity style={[styles.statBtn, {marginLeft: 'auto' as any}]}>
+            <TouchableOpacity
+              style={[styles.statBtn, {marginLeft: 'auto' as any}]}
+              onPress={() => navigation?.navigate('Intros')}>
               <Text style={styles.seeIntrosText}>{'› See Intros'}</Text>
             </TouchableOpacity>
           )}
@@ -1495,7 +1511,7 @@ const FeedScreen = ({navigation}: any) => {
           bottom edge already sits above the nav bar — no need to add the
           nav bar's height here. */}
       <TouchableOpacity
-        style={[styles.fab, {bottom: 16, right: 16}]}
+        style={[styles.fab, {bottom: 16, right: 16}, fabMenuOpen && {opacity: 0}]}
         onPress={() => setFabMenuOpen(true)}
         activeOpacity={0.85}>
         <Svg width={45} height={45} viewBox="0 0 45 45" fill="none">
@@ -1609,7 +1625,7 @@ const styles = StyleSheet.create({
   // Newest Members — Figma slider row
   newestMembersRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 12,
     paddingRight: 4,
   },
@@ -1641,6 +1657,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#192546',
     textAlign: 'center',
+    lineHeight: 16,
+    alignSelf: 'stretch',
     fontFamily: 'Runda',
   },
   // Figma: Body/Body XS — 10px 400 #8F9098 lineHeight 14
@@ -1650,6 +1668,7 @@ const styles = StyleSheet.create({
     color: '#8F9098',
     textAlign: 'center',
     lineHeight: 14,
+    alignSelf: 'stretch',
     fontFamily: 'Runda',
   },
   newestFollowBtn: {
@@ -2006,7 +2025,7 @@ const ms = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: 0,
     paddingTop: 20,
     paddingBottom: 36,
   },
@@ -2014,21 +2033,33 @@ const ms = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
+    paddingHorizontal: 20,
     position: 'relative',
   },
-  sheetTitle: {fontSize: 17, fontWeight: '700', color: '#192546', fontFamily: 'Runda'},
-  closeBtn: {position: 'absolute', right: 0, top: -4, padding: 6},
+  // Figma Heading/H3
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 20,
+    letterSpacing: 0.08,
+    textAlign: 'center',
+    color: '#0C4D91',
+    fontFamily: 'Runda',
+  },
+  closeBtn: {position: 'absolute', right: 20, top: -4, padding: 6},
   closeX: {fontSize: 18, color: '#8F9098'},
+  // Figma row: padding 12 20, gap 10, align center
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    alignSelf: 'stretch',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
   },
-  optionText: {fontSize: 15, color: '#192546', fontFamily: 'Runda'},
+  // Figma Action/Action L
+  optionText: {fontSize: 14, fontWeight: '700', color: '#192546', fontFamily: 'Runda'},
 });
 
 // ─── Delete Confirm Styles ────────────────────────────────────────────────────

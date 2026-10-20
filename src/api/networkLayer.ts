@@ -31,6 +31,12 @@ const LONG_TTL_PATHS = [
   '/custom/v1/courses/upcoming',
   '/custom/v1/courses/search',
   '/wp/v2/topic-tag',
+  // Public catalogue content that changes rarely (PERF: Store + Webinars
+  // were re-requested on every tab switch).
+  '/custom/v1/webinar-recordings',
+  '/custom/v1/store-courses',
+  '/custom/v1/store/certifications',
+  '/custom/v1/pm-softwares',
 ];
 
 const MAX_ENTRIES = 80;
@@ -98,6 +104,20 @@ const withTimeout = async (
   }
 };
 
+// DEV-ONLY request timing, printed in the Metro terminal as "[NET] ...".
+// Shows how long each API call really takes and how many were in flight at
+// once (the server answers them one at a time, so many in flight = slow).
+// Never logs headers or tokens.
+const t0App = Date.now();
+const shortUrl = (url: string): string =>
+  url.replace(/^https?:\/\/[^/]+/, '').slice(0, 110);
+const netLog = (label: string, url: string, extra = ''): void => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(`[NET] +${((Date.now() - t0App) / 1000).toFixed(1)}s ${label} ${shortUrl(url)} ${extra}`);
+  }
+};
+
 const patchedFetch = async (input: any, init?: RequestInit): Promise<Response> => {
   const url = toUrl(input);
   if (!url.includes(API_HOST)) return originalFetch(input, init);
@@ -119,15 +139,24 @@ const patchedFetch = async (input: any, init?: RequestInit): Promise<Response> =
 
   const hit = cache.get(key);
   if (hit) {
-    if (hit.expires > Date.now()) return buildResponse(hit);
+    if (hit.expires > Date.now()) {
+      netLog('CACHE', url);
+      return buildResponse(hit);
+    }
     cache.delete(key);
   }
 
   const pending = inflight.get(key);
-  if (pending) return (await pending).clone();
+  if (pending) {
+    netLog('DEDUPE', url);
+    return (await pending).clone();
+  }
 
   const request = (async () => {
+    const started = Date.now();
+    netLog('START', url, `(in flight: ${inflight.size})`);
     const res = await withTimeout(input, init, GET_TIMEOUT_MS);
+    netLog('DONE ', url, `${res.status} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     if (res.status === 200) {
       try {
         const body = await res.clone().text();

@@ -469,9 +469,6 @@ const QuizScreen = ({route, navigation}: any) => {
 
       <View style={styles.headerRow}>
         <BackButton onPress={() => navigation?.goBack?.()} />
-        <TouchableOpacity>
-          <ExpandIcon />
-        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>

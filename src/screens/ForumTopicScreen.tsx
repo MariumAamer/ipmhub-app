@@ -55,7 +55,7 @@ const ForumTopicScreen = ({navigation, route}: any) => {
       // instead of holding the whole screen hostage.
       if (!isRefresh) setRepliesLoading(true);
       const repliesPromise = getReplies(topicId, uid);
-      const t = await getTopic(topicId, uid);
+      const t = await getTopic(topicId, uid, false, enriched => setTopic(enriched));
       setTopic(t);
       setLoading(false);
       try {

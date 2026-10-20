@@ -5,6 +5,9 @@ import Svg, {Path, Circle} from 'react-native-svg';
 import {getCachedCredentials} from '../api/credentialsCache';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import LogoutConfirmDialog from '../components/LogoutConfirmDialog';
+import EyeClosedIcon from '../components/EyeClosedIcon';
+import EyeOpenIcon from '../components/EyeOpenIcon';
 import {logoutUser} from '../api/authApi';
 import {
   getNotificationSettings,
@@ -16,6 +19,7 @@ import {
 // ─── Brand color ──────────────────────────────────────────────────────────────
 const NAVY = '#0C4D91';
 const DARK_NAVY = '#192546';
+const ERROR_RED = '#ED3241'; // --Support-Error-Dark
 
 // ─── Bell Icon ────────────────────────────────────────────────────────────────
 const BellIcon = ({size = 20, color = NAVY}: {size?: number; color?: string}) => (
@@ -69,30 +73,6 @@ const GearIcon = ({color = NAVY}: {color?: string}) => (
   </Svg>
 );
 
-// ─── Eye Icons ────────────────────────────────────────────────────────────────
-const EyeOpenIcon = ({color = '#8F9098'}: {color?: string}) => (
-  <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
-    <Path
-      d="M9 3.5C5.5 3.5 2.5 6 1 9C2.5 12 5.5 14.5 9 14.5C12.5 14.5 15.5 12 17 9C15.5 6 12.5 3.5 9 3.5Z"
-      stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
-    />
-    <Path
-      d="M9 11.5C10.3807 11.5 11.5 10.3807 11.5 9C11.5 7.61929 10.3807 6.5 9 6.5C7.61929 6.5 6.5 7.61929 6.5 9C6.5 10.3807 7.61929 11.5 9 11.5Z"
-      stroke={color} strokeWidth="1.3"
-    />
-  </Svg>
-);
-
-const EyeOffIcon = ({color = '#8F9098'}: {color?: string}) => (
-  <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
-    <Path d="M1.5 1.5L16.5 16.5" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-    <Path
-      d="M7.37 4.03C7.9 3.86 8.44 3.75 9 3.75C12.5 3.75 15.5 6.25 17 9.25C16.47 10.34 15.73 11.3 14.83 12.08M10.95 10.95C10.56 11.33 10.02 11.56 9.43 11.56C8.19 11.56 7.19 10.56 7.19 9.31C7.19 8.7 7.43 8.14 7.83 7.74M12.5 6.5C11.44 5.73 10.26 5.25 9 5.25C7.22 5.25 5.58 6.09 4.25 7.31L1 9.25C2.19 11.69 4.86 13.75 7.84 13.75"
-      stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
-    />
-  </Svg>
-);
-
 // ─── Hint / warning exclamation icon ──────────────────────────────────────────
 // Rebuilt as plain fills — react-native-svg@15.3.0 doesn't render <mask>.
 // Original design was a navy circle badge with white "!" cut out via mask;
@@ -137,8 +117,16 @@ const PrivacyIcon = () => (
   </Svg>
 );
 
+const DeleteIcon = () => (
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path d="M12.3438 3.125C12.6026 3.125 12.8125 3.33487 12.8125 3.59375C12.8125 3.85263 12.6026 4.0625 12.3438 4.0625H2.34375C2.08487 4.0625 1.875 3.85263 1.875 3.59375C1.875 3.33487 2.08487 3.125 2.34375 3.125H12.3438Z" fill={ERROR_RED} />
+    <Path fillRule="evenodd" clipRule="evenodd" d="M12.219 3.125L11.619 12.1246C11.5698 12.8633 10.9562 13.4375 10.2158 13.4375H4.46997C3.72963 13.4375 3.11602 12.8633 3.06677 12.1246L2.4668 3.125H12.219ZM4.00244 12.0624C4.01886 12.3086 4.22319 12.5 4.46997 12.5H10.2158C10.4626 12.5 10.6669 12.3086 10.6833 12.0624L11.2168 4.0625H3.46899L4.00244 12.0624Z" fill={ERROR_RED} />
+    <Path fillRule="evenodd" clipRule="evenodd" d="M5.62536 9.84375V6.71875C5.62536 6.45987 5.83523 6.25 6.09411 6.25C6.35299 6.25 6.56286 6.45987 6.56286 6.71875V9.84375C6.56286 10.1026 6.35299 10.3125 6.09411 10.3125C5.83523 10.3125 5.62536 10.1026 5.62536 9.84375ZM8.12536 9.84375V6.71875C8.12536 6.45987 8.33523 6.25 8.59411 6.25C8.85299 6.25 9.06286 6.45987 9.06286 6.71875V9.84375C9.06286 10.1026 8.85299 10.3125 8.59411 10.3125C8.33523 10.3125 8.12536 10.1026 8.12536 9.84375ZM8.54345 1.25C9.14866 1.25002 9.68623 1.63718 9.87768 2.2113L10.2891 3.44543C10.3709 3.69103 10.238 3.95683 9.99243 4.0387C9.74683 4.12056 9.48103 3.98766 9.39916 3.74207L8.9884 2.50793C8.9246 2.31654 8.74519 2.18752 8.54345 2.1875H6.14477C5.94303 2.18752 5.76362 2.31654 5.69982 2.50793L5.28906 3.74207C5.20719 3.98766 4.94139 4.12056 4.6958 4.0387C4.4502 3.95683 4.3173 3.69103 4.39916 3.44543L4.81054 2.2113C5.00199 1.63718 5.53956 1.25002 6.14477 1.25H8.54345Z" fill={ERROR_RED} />
+  </Svg>
+);
+
 // ─── Checkbox ─────────────────────────────────────────────────────────────────
-const Checkbox = ({checked, onToggle}: {checked: boolean; onToggle: () => void}) => (
+const Checkbox =({checked, onToggle}: {checked: boolean; onToggle: () => void}) => (
   <TouchableOpacity
     onPress={onToggle}
     style={[checkboxStyles.box, checked && checkboxStyles.boxChecked]}
@@ -335,6 +323,7 @@ const FEED_GROUP: NotifSetting[] = [
 const AccountSettingsScreen = ({navigation}: any) => {
   const [activeTab, setActiveTab] = useState<'login' | 'notifications'>('login');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // ── Login Info state ──────────────────────────────────────────────────────
   const [email, setEmail] = useState('');
@@ -378,15 +367,19 @@ const AccountSettingsScreen = ({navigation}: any) => {
     try {
       // PERF: in-memory cached credentials instead of a native Keychain read.
       const creds = await getCachedCredentials();
-      const token = creds ? JSON.parse(creds.password)?.token : null;
+      const stored = creds ? JSON.parse(creds.password) : null;
+      const token = stored?.token ?? null;
+      // Show the stored email immediately as a fallback.
+      if (stored?.email) setEmail(stored.email);
       if (token) {
+        // context=edit is required — WP omits "email" from /users/me otherwise.
         const res = await fetch(
-          'https://hub.instituteprojectmanagement.com/wp-json/wp/v2/users/me',
+          'https://hub.instituteprojectmanagement.com/wp-json/wp/v2/users/me?context=edit',
           {headers: {Authorization: `Bearer ${token}`}},
         );
         if (res.ok) {
           const data = await res.json();
-          setEmail(data?.email || '');
+          if (data?.email) setEmail(data.email);
         }
       }
     } catch {}
@@ -473,20 +466,12 @@ const AccountSettingsScreen = ({navigation}: any) => {
   };
 
   // ── Log out ────────────────────────────────────────────────────────────────
-  const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
-      {text: 'Cancel', style: 'cancel'},
-      {
-        text: 'Log Out',
-        style: 'destructive',
-        onPress: async () => {
-          await logoutUser();
-          // TODO(Marium): confirm this matches the actual Auth-stack screen
-          // name registered in AppNavigator — using 'SignIn' as a placeholder.
-          navigation?.reset?.({index: 0, routes: [{name: 'SignIn'}]});
-        },
-      },
-    ]);
+  const handleLogout = () => setLogoutConfirmOpen(true);
+
+  const handleConfirmLogout = async () => {
+    setLogoutConfirmOpen(false);
+    await logoutUser();
+    navigation?.reset?.({index: 0, routes: [{name: 'SignIn'}]});
   };
 
   return (
@@ -580,7 +565,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
                 onPress={() => setShowNew(p => !p)}
                 style={styles.eyeBtn}
                 hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-                {showNew ? <EyeOpenIcon /> : <EyeOffIcon />}
+                {showNew ? <EyeOpenIcon /> : <EyeClosedIcon />}
               </TouchableOpacity>
             </View>
             <Text style={styles.fieldLabel}>{'Repeat Your New Password'}</Text>
@@ -599,7 +584,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
                 onPress={() => setShowRepeat(p => !p)}
                 style={styles.eyeBtn}
                 hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-                {showRepeat ? <EyeOpenIcon /> : <EyeOffIcon />}
+                {showRepeat ? <EyeOpenIcon /> : <EyeClosedIcon />}
               </TouchableOpacity>
             </View>
             <TouchableOpacity
@@ -621,6 +606,13 @@ const AccountSettingsScreen = ({navigation}: any) => {
               <LogoutIcon />
               <Text style={styles.actionLabel}>{'Log Out'}</Text>
               <Text style={styles.actionEmail} numberOfLines={1}>{email}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => navigation?.navigate?.('DeleteAccount')}
+              activeOpacity={0.7}>
+              <DeleteIcon />
+              <Text style={styles.deleteLabel}>{'Delete Account'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionRow}
@@ -732,6 +724,12 @@ const AccountSettingsScreen = ({navigation}: any) => {
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
+
+      <LogoutConfirmDialog
+        visible={logoutConfirmOpen}
+        onCancel={() => setLogoutConfirmOpen(false)}
+        onConfirm={handleConfirmLogout}
+      />
     </View>
   );
 };
@@ -861,27 +859,31 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   actionRow: {
+    height: 56,
+    borderRadius: 5,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
     paddingHorizontal: 20,
     gap: 10,
     alignSelf: 'stretch',
   },
   actionLabel: {
-    fontFamily: 'Runda',
+    fontFamily: 'Runda-Medium',
     fontSize: 12,
-    fontWeight: '500',
     color: DARK_NAVY,
   },
   actionEmail: {
     flex: 1,
-    fontFamily: 'Runda',
+    fontFamily: 'Runda-Normal',
     fontSize: 12,
-    fontWeight: '400',
     lineHeight: 16,
     color: '#8F9098',
     textAlign: 'right',
+  },
+  deleteLabel: {
+    fontFamily: 'Runda-Medium',
+    fontSize: 12,
+    color: ERROR_RED,
   },
   versionText: {
     textAlign: 'center',

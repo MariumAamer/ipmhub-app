@@ -8,6 +8,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import {SearchFilterRow} from '../components/forumStyleControls';
 import WebinarFilterSheet from '../components/WebinarFilterSheet';
 import WebinarSortSheet from '../components/WebinarSortSheet';
 import {
@@ -16,31 +17,13 @@ import {
   EventItem, WebinarRecordingItem, EventRegistrationPayload,
   WEBINAR_TAGS, WEBINAR_SORT_OPTIONS, WebinarSort,
 } from '../api/eventsApi';
+import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
 
 // ─── Search / Filter Icons ──────────────────────────────────────────────────
 // Both given by Marium as <mask>-based SVGs (a path used as an alpha mask
 // over a solid-color rect) — react-native-svg@15.3.0 doesn't render <mask>,
 // so both are rebuilt as a single plain filled <Path> (mask silhouette +
 // rect fill collapses to exactly that), per technical-learnings.md.
-const SearchIcon = () => (
-  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-    <Path
-      fillRule="evenodd" clipRule="evenodd"
-      d="M6.42765 0.333496C3.06482 0.333496 0.333984 3.03789 0.333984 6.37972C0.333984 9.72155 3.06482 12.4259 6.42765 12.4259C7.6814 12.4259 8.84764 12.0499 9.81693 11.4052L13.7923 15.3478C14.2213 15.7732 14.9156 15.7732 15.3445 15.3478C15.7749 14.9209 15.7749 14.2276 15.3445 13.8007L11.3945 9.88328C12.1038 8.89503 12.5213 7.68547 12.5213 6.37972C12.5213 3.03789 9.79049 0.333496 6.42765 0.333496ZM2.53182 6.37972C2.53182 4.24994 4.27344 2.51872 6.42765 2.51872C8.58187 2.51872 10.3235 4.24994 10.3235 6.37972C10.3235 8.5095 8.58187 10.2407 6.42765 10.2407C4.27344 10.2407 2.53182 8.5095 2.53182 6.37972Z"
-      fill="#8F9098"
-    />
-  </Svg>
-);
-
-const FilterIcon = () => (
-  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-    <Path
-      d="M1.33398 3C1.33398 2.73478 1.43432 2.48043 1.61293 2.29289C1.79154 2.10536 2.03378 2 2.28637 2H13.7149C13.9675 2 14.2098 2.10536 14.3884 2.29289C14.567 2.48043 14.6673 2.73478 14.6673 3C14.6673 3.26522 14.567 3.51957 14.3884 3.70711C14.2098 3.89464 13.9675 4 13.7149 4H2.28637C2.03378 4 1.79154 3.89464 1.61293 3.70711C1.43432 3.51957 1.33398 3.26522 1.33398 3ZM3.4326 8C3.4326 7.73478 3.53294 7.48043 3.71155 7.29289C3.89015 7.10536 4.1324 7 4.38498 7H11.6626C11.9152 7 12.1575 7.10536 12.3361 7.29289C12.5147 7.48043 12.615 7.73478 12.615 8C12.615 8.26522 12.5147 8.51957 12.3361 8.70711C12.1575 8.89464 11.9152 9 11.6626 9H4.38498C4.1324 9 3.89015 8.89464 3.71155 8.70711C3.53294 8.51957 3.4326 8.26522 3.4326 8ZM5.88041 13.1322C5.88041 12.867 5.98075 12.6127 6.15936 12.4251C6.33796 12.2376 6.58021 12.1322 6.83279 12.1322H9.21669C9.46927 12.1322 9.71152 12.2376 9.89012 12.4251C10.0687 12.6127 10.1691 12.867 10.1691 13.1322C10.1691 13.3974 10.0687 13.6518 9.89012 13.8393C9.71152 14.0269 9.46927 14.1322 9.21669 14.1322H6.83279C6.58021 14.1322 6.33796 14.0269 6.15936 13.8393C5.98075 13.6518 5.88041 13.3974 5.88041 13.1322Z"
-      fill="#192546"
-    />
-  </Svg>
-);
-
 // Small "x" for a selected-filter chip — plain, no mask involved.
 const ChipCloseIcon = () => (
   <Svg width={8} height={8} viewBox="0 0 10 10" fill="none">
@@ -281,8 +264,25 @@ const EventsScreen = ({navigation}: any) => {
   }, []);
 
   const loadRecordings = useCallback(async () => {
-    setLoading(true);
-    const result = await getWebinarRecordings({search: webinarSearch, tags: webinarTags, sort: webinarSort});
+    // PERF: for the default view (no search/tags, "recent"), show the
+    // last-seen list instantly while the real request runs.
+    const isDefaultView = !webinarSearch && webinarTags.length === 0 && webinarSort === 'recent';
+    let done = false;
+    const reqP = getWebinarRecordings({search: webinarSearch, tags: webinarTags, sort: webinarSort});
+    reqP.then(() => { done = true; }, () => { done = true; });
+    const snap = isDefaultView
+      ? await readSnapshot<{recordings: WebinarRecordingItem[]; total: number}>('webinars')
+      : null;
+    if (snap && !done) {
+      setAllRecordings(snap.recordings);
+      setRecordingsTotal(snap.total);
+      setRecordingsVisibleCount(RECORDINGS_PAGE_SIZE);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    const result = await reqP;
+    if (isDefaultView && result.recordings.length > 0) writeSnapshot('webinars', result);
     setAllRecordings(result.recordings);
     setRecordingsTotal(result.total);
     setRecordingsVisibleCount(RECORDINGS_PAGE_SIZE);
@@ -424,24 +424,12 @@ const EventsScreen = ({navigation}: any) => {
         {activeTab === 'webinars' && (
           <>
             <View style={styles.webinarControlsWrap}>
-              <View style={styles.searchFilterRow}>
-                <View style={styles.searchBar}>
-                  <SearchIcon/>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search"
-                    placeholderTextColor="#8F9098"
-                    value={webinarSearchInput}
-                    onChangeText={setWebinarSearchInput}
-                  />
-                </View>
-                <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterSheetVisible(true)} activeOpacity={0.8}>
-                  <FilterIcon/>
-                  {webinarTags.length > 0 && (
-                    <View style={styles.filterBadge}><Text style={styles.filterBadgeText}>{webinarTags.length}</Text></View>
-                  )}
-                </TouchableOpacity>
-              </View>
+              <SearchFilterRow
+                style={{paddingHorizontal: 0, paddingVertical: 0, marginBottom: 16, backgroundColor: 'transparent'}}
+                value={webinarSearchInput}
+                onChangeText={setWebinarSearchInput}
+                buttons={[{onPress: () => setFilterSheetVisible(true), badge: webinarTags.length}]}
+              />
 
               <TouchableOpacity style={styles.sortRow} onPress={() => setSortSheetVisible(true)} activeOpacity={0.8}>
                 <Text style={styles.sortRowText}>

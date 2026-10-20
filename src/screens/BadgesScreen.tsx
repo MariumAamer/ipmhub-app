@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 // The core react-native SafeAreaView is iOS-only (a no-op on Android), which
 // is why the header/status bar/notch area was covering the "Badges" title
@@ -348,13 +349,17 @@ const EarnedBadgeCard = ({badge}: {badge: ApiEarnedBadge}) => (
     <Text style={styles.earnedTitle}>{badge.label}</Text>
     <Text style={styles.earnedDesc}>{badge.description}</Text>
     <View style={styles.earnedBtnRow}>
-      {badge.can_download && (
-        <TouchableOpacity activeOpacity={0.85} style={styles.downloadBtn}>
-          <Text style={styles.downloadBtnText}>Download</Text>
-        </TouchableOpacity>
-      )}
-      {badge.can_share_linkedin && (
-        <TouchableOpacity activeOpacity={0.85} style={styles.shareBtnWrap}>
+      {/* Download is hidden: the badge data has can_download but no file URL to
+          download from. Restore once the backend provides one. */}
+      {badge.can_share_linkedin && !!badge.share_url && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.shareBtnWrap}
+          onPress={() =>
+            Linking.openURL(
+              `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(badge.share_url)}`,
+            ).catch(() => {})
+          }>
           <LinearGradient
             colors={['#E257E4', '#084D92']}
             start={{x: 0, y: 0}}
@@ -801,7 +806,8 @@ const styles = StyleSheet.create({
   // instead of margins that can drift out of sync.
   earnedCard: {
     backgroundColor: '#FFF', borderRadius: 5,
-    padding: 16, height: 385,
+    // minHeight for the same reason as lockedCard — avoids Android overflow.
+    padding: 16, minHeight: 385,
     flexDirection: 'column', alignItems: 'flex-start', gap: 24,
     alignSelf: 'stretch', flexShrink: 0,
     shadowColor: '#000', shadowOffset: {width: 0, height: 0},
@@ -910,7 +916,10 @@ const styles = StyleSheet.create({
   // sat too close to the progress bar).
   lockedCard: {
     backgroundColor: '#FFF', borderRadius: 5,
-    padding: 16, height: 423,
+    // minHeight (not a fixed height): Android renders the Runda text taller
+    // (font padding / wrapping), so a hard 423 clipped the card and pushed
+    // the unlock hint outside the box. Card now grows with its content.
+    padding: 16, minHeight: 423,
     flexDirection: 'column', alignItems: 'flex-start', gap: 24,
     shadowColor: '#000', shadowOffset: {width: 0, height: 0},
     shadowOpacity: 0.15, shadowRadius: 10, elevation: 3,
@@ -957,6 +966,7 @@ const styles = StyleSheet.create({
   lockedHint: {
     fontFamily: 'Runda', fontWeight: '400', fontSize: 10,
     color: '#71727A', lineHeight: 14,
+    alignSelf: 'stretch',
   },
 });
 

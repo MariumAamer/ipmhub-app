@@ -154,10 +154,11 @@ const PrivacyPolicyScreen = ({navigation}: any) => {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#FFFFFF'},
   scrollContent: {paddingHorizontal: 20, paddingTop: 20},
+  // Only layout here — BackButton already draws its own bordered 28x28 box.
+  // The old width/height/border override wrapped it in a second 32x32 box
+  // with a lighter border, making it look different from other screens.
   backBtn: {
-    width: 32, height: 32, borderRadius: 8,
-    borderWidth: 1, borderColor: '#E0E0E0',
-    alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'flex-start',
     marginBottom: 20,
   },
   // Heading/H2 spec

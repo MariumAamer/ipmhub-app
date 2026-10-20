@@ -38,6 +38,16 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Change Profile Photo → "Open Camera" (react-native-image-picker's
+      launchCamera). Once CAMERA is declared it must also be requested at
+      runtime — ChangeProfilePhotoScreen does that via PermissionsAndroid.
+      The camera uses-feature is marked optional so Play doesn't hide the app
+      from devices without a camera.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <queries>
         <package android:name="com.google.android.youtube" />
 

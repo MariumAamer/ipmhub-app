@@ -28,6 +28,17 @@ const config = (async () => {
     resolver: {
       assetExts: assetExts.filter(ext => ext !== 'svg'),
       sourceExts: [...sourceExts, 'svg'],
+      // Native build output (several GB) has no JS for Metro — crawling it
+      // makes startup very slow and can leave the dependency graph
+      // uninitialised ("Cannot read properties of undefined (reading 'get')").
+      blockList: [
+        /android[\\/]\.gradle[\\/].*/,
+        /android[\\/]build[\\/].*/,
+        /android[\\/]app[\\/]build[\\/].*/,
+        /android[\\/]app[\\/]\.cxx[\\/].*/,
+        /ios[\\/]Pods[\\/].*/,
+        /ios[\\/]build[\\/].*/,
+      ],
     },
   };
 })();

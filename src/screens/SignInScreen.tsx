@@ -11,15 +11,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Image,
   Linking,
 } from 'react-native';
-import {InAppBrowser} from 'react-native-inappbrowser-reborn';
+import {openLinkedInAuth} from '../api/linkedinAuth';
 import {
   GoogleSignin,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import {loginUser, socialLogin, getPostAuthRoute} from '../api/authApi';
+import AppleSignInButton from '../components/AppleSignInButton';
+import SocialButton, {GoogleIcon, LinkedInSquareIcon} from '../components/SocialButton';
+import EyeClosedIcon from '../components/EyeClosedIcon';
+import EyeOpenIcon from '../components/EyeOpenIcon';
+import SuccessToast from '../components/SuccessToast';
+import AccountVerifiedSheet from '../components/AccountVerifiedSheet';
+import StatusSheet from '../components/StatusSheet';
+import InlineErrorBanner from '../components/InlineErrorBanner';
 
 // ─── Google OAuth ───────────────────────────────────────────────────────────
 // This MUST be the Web-type OAuth Client ID (has a client secret attached in
@@ -94,16 +101,21 @@ const SignInScreen = ({navigation, route}: any) => {
   // otherwise the stale "verified" banner stays on screen right next to a
   // contradicting "not activated" error, which is the exact bug reported.
   const [verified, setVerified] = useState<boolean>(!!route?.params?.verified);
-  const [error, setError] = useState(
-    route?.params?.activationFailed
-      ? 'That activation link looks invalid or has expired. Please request a new verification email and try again.'
-      : '',
+  // Activation link was bad / expired / already used → "Link expired" sheet
+  // (replaces the old red error banner for this case).
+  const [linkExpired, setLinkExpired] = useState<boolean>(
+    !!route?.params?.activationFailed,
   );
+  const [error, setError] = useState('');
+  // Wrong email/password → pink "Incorrect email or password" card + red
+  // border on the password field (separate from the generic error banner).
+  const [credError, setCredError] = useState(false);
   // A real, working "resend activation email" URL parsed out of the
   // server's error message (see authApi.ts's extractLink) — previously
   // that link was silently discarded by clean(), leaving the "click here
   // to resend it" text in the error banner dead and unclickable.
   const [resendUrl, setResendUrl] = useState<string | null>(null);
+  const [resendToast, setResendToast] = useState(false);
   const passRef = useRef<TextInput>(null);
 
   // The activation deep link does navigate('SignIn', {verified: true}). If
@@ -115,14 +127,14 @@ const SignInScreen = ({navigation, route}: any) => {
   useEffect(() => {
     if (route?.params?.verified) {
       setVerified(true);
+      setLinkExpired(false);
       setError('');
       setResendUrl(null);
     } else if (route?.params?.activationFailed) {
       setVerified(false);
+      setLinkExpired(true);
       setResendUrl(null);
-      setError(
-        'That activation link looks invalid or has expired. Please request a new verification email and try again.',
-      );
+      setError('');
     }
   }, [route?.params?.verified, route?.params?.activationFailed]);
 
@@ -133,12 +145,22 @@ const SignInScreen = ({navigation, route}: any) => {
     }
     setLoading(true);
     setError('');
+    setCredError(false);
     setResendUrl(null);
     try {
       const user = await loginUser(email.trim(), password);
       await handlePostLogin(user, navigation);
     } catch (err: any) {
       const message = err.message || 'Login failed. Please try again.';
+      // Wrong email or password (WP jwt-auth codes: incorrect_password,
+      // invalid_username, invalid_email) → dedicated card, no resend link.
+      if (
+        /incorrect_password|invalid_username|invalid_email/i.test(err.code || '') ||
+        /password you entered|incorrect|invalid (username|email)/i.test(message)
+      ) {
+        setCredError(true);
+        return;
+      }
       // The deep link only ever guessed at "verified" from the URL's shape
       // (see AppNavigator.tsx) — if the server now says the account isn't
       // actually active, that guess was wrong, so drop the stale success
@@ -153,24 +175,38 @@ const SignInScreen = ({navigation, route}: any) => {
     }
   };
 
-  // Opens the real resend-activation link the server sent, inside the same
-  // in-app browser already used for LinkedIn sign-in, falling back to the
-  // system browser if that's unavailable for any reason.
+  // Triggers the real resend-activation link the server sent. It's requested
+  // in the background so we can stay on this screen and show the
+  // "New verification link sent" toast; if that request fails for any reason
+  // we fall back to the old behaviour of opening the link in the browser.
   const handleResendActivation = async () => {
     if (!resendUrl) return;
     try {
-      const available = await InAppBrowser.isAvailable();
-      if (available) {
-        await InAppBrowser.open(resendUrl, {
-          ephemeralWebSession: false,
-          showTitle: false,
-          enableUrlBarHiding: true,
-          enableDefaultShare: false,
-        });
-        return;
-      }
-    } catch {}
-    Linking.openURL(resendUrl).catch(() => {});
+      const res = await fetch(resendUrl);
+      if (!res.ok) throw new Error('resend failed');
+      setResendToast(false);
+      setTimeout(() => setResendToast(true), 0);
+    } catch {
+      Linking.openURL(resendUrl).catch(() => {});
+    }
+  };
+
+  // "Resend link" on the Link expired sheet. There's no dedicated
+  // resend-activation endpoint in the app, and an expired deep link doesn't
+  // tell us who the user is — the only real resend link we ever get is the
+  // one the server returns when an inactive account tries to sign in (see
+  // resendUrl above). So: use it if we already have it, otherwise close the
+  // sheet and prompt the user to sign in, which surfaces that link.
+  const handleExpiredResend = async () => {
+    if (resendUrl) {
+      setLinkExpired(false);
+      await handleResendActivation();
+      return;
+    }
+    setLinkExpired(false);
+    setError(
+      'Enter your email and password, then tap Sign In to get a new verification link.',
+    );
   };
 
   const handleGoogle = async () => {
@@ -207,83 +243,29 @@ const SignInScreen = ({navigation, route}: any) => {
     setLinkedinLoading(true);
     setError('');
 
-    let subscription: {remove: () => void} | null = null;
-    let settled = false;
-
     try {
-      const available = await InAppBrowser.isAvailable();
-      if (!available) {
-        setError('LinkedIn sign-in is unavailable on this device.');
-        return;
-      }
-
-      // Primary path: resolves as soon as our ipmhub:// deep link arrives.
-      const deepLinkPromise = new Promise<string | null>(resolve => {
-        subscription = Linking.addEventListener('url', ({url}) => {
-          if (!settled && url.startsWith(LINKEDIN_APP_REDIRECT)) {
-            settled = true;
-            resolve(url);
-          }
-        });
-      });
-
-      // Also check getInitialURL in case the deep link arrives so fast the
-      // listener above hasn't attached yet (edge case, cheap to guard).
-      Linking.getInitialURL().then(url => {
-        if (url && !settled && url.startsWith(LINKEDIN_APP_REDIRECT)) {
-          settled = true;
-        }
-      });
-
-      // Fallback path: resolves when the user closes the tab themselves
-      // without completing sign-in. Given a short grace window afterward,
-      // since on some devices the tab's "dismissed" event can fire slightly
-      // before or after the deep link's 'url' event lands — order isn't
-      // guaranteed, so we don't want a fast dismiss event to short-circuit
-      // a redirect that's still on its way in.
-      const dismissedPromise = InAppBrowser.open(LINKEDIN_AUTH_URL, {
-        ephemeralWebSession: false,
-        showTitle: false,
-        enableUrlBarHiding: true,
-        enableDefaultShare: false,
-      }).then(async () => {
-        if (settled) return undefined; // already resolved via deep link
-        const late = await Promise.race([
-          deepLinkPromise,
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 500)),
-        ]);
-        return late;
-      });
-
-      const redirectUrl = await Promise.race([
-        deepLinkPromise,
-        dismissedPromise,
-      ]);
-
-      try {
-        await InAppBrowser.close();
-      } catch {}
+      // Opens the system browser via Linking and waits for the
+      // ipmhub://linkedin-callback deep link (no InAppBrowser native module).
+      const redirectUrl = await openLinkedInAuth(
+        LINKEDIN_AUTH_URL,
+        LINKEDIN_APP_REDIRECT,
+      );
 
       if (!redirectUrl) {
-        // User cancelled/backed out — not an error, just stop quietly.
+        // User came back without finishing — not an error, stop quietly.
         return;
       }
 
       const match = redirectUrl.match(/[?&]code=([^&]+)/);
       if (!match) {
-        // TEMP DEBUG: show the actual returned URL so we can see what came
-        // back instead of a code (e.g. an error= param from LinkedIn).
-        setError(`DEBUG: no code in redirect URL: ${redirectUrl}`);
+        setError('LinkedIn sign-in was not completed. Please try again.');
         return;
       }
       const user = await socialLogin('linkedin', decodeURIComponent(match[1]));
       await handlePostLogin(user, navigation);
     } catch (err: any) {
-      // TEMP DEBUG: show the real error instead of a generic message so
-      // this can be diagnosed from a screenshot alone, no Logcat needed.
-      setError(`DEBUG LinkedIn: ${err?.message || JSON.stringify(err)}`);
+      setError('LinkedIn sign-in failed. Please try again.');
     } finally {
-      subscription?.remove();
       setLinkedinLoading(false);
     }
   };
@@ -303,12 +285,16 @@ const SignInScreen = ({navigation, route}: any) => {
         {/* Welcome heading */}
         <Text style={styles.welcome}>{'Welcome'}</Text>
 
-        {/* Email verified success banner */}
-        {verified ? (
-          <View style={styles.successBanner}>
-            <Text style={styles.successText}>
-              {'✓ Account verified! Please sign in.'}
-            </Text>
+        {/* Wrong email / password */}
+        {credError ? (
+          <View style={styles.credErrorWrap}>
+            <InlineErrorBanner
+              title="Incorrect email or password"
+              message="Check your details and try again."
+              actionLabel="Reset password"
+              onAction={() => navigation.navigate('ForgotPassword')}
+              onDismiss={() => setCredError(false)}
+            />
           </View>
         ) : null}
 
@@ -338,6 +324,7 @@ const SignInScreen = ({navigation, route}: any) => {
             onChangeText={v => {
               setEmail(v);
               setError('');
+              setCredError(false);
             }}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -347,7 +334,7 @@ const SignInScreen = ({navigation, route}: any) => {
         </View>
 
         {/* Password field */}
-        <View style={styles.inputWrap}>
+        <View style={[styles.inputWrap, credError && styles.inputWrapError]}>
           <TextInput
             ref={passRef}
             style={styles.passInput}
@@ -357,6 +344,7 @@ const SignInScreen = ({navigation, route}: any) => {
             onChangeText={v => {
               setPassword(v);
               setError('');
+              setCredError(false);
             }}
             secureTextEntry={!showPassword}
             returnKeyType="done"
@@ -366,11 +354,7 @@ const SignInScreen = ({navigation, route}: any) => {
             onPress={() => setShowPassword(p => !p)}
             hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}
             style={styles.eyeBtn}>
-            <Image
-              source={require('../assets/images/eyeinvisible.png')}
-              style={[styles.eyeIcon, showPassword && styles.eyeVisible]}
-              resizeMode="contain"
-            />
+            {showPassword ? <EyeOpenIcon /> : <EyeClosedIcon />}
           </TouchableOpacity>
         </View>
 
@@ -394,6 +378,37 @@ const SignInScreen = ({navigation, route}: any) => {
           )}
         </TouchableOpacity>
 
+        {/* OR CONTINUE WITH */}
+        <View style={styles.divider}>
+          <View style={styles.divLine} />
+          <Text style={styles.divText}>{'OR CONTINUE WITH'}</Text>
+          <View style={styles.divLine} />
+        </View>
+
+        {/* Social buttons — Apple first (iOS only, App Store 4.8) */}
+        <View style={styles.socialStack}>
+          <AppleSignInButton
+            mode="sign-in"
+            disabled={loading || googleLoading || linkedinLoading}
+            onSuccess={user => handlePostLogin(user, navigation)}
+            onError={setError}
+          />
+          <SocialButton
+            label="Continue with Google"
+            icon={<GoogleIcon />}
+            onPress={handleGoogle}
+            loading={googleLoading}
+            disabled={loading || linkedinLoading}
+          />
+          <SocialButton
+            label="Continue with LinkedIn"
+            icon={<LinkedInSquareIcon />}
+            onPress={handleLinkedIn}
+            loading={linkedinLoading}
+            disabled={loading || googleLoading}
+          />
+        </View>
+
         {/* Not a member */}
         <TouchableOpacity
           onPress={() => navigation.navigate('SignUp')}
@@ -403,40 +418,33 @@ const SignInScreen = ({navigation, route}: any) => {
             <Text style={styles.signUpLink}>{'Sign Up for Free'}</Text>
           </Text>
         </TouchableOpacity>
-
-        {/* OR CONTINUE WITH */}
-        <View style={styles.divider}>
-          <View style={styles.divLine} />
-          <Text style={styles.divText}>{'OR CONTINUE WITH'}</Text>
-          <View style={styles.divLine} />
-        </View>
-
-        {/* Social buttons */}
-        <View style={styles.socialRow}>
-          <TouchableOpacity
-            style={styles.googleBtn}
-            onPress={handleGoogle}
-            disabled={googleLoading || loading}
-            activeOpacity={0.85}>
-            {googleLoading ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.socialBtnText}>{'G'}</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.linkedinBtn}
-            onPress={handleLinkedIn}
-            disabled={linkedinLoading || loading}
-            activeOpacity={0.85}>
-            {linkedinLoading ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.socialBtnText}>{'in'}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      {/* Email verified — "Account verified" bottom sheet */}
+      <AccountVerifiedSheet
+        visible={verified}
+        onClose={() => setVerified(false)}
+      />
+
+      {/* Activation link expired / invalid — "Link expired" bottom sheet */}
+      <StatusSheet
+        visible={linkExpired}
+        variant="error"
+        headerTitle="Link expired"
+        title="This link is no longer valid"
+        message="This verification link has expired or has already been used. Request a new one and we will email it to you."
+        primaryLabel="Resend link"
+        onPrimary={handleExpiredResend}
+        secondaryLabel="Back to Sign In"
+        onSecondary={() => setLinkExpired(false)}
+        onClose={() => setLinkExpired(false)}
+      />
+
+      <SuccessToast
+        visible={resendToast}
+        message="New verification link sent. Check your inbox."
+        onHide={() => setResendToast(false)}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -494,11 +502,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 14,
   },
+  // Incorrect password: 1.5px #FF616D border (Support-Error-Medium)
+  inputWrapError: {borderWidth: 1.5, borderColor: '#FF616D', borderRadius: 5},
+  credErrorWrap: {marginBottom: 14},
   input: {flex: 1, paddingVertical: 15, fontSize: 15, color: '#222222'},
   passInput: {flex: 1, paddingVertical: 15, fontSize: 15, color: '#222222'},
   eyeBtn: {paddingLeft: 8},
-  eyeIcon: {width: 20, height: 20, opacity: 0.45},
-  eyeVisible: {opacity: 0.8},
 
   forgotBtn: {alignSelf: 'flex-start', marginBottom: 20, marginTop: 2},
   forgotText: {fontSize: 13, color: '#1A7FD4', fontWeight: '500'},
@@ -521,18 +530,7 @@ const styles = StyleSheet.create({
   divLine: {flex: 1, height: 1, backgroundColor: '#CCCCCC'},
   divText: {fontSize: 11, color: '#999999', marginHorizontal: 10, letterSpacing: 0.5},
 
-  socialRow: {flexDirection: 'row', justifyContent: 'center', gap: 16},
-  googleBtn: {
-    width: 50, height: 50, borderRadius: 25,
-    backgroundColor: '#5BA4E6',
-    alignItems: 'center', justifyContent: 'center', elevation: 2,
-  },
-  linkedinBtn: {
-    width: 50, height: 50, borderRadius: 25,
-    backgroundColor: '#1A3A6B',
-    alignItems: 'center', justifyContent: 'center', elevation: 2,
-  },
-  socialBtnText: {color: '#FFF', fontWeight: '700', fontSize: 17},
+  socialStack: {alignSelf: 'stretch', gap: 12, marginBottom: 16},
 });
 
 export default SignInScreen;

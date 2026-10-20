@@ -8,8 +8,9 @@
 // same blocker noted in CourseDetailScreen.tsx). See MISSING block at the
 // bottom of this file for everything still open.
 
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {useDebouncedValue} from '../hooks/useDebouncedValue';
+import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
 import {
   View,
   Text,
@@ -50,19 +51,9 @@ import {
   SortOption,
 } from '../api/coursesApi';
 import {getUserIdFromToken} from '../api/profileApi';
+import {SearchFilterRow, SortSheet as ForumSortSheet, GroupedFilterSheet} from '../components/forumStyleControls';
 
 // ─── Icons ──────────────────────────────────────────────────────────────────
-
-const SearchIcon = () => (
-  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-    <Path
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M7 1a6 6 0 100 12A6 6 0 007 1zM0 7a7 7 0 1112.45 4.388l3.08 3.08a.75.75 0 11-1.06 1.062l-3.08-3.08A7 7 0 010 7z"
-      fill="#192546"
-    />
-  </Svg>
-);
 
 const CloseIcon = () => (
   // Rebuilt from Marium's mask-based SVG as a plain fill — react-native-svg
@@ -190,23 +181,55 @@ const MyCoursesTab = ({navigation}: {navigation: any}) => {
   const [banner, setBanner] = useState<ResumeBannerData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // PERF: last-seen data shown instantly while the real requests run.
+  const freshRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    readSnapshot<{courses: EnrolledCourse[]; completed: EnrolledCourse[]; banner: ResumeBannerData | null}>(
+      'courses-my',
+    ).then(snap => {
+      if (!alive || !snap || freshRef.current) return;
+      setCourses(snap.courses);
+      setCompletedCourses(snap.completed);
+      setBanner(snap.banner);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     (async () => {
-      setLoading(true);
       const userId = await getUserIdFromToken();
       if (!userId) {
         setLoading(false);
         return;
       }
-      const [inProgressRes, completedRes, bannerRes] = await Promise.all([
-        getMyCourses(userId),
-        getCompletedCourses(userId),
-        getResumeBanner(userId),
-      ]);
+      // PERF: fire all three requests together, but render as soon as the
+      // in-progress list arrives instead of waiting for the slowest call.
+      // The other two fill in when they land (their APIs never reject).
+      const inProgressP = getMyCourses(userId);
+      const completedP = getCompletedCourses(userId);
+      const bannerP = getResumeBanner(userId);
+      const inProgressRes = await inProgressP;
+      freshRef.current = true;
       setCourses(inProgressRes.courses);
+      // Keep the spinner only if in-progress is empty, so the empty state
+      // doesn't flash before completed courses are known.
+      if (inProgressRes.courses.length > 0) setLoading(false);
+      const [completedRes, bannerRes] = await Promise.all([completedP, bannerP]);
       setCompletedCourses(completedRes.courses);
       setBanner(bannerRes.banner);
       setLoading(false);
+      // Don't overwrite a good snapshot with the empty result of a failed call.
+      if (inProgressRes.courses.length > 0 || completedRes.courses.length > 0) {
+        writeSnapshot('courses-my', {
+          courses: inProgressRes.courses,
+          completed: completedRes.courses,
+          banner: bannerRes.banner,
+        });
+      }
     })();
   }, []);
 
@@ -351,16 +374,64 @@ const UpcomingCoursesTab = ({onOpenCourse}: {onOpenCourse: (permalink: string) =
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
+  // PERF: the upcoming response already carries `tabs`; only fall back to the
+  // dedicated tabs endpoint (once) if it ever comes back without them.
+  const tabsFallbackTried = useRef(false);
+  // Tabs already known -> ask the server to skip building them (include_tabs=false).
+  const tabsRef = useRef<CourseTab[]>([]);
+  // Latest-request-wins: the server answers slowly and one request at a time,
+  // so an older tab's response could arrive AFTER the user tapped another tab
+  // and overwrite its list (tabs looked like they did nothing).
+  const reqIdRef = useRef(0);
+
+  // PERF: last-seen first page ("all" tab) shown instantly while the real
+  // request runs.
+  const snapshotShownRef = useRef(false);
+  const freshRef = useRef(false);
   useEffect(() => {
-    getUpcomingCoursesTabs().then(setTabs);
+    let alive = true;
+    readSnapshot<{courses: UpcomingCourse[]; tabs: CourseTab[]}>('courses-upcoming').then(snap => {
+      if (!alive || !snap || !snap.courses.length || freshRef.current) return;
+      snapshotShownRef.current = true;
+      setCourses(snap.courses);
+      if (snap.tabs.length) {
+        tabsRef.current = snap.tabs;
+        setTabs(snap.tabs);
+      }
+      setHasMore(false); // no paging off stale data; the fresh load sets it
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const loadCourses = useCallback(async (tab: string, pageNum: number, append: boolean) => {
-    setLoading(true);
-    const res = await getUpcomingCourses(tab, pageNum, 10);
+    const isDefaultPage = tab === 'all' && pageNum === 1 && !append;
+    if (!(isDefaultPage && snapshotShownRef.current)) setLoading(true);
+    const includeTabs = tabsRef.current.length === 0;
+    const myReq = ++reqIdRef.current;
+    const res = await getUpcomingCourses(tab, pageNum, 10, includeTabs);
+    if (isDefaultPage) {
+      freshRef.current = true;
+      snapshotShownRef.current = false;
+      if (res.courses.length > 0) {
+        writeSnapshot('courses-upcoming', {
+          courses: res.courses,
+          tabs: res.tabs.length ? res.tabs : tabsRef.current,
+        });
+      }
+    }
+    if (res.tabs.length) {
+      tabsRef.current = res.tabs;
+      setTabs(res.tabs);
+    } else if (includeTabs && !tabsFallbackTried.current) {
+      tabsFallbackTried.current = true;
+      getUpcomingCoursesTabs().then(setTabs);
+    }
+    if (myReq !== reqIdRef.current) return; // a newer tab/page request superseded this one
     setCourses((prev) => (append ? [...prev, ...res.courses] : res.courses));
     setHasMore(res.pagination.has_more);
-    if (res.tabs.length) setTabs(res.tabs);
     setLoading(false);
   }, []);
 
@@ -368,6 +439,17 @@ const UpcomingCoursesTab = ({onOpenCourse}: {onOpenCourse: (permalink: string) =
     setPage(1);
     loadCourses(activeTab, 1, false);
   }, [activeTab, loadCourses]);
+
+  const selectTab = (slug: string) => {
+    if (slug === activeTab) return;
+    // Clear right away so the tap visibly does something, and so the old
+    // tab's "has more" can't trigger a page-2 load against the new tab.
+    setCourses([]);
+    setHasMore(false);
+    setPage(1);
+    setLoading(true);
+    setActiveTab(slug);
+  };
 
   const loadMore = () => {
     if (!hasMore || loading) return;
@@ -383,7 +465,9 @@ const UpcomingCoursesTab = ({onOpenCourse}: {onOpenCourse: (permalink: string) =
         {tabs.map((t) => (
           <TouchableOpacity
             key={t.slug}
-            onPress={() => setActiveTab(t.slug)}
+            onPress={() => selectTab(t.slug)}
+            hitSlop={{top: 6, bottom: 6, left: 4, right: 4}}
+            activeOpacity={0.8}
             style={[styles.typeTabPill, activeTab === t.slug && styles.typeTabPillActive]}>
             <Text style={[styles.typeTabText, activeTab === t.slug && styles.typeTabTextActive]}>
               {t.label}
@@ -418,111 +502,6 @@ const SORT_LABELS: Record<string, string> = {
   title_desc: 'Title Z–A',
   price_low: 'Lowest Price',
   price_high: 'Highest Price',
-};
-
-const SortSheet = ({
-  visible,
-  options,
-  activeSort,
-  onSelect,
-  onClose,
-}: {
-  visible: boolean;
-  options: SortOption[];
-  activeSort: string;
-  onSelect: (slug: string) => void;
-  onClose: () => void;
-}) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={onClose}>
-      <View style={styles.sortSheet}>
-        <View style={styles.sortSheetHeaderRow}>
-          <Text style={styles.sortSheetTitle}>{'Sort Results by'}</Text>
-          <TouchableOpacity onPress={onClose}>
-            <CloseIcon />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.sortOptionsWrap}>
-          {options.map((opt) => (
-            <TouchableOpacity key={opt.slug} style={styles.sortOptionRow} onPress={() => onSelect(opt.slug)}>
-              <Text style={[styles.sortOptionText, activeSort === opt.slug && styles.sortOptionTextActive]}>
-                {SORT_LABELS[opt.slug] || opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </TouchableOpacity>
-  </Modal>
-);
-
-// Filters opens as a FULL SCREEN (not a bottom sheet) per spec — presented
-// via a fullScreen Modal so it covers the whole tab area like a new screen.
-const FiltersSheet = ({
-  visible,
-  filters,
-  activeFilters,
-  onSelect,
-  onClear,
-  onClose,
-}: {
-  visible: boolean;
-  filters: FilterGroup[];
-  activeFilters: Record<string, string>;
-  onSelect: (taxonomy: string, slug: string) => void;
-  onClear: () => void;
-  onClose: () => void;
-}) => {
-  const hasAnyFilter = Object.keys(activeFilters).length > 0;
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <SafeAreaView style={styles.filtersScreen}>
-        <ScrollView contentContainerStyle={styles.filtersScreenContent} showsVerticalScrollIndicator={false}>
-          <TouchableOpacity style={styles.filtersCloseBtn} onPress={onClose}>
-            <CloseIcon />
-          </TouchableOpacity>
-
-          <View style={styles.filtersHeaderRow}>
-            <Text style={styles.filtersTitle}>{'Filters'}</Text>
-            <TouchableOpacity onPress={onClear}>
-              <Text style={styles.clearFilterText}>{'Clear filters'}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {filters.map((group) => (
-            <View key={group.taxonomy} style={styles.filterGroupBlock}>
-              <Text style={styles.filterGroupLabel}>{group.label}</Text>
-              {group.options.map((opt) => {
-                const isSelected = activeFilters[group.param] === opt.slug;
-                return (
-                  <TouchableOpacity
-                    key={opt.slug}
-                    disabled={opt.is_disabled}
-                    style={[styles.filterOptionRow, opt.is_disabled && styles.filterOptionDisabled]}
-                    onPress={() => onSelect(group.param, opt.slug)}>
-                    {isSelected ? <RadioSelected /> : <RadioUnselected />}
-                    <Text style={styles.filterOptionText}>
-                      {opt.name} {opt.count ? `(${opt.count})` : ''}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-              <View style={styles.filterDivider} />
-            </View>
-          ))}
-        </ScrollView>
-
-        <View style={styles.applyFiltersWrap}>
-          <TouchableOpacity
-            style={[styles.applyFiltersBtn, !hasAnyFilter && styles.applyFiltersBtnDisabled]}
-            disabled={!hasAnyFilter}
-            onPress={onClose}>
-            <Text style={styles.applyFiltersText}>{'Apply Filters'}</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    </Modal>
-  );
 };
 
 // ─── Search card icons ──────────────────────────────────────────────────
@@ -670,7 +649,11 @@ const SearchAllCoursesTab = () => {
   // resolved default turned out to be. Still worth Robby confirming that
   // the web frontend also omits sort by default rather than sending its
   // own implicit value we can't see from the API alone.
+  // PERF: `sort` now holds ONLY a user-picked sort. Previously the backend's
+  // default was written back into it, which changed runSearch's deps and
+  // fired a second identical search right after the first one.
   const [sort, setSort] = useState<string>('');
+  const [defaultSort, setDefaultSort] = useState<string>('');
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
   const [results, setResults] = useState<SearchCourse[]>([]);
   const [resultsLabel, setResultsLabel] = useState('');
@@ -680,8 +663,31 @@ const SearchAllCoursesTab = () => {
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [filtersSheetOpen, setFiltersSheetOpen] = useState(false);
 
+  // PERF: last-seen default results (no query/sort/filters) shown instantly
+  // while the real request runs.
+  const snapshotShownRef = useRef(false);
+  const freshRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    readSnapshot<{results: SearchCourse[]; label: string; sortOptions: SortOption[]; defaultSort: string}>(
+      'courses-search',
+    ).then(snap => {
+      if (!alive || !snap || !snap.results.length || freshRef.current) return;
+      snapshotShownRef.current = true;
+      setResults(snap.results);
+      setResultsLabel(snap.label);
+      setSortOptions(snap.sortOptions);
+      setDefaultSort(snap.defaultSort);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const runSearch = useCallback(async () => {
-    setLoading(true);
+    const isDefaultQuery = !debouncedQuery && !sort && Object.keys(activeFilters).length === 0;
+    if (!(isDefaultQuery && snapshotShownRef.current)) setLoading(true);
     const res = await searchCourses({
       query: debouncedQuery,
       ...(sort ? {sort: sort as SortOption['slug']} : {}),
@@ -689,25 +695,44 @@ const SearchAllCoursesTab = () => {
       page: 1,
       per_page: 10,
     });
+    if (isDefaultQuery) {
+      freshRef.current = true;
+      snapshotShownRef.current = false;
+      if (res.courses.length > 0) {
+        writeSnapshot('courses-search', {
+          results: res.courses,
+          label: res.results_label,
+          sortOptions: res.sort_options,
+          defaultSort: res.sort || '',
+        });
+      }
+    }
     setResults(res.courses);
     setResultsLabel(res.results_label);
     setSortOptions(res.sort_options);
-    if (!sort && res.sort) setSort(res.sort); // lock to the backend's resolved default
+    if (!sort && res.sort) setDefaultSort(res.sort); // display only; not sent back
     setLoading(false);
   }, [debouncedQuery, sort, activeFilters]);
 
   const loadFilters = useCallback(async () => {
     const res = await getSearchFilters({...activeFilters});
     setFilterGroups(res.filters);
+    // Search no longer returns these (include_filters=false); make sure the
+    // sort sheet still has its options.
+    if (res.sort_options.length) setSortOptions(prev => (prev.length ? prev : res.sort_options));
   }, [activeFilters]);
 
   useEffect(() => {
     runSearch();
   }, [runSearch]);
 
+  // PERF: filters used to be requested in parallel with the first search
+  // (a ~6 s call competing with it). Now they load after the search
+  // finishes, so results show first and the sheet is usually ready by the
+  // time it is opened. Repeat calls are served by the network-layer cache.
   useEffect(() => {
-    loadFilters();
-  }, [loadFilters]);
+    if (!loading || filtersSheetOpen) loadFilters();
+  }, [loading, filtersSheetOpen, loadFilters]);
 
   const handleSelectFilter = (taxonomy: string, slug: string) => {
     setActiveFilters((prev) => {
@@ -728,23 +753,14 @@ const SearchAllCoursesTab = () => {
           listing externally. */}
       <GoogleReviewsWidget />
 
-      <View style={styles.searchBarRow}>
-        <View style={styles.searchInputWrap}>
-          <SearchIcon />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search courses"
-            placeholderTextColor="#8F9098"
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={runSearch}
-            returnKeyType="search"
-          />
-        </View>
-        <TouchableOpacity style={styles.sortIconBtn} onPress={() => setSortSheetOpen(true)}>
-          <SortIcon />
-        </TouchableOpacity>
-      </View>
+      <SearchFilterRow
+        style={{width: 358, paddingHorizontal: 0, paddingVertical: 0, marginBottom: 12, backgroundColor: 'transparent'}}
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search courses"
+        onSubmitEditing={runSearch}
+        buttons={[{icon: <SortIcon />, onPress: () => setSortSheetOpen(true)}]}
+      />
 
       <TouchableOpacity style={styles.showFiltersBtn} onPress={() => setFiltersSheetOpen(true)}>
         <Text style={styles.showFiltersText}>{'Show Filters'}</Text>
@@ -771,22 +787,23 @@ const SearchAllCoursesTab = () => {
         showsVerticalScrollIndicator={false}
       />
 
-      <SortSheet
+      <ForumSortSheet
         visible={sortSheetOpen}
-        options={sortOptions}
-        activeSort={sort}
-        onSelect={(slug) => {
-          setSort(slug);
-          setSortSheetOpen(false);
-        }}
+        title="Sort Results by"
+        options={sortOptions.map(o => ({id: o.slug, label: SORT_LABELS[o.slug] || o.label}))}
+        selectedId={sort || defaultSort}
+        onSelect={(slug) => setSort(slug as any)}
         onClose={() => setSortSheetOpen(false)}
       />
-      <FiltersSheet
+      <GroupedFilterSheet
         visible={filtersSheetOpen}
-        filters={filterGroups}
-        activeFilters={activeFilters}
-        onSelect={handleSelectFilter}
-        onClear={() => setActiveFilters({})}
+        groups={filterGroups.map(g => ({
+          key: g.param,
+          label: g.label,
+          items: g.options.map(o => ({id: o.slug, label: o.name, count: o.count, disabled: o.is_disabled})),
+        }))}
+        selected={activeFilters}
+        onApply={setActiveFilters}
         onClose={() => setFiltersSheetOpen(false)}
       />
     </View>
@@ -864,8 +881,8 @@ const styles = StyleSheet.create({
 
   // Upcoming
   chooseTypeHeading: {color: '#192647', fontFamily: 'Runda-Medium', fontSize: 16, letterSpacing: 0.08, marginBottom: 16},
-  typeTabsRow: {flexDirection: 'row', gap: 7.33, marginBottom: 24, flexWrap: 'wrap'},
-  typeTabPill: {paddingVertical: 8, paddingHorizontal: 12, borderRadius: 5, backgroundColor: '#EEF7FC'},
+  typeTabsRow: {flexDirection: 'row', marginBottom: 16, flexWrap: 'wrap'},
+  typeTabPill: {paddingVertical: 8, paddingHorizontal: 12, borderRadius: 5, backgroundColor: '#EEF7FC', marginRight: 7, marginBottom: 8},
   typeTabPillActive: {backgroundColor: '#0C4D91'},
   typeTabText: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 12},
   typeTabTextActive: {color: '#FFFFFF'},

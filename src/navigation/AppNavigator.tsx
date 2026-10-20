@@ -41,6 +41,7 @@ import MentorApplicationScreen from '../screens/MentorApplicationScreen';
 import BottomTabNavigator from './BottomTabNavigator';
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 import MemberProfileScreen from '../screens/MemberProfileScreen';
+import ChangeProfilePhotoScreen from '../screens/ChangeProfilePhotoScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import EditProfileDetails from '../screens/EditProfileDetails';
 import EditExperience from '../screens/EditExperience';
@@ -67,7 +68,12 @@ import StepContentScreen from '../screens/StepContentScreen';
 import QuizScreen from '../screens/QuizScreen';
 import CommentsScreen from '../screens/CommentsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import DeleteAccountScreen from '../screens/DeleteAccountScreen';
+import ConfirmDeleteScreen from '../screens/ConfirmDeleteScreen';
+import DeleteAccountResultScreen from '../screens/DeleteAccountResultScreen';
+import DownloadMyDataScreen from '../screens/DownloadMyDataScreen';
 import HelpSupportScreen from '../screens/HelpSupportScreen';
+import MentorshipSupportScreen from '../screens/MentorshipSupportScreen';
 import NewDiscussionScreen from '../screens/NewDiscussionScreen';
 import OptionPickerScreen from '../screens/OptionPickerScreen';
 import LikedByScreen from '../screens/LikedByScreen';
@@ -201,6 +207,7 @@ const AppNavigator = () => {
         <Stack.Screen name="Settings"         component={AccountSettingsScreen}  options={{headerShown: false}} />
         <Stack.Screen name="CourseDetail"     component={CourseDetailScreen} />
         <Stack.Screen name="MemberProfile"    component={MemberProfileScreen} />
+        <Stack.Screen name="ChangeProfilePhoto" component={ChangeProfilePhotoScreen} />
         <Stack.Screen name="EditProfile"      component={EditProfileScreen} />
         <Stack.Screen name="EditProfileDetails" component={EditProfileDetails} />
         <Stack.Screen name="EditExperience"   component={EditExperience} />
@@ -226,7 +233,12 @@ const AppNavigator = () => {
   <Stack.Screen name="Quiz" component={QuizScreen} />
   <Stack.Screen name="Comments" component={CommentsScreen} />
   <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+  <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
+  <Stack.Screen name="ConfirmDelete" component={ConfirmDeleteScreen} />
+  <Stack.Screen name="DownloadMyData" component={DownloadMyDataScreen} />
+  <Stack.Screen name="DeleteAccountResult"component={DeleteAccountResultScreen} options={{headerShown: false, gestureEnabled: false}} />
   <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+  <Stack.Screen name="MentorshipSupport" component={MentorshipSupportScreen} options={{headerShown: false}} />
   <Stack.Screen name="NewDiscussion" component={NewDiscussionScreen} />
   <Stack.Screen name="OptionPicker" component={OptionPickerScreen} />
   <Stack.Screen name="LikedBy" component={LikedByScreen} />

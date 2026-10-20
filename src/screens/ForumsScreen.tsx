@@ -1,8 +1,10 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {useDebouncedValue} from '../hooks/useDebouncedValue';
+import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
 import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Linking, Modal, FlatList, Platform} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import {BRAND_GRADIENT} from '../config/brandGradient';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import ShareLinkedInModal from '../components/ShareLinkedInModal';
@@ -28,8 +30,9 @@ import {
   ChevronDownIcon,
 } from '../components/forumsIcons';
 import MaskedView from '@react-native-masked-view/masked-view';
+import {getIndustryIcon, Industry} from '../config/industries';
+type IndustryIconComponent = Industry['Icon'];
 
-const GRADIENT = ['#E257E4', '#084D92'];
 const EXPLORE_GRADIENT = ['#084D92', '#C157DE'];
 
 // ─── Three-dot menu (own post vs others') ────────────────────────────────────
@@ -148,7 +151,7 @@ const ReportSheet = ({
                 disabled={selected.length === 0}
                 onPress={submit}
                 style={{marginTop: 8, opacity: selected.length === 0 ? 0.5 : 1}}>
-                <LinearGradient colors={GRADIENT} style={styles.gradientBtn}>
+                <LinearGradient {...BRAND_GRADIENT} style={styles.gradientBtn}>
                   <Text style={styles.gradientBtnText}>{'Submit Report'}</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -163,7 +166,7 @@ const ReportSheet = ({
                 {'Thank you. Our moderation team will review this discussion.'}
               </Text>
               <TouchableOpacity onPress={onClose} style={{marginTop: 8}}>
-                <LinearGradient colors={GRADIENT} style={styles.gradientBtn}>
+                <LinearGradient {...BRAND_GRADIENT} style={styles.gradientBtn}>
                   <Text style={styles.gradientBtnText}>{'Done'}</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -184,6 +187,7 @@ const FilterSheet = ({
   onSelect,
   onClose,
   onContinue,
+  iconFor,
 }: {
   visible: boolean;
   title: string;
@@ -192,6 +196,7 @@ const FilterSheet = ({
   onSelect: (id: string) => void;
   onClose: () => void;
   onContinue: () => void;
+  iconFor?: (name: string) => IndustryIconComponent;
 }) => {
   if (!visible) return null;
   return (
@@ -215,6 +220,14 @@ const FilterSheet = ({
                 <TouchableOpacity
                   style={[styles.filterRow, isSelected && styles.filterRowActive]}
                   onPress={() => onSelect(item.id)}>
+                  {iconFor ? (
+                    <View style={styles.filterRowIconWrap}>
+                      {(() => {
+                        const Icon = iconFor(item.name);
+                        return Icon ? <Icon size={16} color={isSelected ? '#0C4D91' : '#192546'} /> : null;
+                      })()}
+                    </View>
+                  ) : null}
                   <View style={styles.filterRowTextGroup}>
                     <Text style={[styles.filterRowText, isSelected && styles.filterRowTextActive]}>
                       {item.name}
@@ -432,10 +445,34 @@ const ForumsScreen = ({navigation}: any) => {
 
   const activeTagTermId = useRef<number | undefined>(undefined);
 
+  // PERF: the user id is decoded locally from the JWT, but it used to land
+  // AFTER the first topics request had started, which changed loadTopics and
+  // fired the whole load a second time. Hold the first load until it's known.
+  const [userReady, setUserReady] = useState(false);
+  const resetSeq = useRef(0);
+  const exploreLoadedRef = useRef(false);
+  // PERF: last-seen first page, shown instantly while the real request runs.
+  const snapshotShownRef = useRef(false);
+  const freshRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    readSnapshot<ForumTopic[]>('forums').then(snap => {
+      if (!alive || !snap || !snap.length || freshRef.current) return;
+      snapshotShownRef.current = true;
+      setTopics(snap);
+      setHasMore(false); // no paging off stale data; the fresh load sets it
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     (async () => {
       const uid = await getCurrentUserId();
       setCurrentUserId(uid);
+      setUserReady(true);
     })();
   }, []);
 
@@ -450,16 +487,34 @@ const ForumsScreen = ({navigation}: any) => {
 
   const loadTopics = useCallback(
     async (pageNum = 1, reset = false) => {
-      if (reset) setLoading(true);
-      else setLoadingMore(true);
+      if (reset) {
+        if (!snapshotShownRef.current) setLoading(true);
+      } else setLoadingMore(true);
+      if (reset) resetSeq.current += 1;
+      const seq = resetSeq.current;
       try {
         const tagTermId = resolveTagTermId();
+        // Only the unfiltered, default-sort first page is worth snapshotting.
+        const isDefaultQuery = reset && pageNum === 1 && !debouncedSearch && !tagTermId && sortBy === 'activity';
         const {topics: fetched, hasMore: more} = await getTopics(pageNum, {
           search: debouncedSearch || undefined,
           tagTermId,
           currentUserId,
           sortBy,
+          // PERF: show the list now; swap in author names/avatars when the
+          // batch lookup lands (ignored if a newer reset load has started).
+          onAuthorsReady: enriched => {
+            if (seq !== resetSeq.current) return;
+            const byId = new Map(enriched.map(t => [t.id, t]));
+            setTopics(prev => prev.map(t => byId.get(t.id) ?? t));
+            if (isDefaultQuery) writeSnapshot('forums', enriched);
+          },
         });
+        if (reset) {
+          freshRef.current = true;
+          snapshotShownRef.current = false;
+        }
+        if (isDefaultQuery) writeSnapshot('forums', fetched);
         setTopics(prev => (reset ? fetched : [...prev, ...fetched]));
         setHasMore(more);
         setPage(pageNum);
@@ -474,13 +529,22 @@ const ForumsScreen = ({navigation}: any) => {
   );
 
   useEffect(() => {
+    if (!userReady) return;
     loadTopics(1, true);
-  }, [loadTopics]);
+  }, [loadTopics, userReady]);
 
   // Explore Forums only loads/shows when "Most Popular" sort is active —
   // per spec, not a permanent section.
+  // PERF: wait for the main list first (the server handles requests one at a
+  // time, so racing them just delays the list) and load Explore once per
+  // switch to Most Popular instead of on every list reload.
   useEffect(() => {
-    if (sortBy !== 'popular') return;
+    if (sortBy !== 'popular') {
+      exploreLoadedRef.current = false;
+      return;
+    }
+    if (!userReady || loading || exploreLoadedRef.current) return;
+    exploreLoadedRef.current = true;
     setExploreLoading(true);
     getExploreForums(currentUserId)
       .then(({trending: t, latest: l}) => {
@@ -488,7 +552,7 @@ const ForumsScreen = ({navigation}: any) => {
         setLatest(l);
       })
       .finally(() => setExploreLoading(false));
-  }, [sortBy, currentUserId]);
+  }, [sortBy, currentUserId, userReady, loading]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -746,6 +810,7 @@ const ForumsScreen = ({navigation}: any) => {
                 onSelect={id =>
                   setPendingFilters(prev => ({...prev, [filterSheetKey]: id}))
                 }
+                iconFor={filterSheetKey === 'industry' ? getIndustryIcon : undefined}
                 onClose={() => setFilterSheetKey(null)}
                 onContinue={() => {
                   setSelectedFilters(pendingFilters);
@@ -1046,6 +1111,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   filterRowActive: {backgroundColor: '#EEF7FC'},
+  filterRowIconWrap: {width: 22, height: 22, marginLeft: 8, marginRight: 10, alignItems: 'center', justifyContent: 'center'},
   filterRowTextGroup: {flexDirection: 'row', alignItems: 'baseline'},
   filterRowText: {color: '#192546', fontFamily: 'Runda', fontSize: 14, fontWeight: '400', lineHeight: 18},
   filterRowTextActive: {color: '#0C4D91', fontWeight: '500'},

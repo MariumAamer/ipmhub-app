@@ -23,6 +23,7 @@ import {
 // cross-platform SafeAreaView and removed the now-redundant hack.
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
+import {BRAND_GRADIENT} from '../config/brandGradient';
 import Svg, {Path, G, Mask, Rect, Circle} from 'react-native-svg';
 import {launchImageLibrary} from 'react-native-image-picker';
 import BackButton from '../components/BackButton';
@@ -558,9 +559,7 @@ const DMNewMessageScreen = ({navigation, route}: any) => {
                 onPress={handleSend}
                 disabled={(!messageText.trim() && !attachments.length) || sending}>
                 <LinearGradient
-                  colors={['#E257E4', '#084D92']}
-                  start={{x: 0, y: 0}}
-                  end={{x: 1, y: 0}}
+                  {...BRAND_GRADIENT}
                   style={n.sendBtn}>
                   {sending ? (
                     <ActivityIndicator size="small" color="#FFF" />

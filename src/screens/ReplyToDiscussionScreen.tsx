@@ -16,12 +16,12 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
+import {BRAND_GRADIENT, BRAND_GRADIENT_DISABLED} from '../config/brandGradient';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import {postReply, updateReply, uploadForumMedia} from '../api/forumsApi';
 import {CameraIcon, VideoIcon, AttachmentIcon} from '../components/forumsIcons';
 
-const GRADIENT = ['#E257E4', '#084D92'];
 
 const ReplyToDiscussionScreen = ({navigation, route}: any) => {
   const {topicId, topicTitle, authorName, editReplyId, editContent} = route?.params || {};
@@ -124,11 +124,9 @@ const ReplyToDiscussionScreen = ({navigation, route}: any) => {
           disabled={!canSubmit}
           onPress={handlePublish}
           activeOpacity={0.85}
-          style={[styles.publishBtnWrap, !canSubmit && {opacity: 0.5}]}>
+          style={styles.publishBtnWrap}>
           <LinearGradient
-            colors={GRADIENT}
-            start={{x: 0, y: 0}}
-            end={{x: 1, y: 0}}
+            {...(canSubmit || submitting ? BRAND_GRADIENT : BRAND_GRADIENT_DISABLED)}
             style={styles.publishBtn}>
             {submitting ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
@@ -156,10 +154,7 @@ const ReplyToDiscussionScreen = ({navigation, route}: any) => {
               <View style={styles.quoteInner}>
                 <Text style={styles.quoteAuthor}>{authorName || 'IPM Member'}</Text>
                 <LinearGradient
-                  colors={['#E257E4', '#084D92']}
-                  start={{x: 0, y: 0}}
-                  end={{x: 1, y: 0}}
-                  locations={[0, 0.7035]}
+                  {...BRAND_GRADIENT}
                   style={styles.quoteUnderline}
                 />
                 <Text style={styles.quoteTitle} numberOfLines={3}>
@@ -219,9 +214,6 @@ const ReplyToDiscussionScreen = ({navigation, route}: any) => {
               ) : null}
 
               <View style={styles.messageFooter}>
-                <TouchableOpacity style={styles.footerIconBtn}>
-                  <Text style={styles.aaText}>{'Aa'}</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={styles.footerIconBtn} onPress={handlePickImages}>
                   <CameraIcon size={15} />
                 </TouchableOpacity>

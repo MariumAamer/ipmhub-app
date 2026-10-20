@@ -124,18 +124,8 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
   const percentage = course.progress?.percentage ?? course.progress_pct ?? 100;
   const hasCertificate = !!course.certificate_url;
 
-  // TEMP DEBUG: capture the REAL computed layout of the certificate button
-  // as the device actually measures it, and print it on screen. Explicit
-  // height:40 / width:'100%' appear to have no effect; this shows what the
-  // device thinks the actual size and position are.
-  const [btnLayout, setBtnLayout] = useState<string>('not measured yet');
-
   return (
     <View style={styles.card}>
-      {/* TEMP DEBUG: fresh unique marker, round 2 of build verification */}
-      <Text style={{fontSize: 12, color: 'red', backgroundColor: 'lime'}}>
-        {`QWERTY hasCert=${String(hasCertificate)} btn:${btnLayout}`}
-      </Text>
       {/* Compact top row: badge/icon + title block, side by side. */}
       <View style={styles.topRow}>
         {/* LinearGradient kept as root of the image stack — project rule:
@@ -198,12 +188,6 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => Linking.openURL(course.certificate_url!)}
-            onLayout={e => {
-              const {x, y, width, height} = e.nativeEvent.layout;
-              setBtnLayout(
-                `x${Math.round(x)} y${Math.round(y)} w${Math.round(width)} h${Math.round(height)}`,
-              );
-            }}
             style={styles.actionBtnTouchable}>
             <View style={styles.actionBtn}>
               <Svg

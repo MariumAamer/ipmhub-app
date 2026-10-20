@@ -152,6 +152,7 @@ const HelpSupportScreen = ({navigation}: any) => {
   const [activeFaqBlocks, setActiveFaqBlocks] = useState<FaqContentBlock[]>([]);
   const [relatedFaqs, setRelatedFaqs] = useState<Faq[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [faqsLoading, setFaqsLoading] = useState(false);
 
   useEffect(() => {
     loadInitial();
@@ -171,20 +172,27 @@ const HelpSupportScreen = ({navigation}: any) => {
     }
     setCategories(cats);
     const defaultCategory = cats.find(c => c.is_default) || cats[0] || null;
+    // PERF: show the hero, Call/Email buttons and category UI now; the FAQ
+    // list has its own spinner instead of holding the whole screen.
+    setLoading(false);
     if (defaultCategory) {
       await selectCategory(defaultCategory);
     } else {
       setErrored(true);
     }
-    setLoading(false);
   };
 
   const selectCategory = async (category: SupportCategory) => {
     setActiveCategory(category);
     setExpandedFaqId(null);
     setFaqFilterQuery('');
-    const data = await getSupportHubTab(category.faqs_endpoint);
-    setFaqs(data?.faqs ?? []);
+    setFaqsLoading(true);
+    try {
+      const data = await getSupportHubTab(category.faqs_endpoint);
+      setFaqs(data?.faqs ?? []);
+    } finally {
+      setFaqsLoading(false);
+    }
   };
 
   const handleSearch = async () => {
@@ -392,7 +400,10 @@ const HelpSupportScreen = ({navigation}: any) => {
                     </View>
                   );
                 })}
-                {!filteredFaqs.length && (
+                {faqsLoading && !faqs.length && (
+                  <ActivityIndicator color="#0C4D91" style={{marginVertical: 24}} />
+                )}
+                {!faqsLoading && !filteredFaqs.length && (
                   <Text style={s.emptyText}>
                     {faqs.length ? 'No matching questions.' : 'No FAQs in this category yet.'}
                   </Text>

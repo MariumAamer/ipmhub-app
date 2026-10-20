@@ -1,4 +1,5 @@
 import {getToken} from './feedApi';
+import {registerSessionReset} from './sessionReset';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Confirmed endpoints (Marium/Robby, 2026-09-15, verified via Postman):
@@ -353,3 +354,4 @@ export const resetSupportHubCache = () => {
   faqCache.clear();
   tabDataCache.clear();
 };
+registerSessionReset(resetSupportHubCache);

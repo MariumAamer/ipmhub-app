@@ -1,4 +1,5 @@
 /* eslint-disable prettier/prettier */
+import {Platform} from 'react-native';
 import {getToken} from './apiClient';
 import {getCachedCredentials} from './credentialsCache';
 
@@ -205,6 +206,26 @@ export const uploadAvatar = async (
   }
 };
 
+// ─── Delete avatar ────────────────────────────────────────────────────────────
+// BuddyBoss REST: DELETE /buddyboss/v1/members/{user_id}/avatar resets the
+// member's photo back to the default. Uses the numeric id (not "me") since the
+// BuddyBoss route's user_id pattern is numeric.
+// TODO: confirm against the live site (Postman) — not yet verified.
+export const deleteAvatar = async (): Promise<boolean> => {
+  try {
+    const token = await getToken();
+    const userId = await getUserIdFromToken();
+    if (!token || !userId) return false;
+    const response = await fetch(`${BASE}/buddyboss/v1/members/${userId}/avatar`, {
+      method: 'DELETE',
+      headers: {Authorization: `Bearer ${token}`},
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
 // ─── Welcome Intro config (confirmed via Postman 2026-08-28) ────────────────
 // GET /custom/v1/welcome-intro/config returns the exact industries[] and
 // countries[] strings the submit endpoint validates against. Fetched live
@@ -298,6 +319,7 @@ const COUNTRY_NAME_ALIASES: Record<string, string> = {
   'Trinidad and Tobago': 'Trinidad & Tobago',
   'Antigua and Barbuda': 'Antigua & Deps',
   'Bosnia and Herzegovina': 'Bosnia Herzegovina',
+  'Burkina Faso': 'Burkina',
 };
 
 export const resolveCountryForSubmission = (restCountriesName: string): string => {
@@ -377,9 +399,18 @@ export const submitWelcomeIntro = async (
   formData.append('company', data.company);
   formData.append('industry', data.industry);
   formData.append('country', data.country);
-  formData.append('phone', data.phone);
-  if (data.phoneCountry) formData.append('phone_country', data.phoneCountry);
-  formData.append('linkedin', data.linkedIn);
+  // iOS uses a dedicated route where phone and LinkedIn are optional (App
+  // Store 5.1.1). Optional fields are omitted entirely when blank rather than
+  // sent as empty strings. Android keeps the original route and always sends
+  // them, exactly as before.
+  const isIOS = Platform.OS === 'ios';
+  if (!isIOS || data.phone) formData.append('phone', data.phone);
+  if (data.phone && data.phoneCountry) {
+    formData.append('phone_country', data.phoneCountry);
+  } else if (!isIOS && data.phoneCountry) {
+    formData.append('phone_country', data.phoneCountry);
+  }
+  if (!isIOS || data.linkedIn) formData.append('linkedin', data.linkedIn);
   formData.append('bio', data.bio);
 
   if (data.useExistingAvatar) {
@@ -397,7 +428,12 @@ export const submitWelcomeIntro = async (
   // literally lists "Content-Type": "multipart/form-data" as a header, but
   // setting that by hand breaks the boundary and the server can't parse the
   // parts (same pattern already avoided in uploadAvatar() above).
-  const res = await fetch(`${BASE}/custom/v1/welcome-intro/submit`, {
+  // iOS: POST /custom/v1/welcome-intro/submit-ios (phone + LinkedIn optional)
+  // Android: POST /custom/v1/welcome-intro/submit
+  const submitPath = isIOS
+    ? '/custom/v1/welcome-intro/submit-ios'
+    : '/custom/v1/welcome-intro/submit';
+  const res = await fetch(`${BASE}${submitPath}`, {
     method: 'POST',
     headers: {Authorization: `Bearer ${token}`},
     body: formData,

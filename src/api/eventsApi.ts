@@ -2,6 +2,7 @@
 import {apiRequest, BASE_URL} from './apiClient';
 import {getCachedCredentials} from './credentialsCache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {registerSessionReset} from './sessionReset';
 
 // ─── Webinar tag taxonomy ───────────────────────────────────────────────────
 // CONFIRMED (Sep 2026) — these are the only 5 real tags on the backend.
@@ -257,6 +258,8 @@ export const getStoredUserFields = async (): Promise<Partial<EventRegistrationPa
 
 // ─── Local registration state ─────────────────────────────────────────────────
 const REGISTERED_KEY = 'ipm_registered_events';
+// Registrations and saved webinars are per-account but stored device-wide.
+registerSessionReset(() => AsyncStorage.multiRemove(['ipm_registered_events', 'ipm_saved_webinars']));
 
 export const getRegisteredEventIds = async (): Promise<string[]> => {
   try {
@@ -524,17 +527,12 @@ export const getEvents = async (page = 1): Promise<GetEventsResult> => {
 export const registerForEvent = async (payload: EventRegistrationPayload): Promise<EventRegistrationResult> => {
   try {
     const json = await apiRequest(`${BASE_URL}/custom/v1/register-event`, 'POST', payload);
-    // TEMP DEBUG — remove once the missing-email issue is resolved.
-    console.log('[eventsApi] register-event payload:', JSON.stringify(payload));
-    console.log('[eventsApi] register-event response:', JSON.stringify(json));
     // NOTE: local "registered" persistence is handled by the caller via
     // markEventRegistered(event.id) — payload.event_id is the Zoho event
     // ID (required by the backend/Zoho call) and does NOT match the local
     // WP post id used everywhere else to check registration state.
     return {success: true, message: json?.message ?? 'You have been registered successfully!'};
   } catch (err: any) {
-    // TEMP DEBUG — remove once the missing-email issue is resolved.
-    console.log('[eventsApi] register-event error:', JSON.stringify(err?.message ?? err));
     return {success: false, message: err?.message ?? 'Registration failed. Please try again.'};
   }
 };

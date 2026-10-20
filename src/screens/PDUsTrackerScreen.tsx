@@ -27,18 +27,21 @@
  *   rather than fabricating a request. Swap in the real endpoint once
  *   Robby confirms it.
  */
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert, Modal, Animated, Dimensions,
+  ActivityIndicator, Alert, Modal, Animated, Dimensions, Linking,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
+import ProfileDrawer from '../components/ProfileDrawer';
+import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
 import {getUserIdFromToken} from '../api/profileApi';
 import {
   getMyPdus, deletePduRecord, MyPdusResponse, PduRecord, PduSummary,
 } from '../api/pdusApi';
+import {FilterSheet as ForumFilterSheetUI} from '../components/forumStyleControls';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
@@ -298,31 +301,14 @@ const FilterSheet = ({
   visible: boolean; title: string; options: string[]; selected: string;
   onSelect: (v: string) => void; onClose: () => void;
 }) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <View style={fs.backdrop}>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-      <View style={fs.sheet}>
-        <View style={fs.titleRow}>
-          <Text style={fs.title}>{title}</Text>
-          <TouchableOpacity style={fs.closeBtn} onPress={onClose} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-            <Text style={fs.close}>{'\u2715'}</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView style={{maxHeight: SCREEN_HEIGHT * 0.5}} contentContainerStyle={fs.optionsList} showsVerticalScrollIndicator={false}>
-          {['All', ...options].map(opt => (
-            <TouchableOpacity
-              key={opt}
-              style={fs.optionRow}
-              onPress={() => { onSelect(opt === 'All' ? '' : opt); onClose(); }}>
-              <Text style={[fs.optionText, (opt === 'All' ? selected === '' : selected === opt) && fs.optionTextActive]}>
-                {opt}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-    </View>
-  </Modal>
+  <ForumFilterSheetUI
+    visible={visible}
+    title={title}
+    items={['All', ...options].map(o => ({id: o === 'All' ? '' : o, label: o}))}
+    selectedId={selected}
+    onApply={onSelect}
+    onClose={onClose}
+  />
 );
 
 // ─── Delete confirmation modal ─────────────────────────────────────────────
@@ -407,7 +393,9 @@ const RecordCard = ({
       </View>
 
       {!!record.file_url && (
-        <TouchableOpacity style={rc.viewFileRow}>
+        <TouchableOpacity
+          style={rc.viewFileRow}
+          onPress={() => Linking.openURL(record.file_url).catch(() => {})}>
           <ViewFileIcon />
           <Text style={rc.viewFileText}>{'View File'}</Text>
         </TouchableOpacity>
@@ -420,6 +408,21 @@ const RecordCard = ({
 const PDUsTrackerScreen = ({navigation}: any) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<MyPdusResponse | null>(null);
+  // The header's >> chevron opens the profile drawer (it was wired to a no-op).
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // PERF: last-seen records shown instantly while the real request runs.
+  const freshRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    readSnapshot<MyPdusResponse>('pdus').then(snap => {
+      if (!alive || !snap || freshRef.current) return;
+      setData(snap);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [introExpanded, setIntroExpanded] = useState(false);
   const [activityFilter, setActivityFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
@@ -428,17 +431,29 @@ const PDUsTrackerScreen = ({navigation}: any) => {
   const [deleteTarget, setDeleteTarget] = useState<PduRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // PERF: this runs on mount AND on the navigation 'focus' event (which also
+  // fires on first focus), so the records were fetched twice at open, and the
+  // list was blanked by a spinner on every return. Now: one request at a
+  // time, and the spinner only on the very first load.
+  const hasLoadedRef = useRef(false);
+  const inFlightRef = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       const userId = await getUserIdFromToken();
       if (!userId) return;
       const res = await getMyPdus(userId);
+      freshRef.current = true;
+      writeSnapshot('pdus', res);
       setData(res);
     } catch (e) {
       console.log('[PDUsTracker] load error:', e);
       Alert.alert('Error', 'Could not load your PDU records. Please try again.');
     } finally {
+      hasLoadedRef.current = true;
+      inFlightRef.current = false;
       setLoading(false);
     }
   }, []);
@@ -477,10 +492,11 @@ const PDUsTrackerScreen = ({navigation}: any) => {
   if (loading && !data) {
     return (
       <SafeAreaView style={s.container}>
-        <AppHeader navigation={navigation} onDrawerOpen={() => {}} />
+        <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
         <View style={s.loadingWrap}>
           <ActivityIndicator size="large" color={C.blueDark} />
         </View>
+        <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
       </SafeAreaView>
     );
   }
@@ -489,14 +505,14 @@ const PDUsTrackerScreen = ({navigation}: any) => {
 
   return (
     <SafeAreaView style={s.container} edges={['left', 'right', 'bottom']}>
-      <AppHeader navigation={navigation} onDrawerOpen={() => {}} />
+      <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
       <ScrollView contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <Text style={s.pageTitle}>{summary?.title || 'My PDUs \u2013 Your Professional Development Tracker'}</Text>
 
         <View style={s.introRow}>
           <View style={s.numberBox}>
-            <Text style={s.numberText} numberOfLines={1}>{summary?.hours_earned ?? 0}</Text>
+            <Text style={s.numberText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{summary?.hours_earned ?? 0}</Text>
           </View>
           <View style={{flex: 1}}>
             <Text style={s.introText}>
@@ -575,17 +591,13 @@ const PDUsTrackerScreen = ({navigation}: any) => {
 
           <Text style={s.helpText}>{summary?.records_help}</Text>
 
-          {/* No confirmed endpoint yet for exporting records — placeholder
-              action so the button matches the Figma spec without
-              fabricating a request. Swap in the real call once Robby
-              confirms it. */}
-          <TouchableOpacity
-            style={s.downloadBtn}
-            onPress={() => Alert.alert('Coming soon', 'CPD record export isn\u2019t available yet.')}>
-            <Text style={s.downloadBtnText}>{'Download CPD Record (.xls)'}</Text>
-          </TouchableOpacity>
+          {/* "Download CPD Record (.xls)" is hidden until the backend provides an
+              export endpoint — a button that only said "coming soon" would be
+              flagged as incomplete in App Store review. Restore it once Robby
+              confirms the endpoint. */}
         </View>
       </ScrollView>
+      <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
 
       <FilterSheet
         visible={activitySheetOpen}
@@ -625,7 +637,7 @@ const s = StyleSheet.create({
 
   introRow: {flexDirection: 'row', gap: 12},
   numberBox: {
-    minWidth: 78, paddingVertical: 18, paddingHorizontal: 16,
+    width: 78, height: 78, alignSelf: 'flex-start', paddingHorizontal: 8,
     alignItems: 'center', justifyContent: 'center',
     borderRadius: 5, backgroundColor: '#FFFFFF',
     shadowColor: '#000', shadowOffset: {width: 0, height: 0},

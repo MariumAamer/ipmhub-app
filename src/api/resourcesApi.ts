@@ -1,5 +1,6 @@
 import {getToken} from './feedApi';
 import {getUserIdFromToken} from './profileApi';
+import {registerSessionReset} from './sessionReset';
 
 // ─── Decode HTML entities ─────────────────────────────────────────────────────
 // API titles come through with encoded entities (&#038;, &#8217;, &amp;, etc.)
@@ -79,6 +80,11 @@ export interface ResourceCategory {
 let configCache: ResourcesPageConfig | null = null;
 let tabsCache: ResourceTab[] | null = null;
 let categoriesCache: ResourceCategory[] | null = null;
+registerSessionReset(() => {
+  configCache = null;
+  tabsCache = null;
+  categoriesCache = null;
+});
 
 export const getResourcesConfig = async (): Promise<ResourcesPageConfig | null> => {
   if (configCache) return configCache;

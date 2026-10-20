@@ -5,7 +5,7 @@
  *
  * Loads via GET /custom/v1/member-profile/{id}'s `basic` object (same
  * confirmed source MemberProfileScreen's header uses). Saves via Robby's
- * dedicated POST /custom/v1/edit-profile — replaces the old per-field
+ * dedicated POST /custom/v1/edit-profile/basic — replaces the old per-field
  * xProfile POST loop entirely.
  */
 import React, {useState, useEffect} from 'react';

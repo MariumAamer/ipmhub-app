@@ -32,6 +32,7 @@ import {
 } from '../api/resourcesApi';
 import ShareSheet, {ShareButton} from '../components/ShareSheet';
 import InfographicViewer from '../components/InfographicViewer';
+import {ChevronDownIcon} from '../components/forumsIcons';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
@@ -347,7 +348,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
             onPress={() => setTocVisible(true)}
             disabled={tocItems.length === 0}>
             <Text style={s.tocBtnText}>{'Table of Contents'}</Text>
-            <Text style={s.tocChevron}>{'⌄'}</Text>
+            <ChevronDownIcon color="#192546" />
           </TouchableOpacity>
           <ShareButton onPress={() => setShareVisible(true)} />
         </View>

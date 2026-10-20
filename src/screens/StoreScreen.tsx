@@ -24,6 +24,7 @@ import BackButton from '../components/BackButton';
 // so the chevron (>>) tap was a no-op here (reported: "the >> in app header
 // doesn't work on store and notification").
 import ProfileDrawer from '../components/ProfileDrawer';
+import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
 
 // ─── Token ───────────────────────────────────────────────────────────────────
 
@@ -409,26 +410,51 @@ const CERT_FILTERS = [
 
 // ─── Full paginated tab ───────────────────────────────────────────────────────
 
-function FullTab({ type, token, defaultFilters, onBack }: {
+function FullTab({ type, token, defaultFilters, preloaded, onBack }: {
   type: 'course' | 'certification'; token: string;
-  defaultFilters: { slug: string; label: string }[]; onBack: () => void;
+  defaultFilters: { slug: string; label: string }[];
+  preloaded?: StoreResponse; onBack: () => void;
 }) {
+  // PERF: the All tab already fetched the default view of this tab (same
+  // request), so start from it instead of an empty list + spinner.
+  const seededRef = useRef(!!(preloaded && preloaded.items && preloaded.items.length > 0));
   const [category, setCategory] = useState<CategorySlug>('all');
   const [sort, setSort] = useState<SortOption>('Most Popular');
   const [sortVisible, setSortVisible] = useState(false);
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<StoreResponse>({ items: [], filters: defaultFilters, pagination: null });
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<StoreResponse>(
+    preloaded && preloaded.items && preloaded.items.length > 0
+      ? { ...preloaded, filters: preloaded.filters || defaultFilters }
+      : { items: [], filters: defaultFilters, pagination: null },
+  );
+  const [loading, setLoading] = useState(!seededRef.current);
   const [loadingMore, setLoadingMore] = useState(false);
   const label = type === 'course' ? 'Courses' : 'Certifications';
 
   const load = useCallback(async (cat: CategorySlug, srt: SortOption, pg: number, append = false) => {
     if (!token) return;
-    pg === 1 ? setLoading(true) : setLoadingMore(true);
+    const reqP: Promise<StoreResponse> = type === 'course'
+      ? fetchCourses(token, cat, SORT_VALUE_MAP[srt], pg)
+      : fetchCertifications(token, cat, SORT_VALUE_MAP[srt], pg);
+    const isFirstPage = pg === 1 && !append;
+    const snapKey = `store:${type}:${cat}:${srt}`;
+    if (isFirstPage) {
+      // PERF: show the last-seen list for this view instantly (unless we are
+      // already showing the fresher preloaded one) while the request runs.
+      let done = false;
+      reqP.then(() => { done = true; }, () => { done = true; });
+      const snap = seededRef.current ? null : await readSnapshot<StoreResponse>(snapKey);
+      if (snap && !done) { setData(snap); setLoading(false); }
+      else if (!seededRef.current) setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
-      const res: StoreResponse = type === 'course'
-        ? await fetchCourses(token, cat, SORT_VALUE_MAP[srt], pg)
-        : await fetchCertifications(token, cat, SORT_VALUE_MAP[srt], pg);
+      const res: StoreResponse = await reqP;
+      if (isFirstPage) {
+        seededRef.current = false;
+        if (res.items && res.items.length > 0) writeSnapshot(snapKey, res);
+      }
       setData(prev => {
         if (!append) return { ...res, items: res.items };
         // Some backend pages repeat the same items instead of advancing
@@ -635,6 +661,20 @@ export default function StoreScreen({ navigation }: any) {
     getSavedToken().then(t => { setToken(t); setTokenChecked(true); });
   }, []);
 
+  const storeSnapshotShownRef = useRef(false);
+  const storeFreshRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    readSnapshot<{ courses: StoreResponse; certifications: StoreResponse; softwares: StoreResponse }>('store-all')
+      .then(snap => {
+        if (!alive || !snap || storeFreshRef.current) return;
+        storeSnapshotShownRef.current = true;
+        setCoursesData(snap.courses); setCertsData(snap.certifications); setSwData(snap.softwares);
+        setAllLoading(false);
+      });
+    return () => { alive = false; };
+  }, []);
+
   useEffect(() => {
     if (!tokenChecked) return;
     if (!token) {
@@ -643,10 +683,15 @@ export default function StoreScreen({ navigation }: any) {
       setAllLoading(false);
       return;
     }
-    setAllLoading(true);
+    // PERF: last-seen All tab shown instantly (no spinner) while this runs.
+    if (!storeSnapshotShownRef.current) setAllLoading(true);
     fetchAllStore(token)
       .then(({ courses, certifications, softwares }) => {
+        storeFreshRef.current = true;
         setCoursesData(courses); setCertsData(certifications); setSwData(softwares);
+        if (courses.items?.length || certifications.items?.length || softwares.items?.length) {
+          writeSnapshot('store-all', { courses, certifications, softwares });
+        }
       })
       .catch(e => console.log('[StoreScreen] error:', e))
       .finally(() => setAllLoading(false));
@@ -682,10 +727,10 @@ export default function StoreScreen({ navigation }: any) {
           <AllTab coursesData={coursesData} certsData={certsData} swData={swData} loading={allLoading} />
         )}
         {activeTab === 'Courses' && token && (
-          <FullTab type="course" token={token} defaultFilters={COURSE_FILTERS} onBack={() => setActiveTab('All')} />
+          <FullTab type="course" token={token} defaultFilters={COURSE_FILTERS} preloaded={coursesData} onBack={() => setActiveTab('All')} />
         )}
         {activeTab === 'Certifications' && token && (
-          <FullTab type="certification" token={token} defaultFilters={CERT_FILTERS} onBack={() => setActiveTab('All')} />
+          <FullTab type="certification" token={token} defaultFilters={CERT_FILTERS} preloaded={certsData} onBack={() => setActiveTab('All')} />
         )}
         {activeTab === 'PM Softwares' && token && (
           <SoftwareTab token={token} preloadedItems={swData.items}

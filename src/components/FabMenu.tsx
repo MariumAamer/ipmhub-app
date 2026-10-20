@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import Svg, {Path, Circle, Defs, LinearGradient as SvgGrad, Stop} from 'react-native-svg';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const {width: W, height: H} = Dimensions.get('window');
 
@@ -91,6 +92,11 @@ interface FabMenuProps {
 }
 
 const FabMenu = ({visible, onClose, navigation}: FabMenuProps) => {
+  const insets = useSafeAreaInsets();
+  // The close (X) button must sit exactly where the gradient + FAB sits:
+  // 16px above the bottom tab bar (56 + safe-area inset, see
+  // BottomTabNavigator) and 16px from the right edge.
+  const fabBottom = 56 + insets.bottom + 16;
   // On iOS, Modal's dismissal is an animated native transition. Calling
   // navigation.navigate() in the same tick as the setState that unmounts
   // the Modal races that transition — iOS's UIKit transition coordinator
@@ -142,7 +148,7 @@ const FabMenu = ({visible, onClose, navigation}: FabMenuProps) => {
         style={fab.backdrop}
         activeOpacity={1}
         onPress={onClose}>
-        <View style={fab.container}>
+        <View style={[fab.container, {paddingBottom: fabBottom}]}>
           {/* Write Article */}
           <View style={fab.row}>
             <TouchableOpacity style={fab.labelWrap} onPress={handleWriteArticle}>
@@ -192,10 +198,10 @@ const fab = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   container: {
-    paddingHorizontal: 20,
-    paddingBottom: 90,
+    paddingLeft: 20,
+    paddingRight: 16,
     paddingTop: 20,
-    gap: 16,
+    gap: 8,
   },
   row: {
     flexDirection: 'row',

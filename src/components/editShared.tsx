@@ -49,6 +49,7 @@ import Svg, {Path, Circle} from 'react-native-svg';
 import {launchImageLibrary} from 'react-native-image-picker';
 import {apiRequest} from '../api/apiClient';
 import BackButton from './BackButton';
+import {ChevronDownIcon} from './forumsIcons';
 
 // ─── Country flags (must be before components) ───────────────────────────────
 export const COUNTRY_FLAGS: Record<string, string> = {
@@ -138,11 +139,7 @@ export const Field = ({
 );
 
 // ─── Chevron (only shown when nothing selected yet) ───────────────────────────
-const Chevron = () => (
-  <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-    <Path d="M6 9l6 6 6-6" stroke="#888" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-);
+const Chevron = () => <ChevronDownIcon color="#192546" />;
 
 // ─── Dropdown (Month/Year, Employment Type, Location Type, etc.) ─────────────
 // Still a local inline picker (short static option lists) — only the
@@ -373,11 +370,8 @@ export const TagCloseIcon = () => (
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 export const sh = StyleSheet.create({
-  backBtn: {
-    width:32, height:32, borderRadius:8,
-    borderWidth:1, borderColor:C.border,
-    alignItems:'center', justifyContent:'center', marginBottom:20,
-  },
+  // Layout only — BackButton draws its own bordered box (no second wrapper box).
+  backBtn: {alignSelf:'flex-start', marginBottom:20},
 
   pageHeader: {marginBottom:20},
   pageTitle: {
@@ -560,7 +554,11 @@ export const saveXProfileFields = async (
 export const saveEditProfileBasic = (userId: number, data: {
   first_name?: string; last_name?: string; headline?: string; company?: string;
   linkedin?: string; country?: string; about?: string;
-}) => apiRequest(`${BASE}/custom/v1/edit-profile`, 'POST', {user_id: userId, ...data});
+}) => apiRequest(`${BASE}/custom/v1/edit-profile/basic`, 'POST', {user_id: userId, ...data});
+// NOTE: the live route list (GET /wp-json/custom/v1) shows /edit-profile is
+// GET-only and the basic-details save is POST/PUT/PATCH /edit-profile/basic.
+// Posting to /edit-profile returned "No route was found matching the URL and
+// request method" (rest_no_route) when saving Profile/About Me.
 
 export const saveEditProfileExperience = (userId: number, entries: any[]) =>
   apiRequest(`${BASE}/custom/v1/edit-profile/experience`, 'POST', {user_id: userId, entries});

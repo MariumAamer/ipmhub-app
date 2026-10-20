@@ -11,9 +11,9 @@ import {
   Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import {BRAND_GRADIENT} from '../config/brandGradient';
 import {LinkedInIcon, SendIcon, WhatsAppIcon, XSocialIcon, ThreadsIcon} from './forumsIcons';
 
-const GRADIENT = ['#E257E4', '#084D92'];
 const SITE_BASE = 'https://hub.instituteprojectmanagement.com';
 
 interface ShareLinkedInModalProps {
@@ -102,7 +102,7 @@ const ShareLinkedInModal = ({
             />
 
             <TouchableOpacity onPress={handleShareLinkedIn} style={{marginTop: 16}}>
-              <LinearGradient colors={GRADIENT} style={styles.linkedInBtn}>
+              <LinearGradient {...BRAND_GRADIENT} style={styles.linkedInBtn}>
                 <LinkedInIcon />
                 <Text style={styles.linkedInBtnText}>{'Share on LinkedIn'}</Text>
               </LinearGradient>
@@ -127,7 +127,7 @@ const ShareLinkedInModal = ({
             />
 
             <TouchableOpacity onPress={handleInvite} style={{marginTop: 16}}>
-              <LinearGradient colors={GRADIENT} style={styles.inviteBtn}>
+              <LinearGradient {...BRAND_GRADIENT} style={styles.inviteBtn}>
                 <SendIcon color="#FFFFFF" size={12} />
                 <Text style={styles.inviteBtnText}>{'Invite'}</Text>
               </LinearGradient>
@@ -161,7 +161,13 @@ const ShareLinkedInModal = ({
                 }>
                 <XSocialIcon size={24} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialIconBtn}>
+              <TouchableOpacity
+                style={styles.socialIconBtn}
+                onPress={() =>
+                  Linking.openURL(
+                    `https://www.threads.net/intent/post?text=${encodeURIComponent(url)}`,
+                  )
+                }>
                 <ThreadsIcon size={24} />
               </TouchableOpacity>
             </View>

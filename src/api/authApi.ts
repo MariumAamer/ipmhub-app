@@ -5,6 +5,7 @@ import {
   invalidateCredentialsCache,
 } from './credentialsCache';
 import {clearNetworkCache} from './networkLayer';
+import {resetSessionState} from './sessionReset';
 
 const BASE_URL = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -15,6 +16,10 @@ export interface AuthUser {
   username: string;
   userId?: number;
   avatar?: string;
+  // How the user signed in — drives the delete-account confirmation step
+  // (password vs. re-confirm with the social provider). Sessions saved
+  // before this field existed have no provider and are treated as 'email'.
+  provider?: 'email' | 'google' | 'linkedin' | 'apple';
 }
 
 // Strip HTML tags from server messages. Replaces tags with a space (not
@@ -39,6 +44,10 @@ const extractLink = (msg: string): string | null => {
 };
 
 const saveUser = async (user: AuthUser) => {
+  // Every login starts from a clean slate, even if the previous session was
+  // never logged out (expired token, reinstall, etc.).
+  clearNetworkCache();
+  await resetSessionState();
   invalidateCredentialsCache();
   await Keychain.setGenericPassword(user.email, JSON.stringify(user));
   invalidateCredentialsCache();
@@ -98,6 +107,9 @@ export const loginUser = async (
   if (!response.ok || data.code) {
     const rawMessage = data.message || 'Login failed';
     const err: any = new Error(clean(rawMessage));
+    // Server error code (e.g. "[jwt_auth] incorrect_password") so callers can
+    // tell a wrong email/password apart from other failures.
+    if (data.code) err.code = String(data.code);
     const resendUrl = extractLink(rawMessage);
     if (resendUrl) err.resendUrl = resendUrl;
     throw err;
@@ -111,6 +123,7 @@ export const loginUser = async (
     displayName: data.user_display_name,
     username: data.user_nicename,
     userId,
+    provider: 'email',
   };
   await saveUser(user);
   return user;
@@ -174,7 +187,10 @@ const fetchProfileFields = async (
   }
 };
 
-const buildSocialAuthUser = async (data: any): Promise<AuthUser> => {
+const buildSocialAuthUser = async (
+  data: any,
+  provider: 'google' | 'linkedin' | 'apple',
+): Promise<AuthUser> => {
   const email = data.user_email || '';
   const emailPrefix = email.split('@')[0] || '';
 
@@ -193,6 +209,7 @@ const buildSocialAuthUser = async (data: any): Promise<AuthUser> => {
     displayName,
     username,
     userId: data.user_id || extractUserIdFromToken(data.token),
+    provider,
   };
   await saveUser(user);
   return user;
@@ -211,7 +228,7 @@ export const googleSocialLogin = async (idToken: string): Promise<AuthUser> => {
   if (!response.ok || data.code)
     throw new Error(clean(data.message || 'Google login failed'));
 
-  return buildSocialAuthUser(data);
+  return buildSocialAuthUser(data, 'google');
 };
 
 // ─── Social Login — LinkedIn ──────────────────────────────────────────────────
@@ -242,7 +259,52 @@ export const linkedInSocialLogin = async (
   if (!response.ok || data.code)
     throw new Error(clean(data.message || 'LinkedIn login failed'));
 
-  return buildSocialAuthUser(data);
+  return buildSocialAuthUser(data, 'linkedin');
+};
+
+// ─── Social Login — Apple ─────────────────────────────────────────────────────
+// Sign in with Apple (App Store guideline 4.8).
+// Live endpoint: POST /custom/v1/social-login/apple
+// Body: { id_token, authorization_code, email, full_name }
+// Response: { token, user_id, user_email, user_nicename, user_display_name,
+//   is_new_user, provider: 'apple' } — same shape as the Google/LinkedIn routes.
+// Apple only returns the user's name + email on the FIRST authorisation, so
+// the client forwards full_name/email when present.
+export const appleSocialLogin = async (payload: {
+  identityToken: string;
+  authorizationCode?: string | null;
+  email?: string | null;
+  fullName?: string | null;
+}): Promise<AuthUser> => {
+  const response = await fetch(`${BASE_URL}/custom/v1/social-login/apple`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      id_token: payload.identityToken,
+      authorization_code: payload.authorizationCode ?? undefined,
+      email: payload.email ?? undefined,
+      full_name: payload.fullName ?? undefined,
+    }),
+  });
+  // Read as text first so a non-JSON failure (e.g. an HTML 500 page) still
+  // produces a readable error instead of a JSON parse crash.
+  const raw = await response.text();
+  let data: any = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = {};
+  }
+  if (!response.ok || data.code) {
+    const detail = clean(data.message || '') || 'Apple login failed';
+    const err: any = new Error(
+      data.code ? `${detail} (${data.code})` : `${detail} (HTTP ${response.status})`,
+    );
+    err.isBackendError = true;
+    throw err;
+  }
+
+  return buildSocialAuthUser(data, 'apple');
 };
 
 // ─── Backward compat alias ────────────────────────────────────────────────────
@@ -252,6 +314,32 @@ export const socialLogin = async (
 ): Promise<AuthUser> => {
   if (provider === 'google') return googleSocialLogin(token);
   return linkedInSocialLogin(token);
+};
+
+// ─── Delete account (App Store guideline 5.1.1(v)) ────────────────────────────
+// NEEDS BACKEND: DELETE /custom/v1/account (Robby) — authenticated by the
+// Bearer token, permanently deletes the calling user (and their BuddyBoss
+// data). The stock WP route DELETE /wp/v2/users/me needs the delete_users
+// capability, which normal members don't have, so a custom route is required.
+export const deleteAccount = async (): Promise<void> => {
+  const user = await getStoredUser();
+  if (!user?.token) throw new Error('You need to be signed in to delete your account.');
+  const response = await fetch(`${BASE_URL}/custom/v1/account`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${user.token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {}
+  if (!response.ok || data?.code)
+    throw new Error(
+      clean(data?.message || 'Could not delete your account. Please try again.'),
+    );
+  await logoutUser();
 };
 
 // ─── Forgot Password / Reset Password (Profile Builder plugin) ───────────────
@@ -486,6 +574,7 @@ export const getToken = async (): Promise<string | null> => {
 export const logoutUser = async (): Promise<void> => {
   invalidateCredentialsCache();
   clearNetworkCache();
+  await resetSessionState(); // avatar, unread counts, certificates, event registrations...
   await Keychain.resetGenericPassword();
   invalidateCredentialsCache();
 };

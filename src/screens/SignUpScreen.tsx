@@ -14,13 +14,17 @@ import {
   Image,
   Linking,
 } from 'react-native';
-import {InAppBrowser} from 'react-native-inappbrowser-reborn';
+import {openLinkedInAuth} from '../api/linkedinAuth';
 import {
   GoogleSignin,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import {registerUser, socialLogin, getPostAuthRoute} from '../api/authApi';
-import Svg, {Path, G} from 'react-native-svg';
+import AppleSignInButton from '../components/AppleSignInButton';
+import SocialButton, {GoogleIcon, LinkedInSquareIcon} from '../components/SocialButton';
+import EyeClosedIcon from '../components/EyeClosedIcon';
+import EyeOpenIcon from '../components/EyeOpenIcon';
+import BackButton from '../components/BackButton';
 
 // ─── Google OAuth ───────────────────────────────────────────────────────────
 // This MUST be the Web-type OAuth Client ID (has a client secret attached in
@@ -74,70 +78,6 @@ const LINKEDIN_AUTH_URL =
   `&client_id=${LINKEDIN_CLIENT_ID}` +
   `&redirect_uri=${encodeURIComponent(LINKEDIN_REDIRECT)}` +
   `&scope=openid%20profile%20email`;
-
-// ─── Eye Open SVG Icon ────────────────────────────────────────────────────────
-const EyeOpenIcon = ({color = '#AAAAAA'}: {color?: string}) => (
-  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M12 5C7.5 5 3.73 7.61 2 12c1.73 4.39 5.5 7 10 7s8.27-2.61 10-7c-1.73-4.39-5.5-7-10-7z"
-      stroke={color}
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-      stroke={color}
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-// ─── Eye Closed SVG Icon ──────────────────────────────────────────────────────
-const EyeClosedIcon = ({color = '#AAAAAA'}: {color?: string}) => (
-  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22"
-      stroke={color}
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-// ─── Google "G" SVG Icon ──────────────────────────────────────────────────────
-const GoogleIcon = () => (
-  <Svg width="20" height="20" viewBox="0 0 48 48">
-    <G>
-      <Path
-        d="M43.6 20.5H42V20H24v8h11.3C33.7 32.3 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.3 1 7.2 2.7l5.7-5.7C33.5 7.1 29 5 24 5 12.95 5 4 13.95 4 25s8.95 20 20 20 20-8.95 20-20c0-1.5-.2-2.9-.4-4.5z"
-        fill="#FFC107"
-      />
-      <Path
-        d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c2.8 0 5.3 1 7.2 2.7l5.7-5.7C33.5 7.1 29 5 24 5c-7.7 0-14.3 4.4-17.7 9.7z"
-        fill="#FF3D00"
-      />
-      <Path
-        d="M24 45c4.9 0 9.3-1.9 12.7-4.9l-6.2-5.2C28.6 36.6 26.4 37.5 24 37.5c-5.2 0-9.6-3.5-11.2-8.3l-6.6 5.1C9.5 40.5 16.3 45 24 45z"
-        fill="#4CAF50"
-      />
-      <Path
-        d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.5l6.2 5.2C37.5 38.8 44 34 44 25c0-1.5-.2-2.9-.4-4.5z"
-        fill="#1976D2"
-      />
-    </G>
-  </Svg>
-);
-
-// ─── LinkedIn "in" SVG Icon ───────────────────────────────────────────────────
-const LinkedInIcon = () => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="#FFFFFF">
-    <Path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-  </Svg>
-);
 
 const SignUpScreen = ({navigation}: any) => {
   const [name, setName] = useState('');
@@ -206,10 +146,8 @@ const SignUpScreen = ({navigation}: any) => {
       const route = await getPostAuthRoute(user);
       navigation.replace(route);
     } catch (err: any) {
-      // TEMP DEBUG: show the real error/code instead of a generic message
-      // so this can be diagnosed from a screenshot alone, no Logcat needed.
       if (err.code !== statusCodes.SIGN_IN_CANCELLED)
-        setErrors({general: `DEBUG Google: code=${err?.code} msg=${err?.message}`});
+        setErrors({general: 'Google sign-in failed. Please try again.'});
     } finally {
       setGoogleLoading(false);
     }
@@ -231,84 +169,30 @@ const SignUpScreen = ({navigation}: any) => {
     setLinkedinLoading(true);
     setErrors({});
 
-    let subscription: {remove: () => void} | null = null;
-    let settled = false;
-
     try {
-      const available = await InAppBrowser.isAvailable();
-      if (!available) {
-        setErrors({general: 'LinkedIn sign-in is unavailable on this device.'});
-        return;
-      }
-
-      // Primary path: resolves as soon as our ipmhub:// deep link arrives.
-      const deepLinkPromise = new Promise<string | null>(resolve => {
-        subscription = Linking.addEventListener('url', ({url}) => {
-          if (!settled && url.startsWith(LINKEDIN_APP_REDIRECT)) {
-            settled = true;
-            resolve(url);
-          }
-        });
-      });
-
-      // Also check getInitialURL in case the deep link arrives so fast the
-      // listener above hasn't attached yet (edge case, cheap to guard).
-      Linking.getInitialURL().then(url => {
-        if (url && !settled && url.startsWith(LINKEDIN_APP_REDIRECT)) {
-          settled = true;
-        }
-      });
-
-      // Fallback path: resolves when the user closes the tab themselves
-      // without completing sign-in. Given a short grace window afterward,
-      // since on some devices the tab's "dismissed" event can fire slightly
-      // before or after the deep link's 'url' event lands — order isn't
-      // guaranteed, so we don't want a fast dismiss event to short-circuit
-      // a redirect that's still on its way in.
-      const dismissedPromise = InAppBrowser.open(LINKEDIN_AUTH_URL, {
-        ephemeralWebSession: false,
-        showTitle: false,
-        enableUrlBarHiding: true,
-        enableDefaultShare: false,
-      }).then(async () => {
-        if (settled) return undefined; // already resolved via deep link
-        const late = await Promise.race([
-          deepLinkPromise,
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 500)),
-        ]);
-        return late;
-      });
-
-      const redirectUrl = await Promise.race([
-        deepLinkPromise,
-        dismissedPromise,
-      ]);
-
-      try {
-        await InAppBrowser.close();
-      } catch {}
+      // Opens the system browser via Linking and waits for the
+      // ipmhub://linkedin-callback deep link (no InAppBrowser native module).
+      const redirectUrl = await openLinkedInAuth(
+        LINKEDIN_AUTH_URL,
+        LINKEDIN_APP_REDIRECT,
+      );
 
       if (!redirectUrl) {
-        // User cancelled/backed out — not an error, just stop quietly.
+        // User came back without finishing — not an error, stop quietly.
         return;
       }
 
       const match = redirectUrl.match(/[?&]code=([^&]+)/);
       if (!match) {
-        // TEMP DEBUG: show the actual returned URL so we can see what came
-        // back instead of a code (e.g. an error= param from LinkedIn).
-        setErrors({general: `DEBUG: no code in redirect URL: ${redirectUrl}`});
+        setErrors({general: 'LinkedIn sign-in was not completed. Please try again.'});
         return;
       }
       const user = await socialLogin('linkedin', decodeURIComponent(match[1]));
       const route = await getPostAuthRoute(user);
       navigation.replace(route);
     } catch (err: any) {
-      // TEMP DEBUG: show the real error instead of a generic message so
-      // this can be diagnosed from a screenshot alone, no Logcat needed.
-      setErrors({general: `DEBUG LinkedIn: ${err?.message || JSON.stringify(err)}`});
+      setErrors({general: 'LinkedIn sign-in failed. Please try again.'});
     } finally {
-      subscription?.remove();
       setLinkedinLoading(false);
     }
   };
@@ -326,11 +210,7 @@ const SignUpScreen = ({navigation}: any) => {
         keyboardShouldPersistTaps="handled">
 
         {/* Back */}
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>{'‹'}</Text>
-        </TouchableOpacity>
+        <BackButton style={styles.backBtn} onPress={() => navigation.goBack()} />
 
         {/* Logo */}
         <View style={styles.logoWrap}>
@@ -354,6 +234,40 @@ const SignUpScreen = ({navigation}: any) => {
             <Text style={styles.errorBannerText}>{errors.general}</Text>
           </View>
         ) : null}
+
+        {/* ── Social sign-up — Apple first (iOS only, App Store 4.8) ── */}
+        <View style={styles.socialStack}>
+          <AppleSignInButton
+            mode="sign-up"
+            disabled={loading || googleLoading || linkedinLoading}
+            onSuccess={async user => {
+              const route = await getPostAuthRoute(user);
+              navigation.replace(route);
+            }}
+            onError={msg => setErrors({general: msg})}
+          />
+          <SocialButton
+            label="Continue with Google"
+            icon={<GoogleIcon />}
+            onPress={handleGoogle}
+            loading={googleLoading}
+            disabled={loading || linkedinLoading}
+          />
+          <SocialButton
+            label="Continue with LinkedIn"
+            icon={<LinkedInSquareIcon />}
+            onPress={handleLinkedIn}
+            loading={linkedinLoading}
+            disabled={loading || googleLoading}
+          />
+        </View>
+
+        {/* ── Divider ── */}
+        <View style={styles.divider}>
+          <View style={styles.divLine} />
+          <Text style={styles.divText}>{'OR SIGN UP WITH EMAIL'}</Text>
+          <View style={styles.divLine} />
+        </View>
 
         {/* ── Full Name ── */}
         <Text style={styles.label}>{'Name'}</Text>
@@ -416,9 +330,9 @@ const SignUpScreen = ({navigation}: any) => {
             onPress={() => setShowPassword(p => !p)}
             hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             {showPassword ? (
-              <EyeOpenIcon color="#AAAAAA" />
+              <EyeOpenIcon />
             ) : (
-              <EyeClosedIcon color="#AAAAAA" />
+              <EyeClosedIcon />
             )}
           </TouchableOpacity>
         </View>
@@ -451,9 +365,9 @@ const SignUpScreen = ({navigation}: any) => {
             onPress={() => setShowConfirm(p => !p)}
             hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             {showConfirm ? (
-              <EyeOpenIcon color="#AAAAAA" />
+              <EyeOpenIcon />
             ) : (
-              <EyeClosedIcon color="#AAAAAA" />
+              <EyeClosedIcon />
             )}
           </TouchableOpacity>
         </View>
@@ -491,42 +405,6 @@ const SignUpScreen = ({navigation}: any) => {
             {errors.agreed}
           </Text>
         ) : null}
-
-        {/* ── Divider ── */}
-        <View style={styles.divider}>
-          <View style={styles.divLine} />
-          <Text style={styles.divText}>{'OR CONTINUE WITH'}</Text>
-          <View style={styles.divLine} />
-        </View>
-
-        {/* ── Social buttons ── */}
-        <View style={styles.socialRow}>
-          {/* Google */}
-          <TouchableOpacity
-            style={styles.googleBtn}
-            onPress={handleGoogle}
-            disabled={googleLoading || loading}
-            activeOpacity={0.85}>
-            {googleLoading ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.socialBtnText}>{'G'}</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* LinkedIn */}
-          <TouchableOpacity
-            style={styles.linkedinBtn}
-            onPress={handleLinkedIn}
-            disabled={linkedinLoading || loading}
-            activeOpacity={0.85}>
-            {linkedinLoading ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.socialBtnText}>{'in'}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
 
         {/* ── Sign Up button ── */}
         <TouchableOpacity
@@ -566,16 +444,8 @@ const styles = StyleSheet.create({
   backBtn: {
     marginTop: 46,
     marginBottom: 6,
-    width: 32,
-    height: 32,
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    alignSelf: 'flex-start',
   },
-  backIcon: {fontSize: 20, color: '#444', lineHeight: 24, fontWeight: '300'},
 
   // Logo
   logoWrap: {alignItems: 'center', marginTop: 6, marginBottom: 8},
@@ -694,7 +564,7 @@ const styles = StyleSheet.create({
   },
 
   // Divider
-  divider: {flexDirection: 'row', alignItems: 'center', marginBottom: 12},
+  divider: {flexDirection: 'row', alignItems: 'center', marginBottom: 16},
   divLine: {flex: 1, height: 1, backgroundColor: '#E5E7EB'},
   divText: {
     fontFamily: 'Runda',
@@ -705,31 +575,7 @@ const styles = StyleSheet.create({
   },
 
   // Social buttons
-  socialRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  googleBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#4A90D9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    elevation: 2,
-  },
-  linkedinBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#0A66C2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-  },
-  socialBtnText: {color: '#FFF', fontWeight: '700', fontSize: 17},
+  socialStack: {alignSelf: 'stretch', gap: 12, marginBottom: 16},
 
   // Sign Up button
   signUpBtn: {

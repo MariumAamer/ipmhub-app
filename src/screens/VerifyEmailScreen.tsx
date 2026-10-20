@@ -1,11 +1,12 @@
 /* eslint-disable prettier/prettier */
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, Image, Linking, Platform} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import {openInbox} from 'react-native-email-link';
 import {forgotPassword} from '../api/authApi';
+import SuccessToast from '../components/SuccessToast';
 
 // ─── Gradient title — 267deg = right-to-left so start x:1 end x:0 ────────────
 // Figma: linear-gradient(267deg, #E257E4 19.57%, #005AB4 75.14%)
@@ -30,7 +31,13 @@ const GradientTitle = ({text, style}: {text: string; style?: any}) => (
 const VerifyEmailScreen = ({route, navigation}: any) => {
   const email = route?.params?.email || '';
   const [resending, setResending] = useState(false);
-  const [resent, setResent] = useState(false);
+  // Toast ("Verification email sent. Check your inbox.") — shown on arrival
+  // (the email was just sent at sign-up) and again after each resend.
+  const [toast, setToast] = useState(false);
+
+  useEffect(() => {
+    setToast(true);
+  }, []);
 
   // NOTE: this screen used to have its own Linking listener here that
   // navigated to SignIn on any URL containing 'activate', 'verify', or even
@@ -72,8 +79,9 @@ const VerifyEmailScreen = ({route, navigation}: any) => {
     setResending(true);
     try {
       await forgotPassword(email);
-      setResent(true);
-      setTimeout(() => setResent(false), 3000);
+      // Restart the toast if it's already showing.
+      setToast(false);
+      setTimeout(() => setToast(true), 0);
     } catch {
     } finally {
       setResending(false);
@@ -113,14 +121,17 @@ const VerifyEmailScreen = ({route, navigation}: any) => {
           {'If the email doesn\'t appear soon, please check your spam or junk folder.'}
         </Text>
 
-        {/* Resent banner */}
-        {resent ? (
-          <View style={styles.resentBanner}>
-            <Text style={styles.resentText}>{'✓ Verification email resent!'}</Text>
-          </View>
-        ) : null}
+        {/* Success toast — space is reserved so content doesn't jump */}
+        <View style={styles.toastSlot}>
+          <SuccessToast
+            inline
+            visible={toast}
+            message="Verification email sent. Check your inbox."
+            onHide={() => setToast(false)}
+          />
+        </View>
 
-        <View style={{height: 36}} />
+        <View style={{height: 20}} />
 
         {/* Open Email App */}
         <TouchableOpacity
@@ -193,19 +204,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // Resent banner
-  resentBanner: {
-    backgroundColor: '#ECFDF5',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    width: '100%',
-    alignItems: 'center',
-  },
-  resentText: {color: '#065F46', fontSize: 13, fontWeight: '600'},
+  // Reserved slot for the success toast (toast is ~44 tall)
+  toastSlot: {height: 44, marginTop: 16, alignSelf: 'stretch', justifyContent: 'center'},
 
   // Open Email App button
   openEmailBtn: {

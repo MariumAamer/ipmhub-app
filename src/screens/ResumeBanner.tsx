@@ -107,8 +107,6 @@ interface Props {
 }
 
 const ResumeBanner = ({banner, onPressResume}: Props) => {
-  // TEMP DEBUG: capture the REAL computed layout of the step/module text.
-  const [stepLayout, setStepLayout] = useState<string>('not measured');
   const pct = Math.max(0, Math.min(100, banner.progress ?? 0));
 
   return (
@@ -117,10 +115,6 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
       start={{x: 0.85, y: 0.02}}
       end={{x: 0.15, y: 0.98}}
       style={styles.root}>
-      {/* TEMP DEBUG: fresh unique marker, round 2 of build verification */}
-      <Text style={{fontSize: 11, color: 'red', backgroundColor: 'lime'}}>
-        {`ZXCVB step:${stepLayout}`}
-      </Text>
       {/* CONFIRMED (Sep 2026, live instruction supersedes the earlier
           "Frame 2085669498" inspector grouping): welcome text -> title ->
           Resume button, stacked together in the RIGHT-hand column. The image
@@ -153,13 +147,7 @@ const ResumeBanner = ({banner, onPressResume}: Props) => {
       {!!banner.step_line && (
         <Text
           style={styles.stepLine}
-          numberOfLines={3}
-          onLayout={e => {
-            const {x, y, width, height} = e.nativeEvent.layout;
-            setStepLayout(
-              `x${Math.round(x)} y${Math.round(y)} w${Math.round(width)} h${Math.round(height)}`,
-            );
-          }}>
+          numberOfLines={3}>
           {banner.step_line}
         </Text>
       )}

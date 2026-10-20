@@ -7,7 +7,9 @@ export const getToken = async (): Promise<string | null> => {
   try {
     const creds = await getCachedCredentials();
     if (!creds?.password) return null;
-    return JSON.parse(creds.password)?.token ?? null;
+    const token = JSON.parse(creds.password)?.token ?? null;
+    console.log('[DEBUG] Bearer token:', token); // TEMP: remove before commit
+    return token;
   } catch {
     return null;
   }

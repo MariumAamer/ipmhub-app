@@ -42,17 +42,27 @@ const IMAGE_AREA_H = TOP_H - IMAGE_TOP;
 // actually available (contain-style), then scale the inner image by the
 // exact same factor. Because both box and image scale together, the crop
 // ratio (133.433%/129.042%) stays identical regardless of device size.
-const SLIDE2_ASPECT = 335 / 334; // width / height
-let SLIDE2_BOX_W = W;
-let SLIDE2_BOX_H = SLIDE2_BOX_W / SLIDE2_ASPECT;
-if (SLIDE2_BOX_H > IMAGE_AREA_H) {
-  SLIDE2_BOX_H = IMAGE_AREA_H;
-  SLIDE2_BOX_W = SLIDE2_BOX_H * SLIDE2_ASPECT;
-}
+// Figma frame is 390px wide: the 335×334 box is NOT scaled up to the full
+// width — it is scaled only by the screen/frame ratio and sits flush to the
+// right and bottom of the purple panel (left edge ≈55px on a 390 frame).
+const SLIDE2_FRAME_SCALE = W / 390;
+const SLIDE2_BOX_W = 335 * SLIDE2_FRAME_SCALE;
+const SLIDE2_BOX_H = 334 * SLIDE2_FRAME_SCALE;
 const SLIDE2_SCALE_X = 447 / 335; // 133.433%
 const SLIDE2_SCALE_Y = 431 / 334; // 129.042%
 const SLIDE2_IMG_W = SLIDE2_BOX_W * SLIDE2_SCALE_X;
 const SLIDE2_IMG_H = SLIDE2_BOX_H * SLIDE2_SCALE_Y;
+
+// ─── Slide 1 image (Figma dev-mode spec) ─────────────────────────────────────
+// CSS: width 390px, height 379px, aspect-ratio 71/69,
+//      background: url(...) lightgray -15px 0px / 103.846% 106.86% no-repeat;
+// Same approach as slide 2: a clipped 390×379 box (scaled to screen width)
+// with the image drawn at 103.846%×106.86% of the box, offset -15px left.
+const SLIDE1_BOX_W = W;
+const SLIDE1_BOX_H = W * (379 / 390);
+const SLIDE1_IMG_W = SLIDE1_BOX_W * 1.03846;
+const SLIDE1_IMG_H = SLIDE1_BOX_H * 1.0686;
+const SLIDE1_IMG_LEFT = -15 * (W / 390);
 
 // ─── Gradient "IPM Hub" text ─────────────────────────────────────────────────
 // Figma: linear-gradient(267deg, #E257E4 8.04%, #005AB4 54.07%)
@@ -172,7 +182,7 @@ const SLIDES = [
     plainTitle: 'Everything you need to grow',
     subtitle: 'Connect with professionals and access resources to grow in project management.',
     image: require('../assets/images/onboarding2.png'),
-    imageAlign: 'center' as const,
+    imageAlign: 'flex-end' as const,
     // Slide 2: globe — Figma 447×431 ratio, fills full width
     imageWidth: W,
     imageHeight: W * (431 / 447),
@@ -266,7 +276,15 @@ const OnboardingScreen = ({navigation}: any) => {
                     item.imageAlign === 'flex-end' ? 'flex-end' : 'center',
                 },
               ]}>
-              {item.id === '2' ? (
+              {item.id === '1' ? (
+                <View style={s.slide1Box} collapsable={false}>
+                  <Image
+                    source={item.image}
+                    style={s.slide1Img}
+                    resizeMode="stretch"
+                  />
+                </View>
+              ) : item.id === '2' ? (
                 <View style={s.slide2Box} collapsable={false}>
                   <Image
                     source={item.image}
@@ -392,11 +410,26 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
 
+  // Slide 1: 390×379 clip box, image at 103.846%×106.86%, offset -15px left.
+  slide1Box: {
+    width: SLIDE1_BOX_W,
+    height: SLIDE1_BOX_H,
+    overflow: 'hidden',
+  },
+  slide1Img: {
+    position: 'absolute',
+    top: 0,
+    left: SLIDE1_IMG_LEFT,
+    width: SLIDE1_IMG_W,
+    height: SLIDE1_IMG_H,
+  },
+
   // Slide 2: fixed 335×334 clip box, image shown at native size (447×431)
   // anchored top-left — matches Figma background-size/position spec exactly.
   slide2Box: {
     width: SLIDE2_BOX_W,
     height: SLIDE2_BOX_H,
+    alignSelf: 'flex-end',
     overflow: 'hidden',
     backgroundColor: 'transparent',
   },

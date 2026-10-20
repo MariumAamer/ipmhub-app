@@ -12,131 +12,35 @@ import {
   EXPERIENCE_FILTERS,
   EXPERTISE_FILTERS,
   INDUSTRY_FILTERS,
+  getMentorFilterOptions,
 } from '../api/mentorsApi';
+import {getIndustryIcon} from '../config/industries';
+import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
+import {ChevronDownIcon} from '../components/forumsIcons';
+import {FilterSheet as ForumFilterSheetUI} from '../components/forumStyleControls';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
-// ─── Filter Bottom Sheet ──────────────────────────────────────────────────
-const FilterSheet = ({
-  visible,
-  title,
-  items,
-  selected,
-  onSelect,
-  onClose,
-  onContinue,
-}: any) => {
-  const slideAnim = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-
-  useEffect(() => {
-    Animated.spring(slideAnim, {
-      toValue: visible ? 0 : SCREEN_HEIGHT,
-      tension: 65,
-      friction: 11,
-      useNativeDriver: true,
-    }).start();
-  }, [visible]);
-
-  if (!visible) return null;
-
-  return (
-    <Modal
-      transparent
-      visible={visible}
-      onRequestClose={onClose}
-      animationType="none">
-      <View style={sheet.backdrop}>
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-        />
-      </View>
-      <Animated.View
-        style={[sheet.container, {transform: [{translateY: slideAnim}]}]}>
-        <View style={sheet.header}>
-          <Text style={sheet.title}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={sheet.closeBtn}>
-            <Text style={sheet.closeIcon}>{'✕'}</Text>
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={items}
-          keyExtractor={i => i.value}
-          style={sheet.list}
-          renderItem={({item}) => (
-            <TouchableOpacity
-              style={sheet.item}
-              onPress={() => onSelect(item.value)}>
-              <Text
-                style={[
-                  sheet.itemText,
-                  selected === item.value && sheet.itemTextActive,
-                ]}>
-                {item.name}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
-        <TouchableOpacity style={sheet.continueBtn} onPress={onContinue}>
-          <Text style={sheet.continueBtnText}>{'Continue'}</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </Modal>
-  );
-};
-
-const sheet = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: SCREEN_HEIGHT * 0.7,
-    paddingBottom: 32,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#0C4D91',
-    fontFamily: 'Runda',
-  },
-  closeBtn: {position: 'absolute', right: 16, padding: 4},
-  closeIcon: {fontSize: 18, color: '#8F9098'},
-  list: {flex: 1},
-  item: {
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8F8F8',
-  },
-  // Figma: Action/Action L — 14px/500, #192546
-  itemText: {fontSize: 14, fontWeight: '500', color: '#192546', fontFamily: 'Runda'},
-  itemTextActive: {color: '#46B0E3'},
-  continueBtn: {
-    backgroundColor: '#0C4D91',
-    marginHorizontal: 20,
-    marginTop: 16,
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  continueBtnText: {color: '#FFFFFF', fontSize: 16, fontWeight: '700', fontFamily: 'Runda'},
-});
+// ─── Filter sheet — shared Forums-style sheet, adapted to {name,value} items ─
+const FilterSheet = ({visible, title, items, selected, onSelect, onClose, iconFor}: any) => (
+  <ForumFilterSheetUI
+    visible={visible}
+    title={title}
+    items={(items || []).map((i: any) => ({
+      id: i.value,
+      label: i.name,
+      icon: iconFor && i.value
+        ? (color: string) => {
+            const Icon = iconFor(i.name);
+            return Icon ? <Icon size={16} color={color} /> : null;
+          }
+        : undefined,
+    }))}
+    selectedId={selected}
+    onApply={onSelect}
+    onClose={onClose}
+  />
+);
 
 // ─── Mentor Card — exact Figma spec ───────────────────────────────────────
 // ─── Circular call icon for the Request a Call button — exact Figma SVG ──
@@ -184,6 +88,8 @@ const MentorCard = React.memo(({mentor, onRequestCall, navigation}: {mentor: Men
   const extraTagCount = mentor.tags.length - visibleTags.length;
   const hasTitle = mentor.title.length > 0;
   const hasBio = mentor.bioSnippet.length > 0;
+  // Only show the button when this mentor actually has a booking link.
+  const canRequestCall = !!(mentor.calendlyLink || mentor.requestCallUrl);
 
   // Whole card taps through to the mentor's full profile (MemberProfileScreen,
   // opened straight on the Mentorship tab). Passing both IDs: userId is what
@@ -275,15 +181,17 @@ const MentorCard = React.memo(({mentor, onRequestCall, navigation}: {mentor: Men
         </View>
       </View>
 
-      <TouchableOpacity
-        style={styles.requestBtn}
-        onPress={() => onRequestCall(mentor)}
-        activeOpacity={0.85}>
-        <View style={styles.requestBtnIcon}>
-          <CallIcon />
-        </View>
-        <Text style={styles.requestBtnText}>{'Request a Call'}</Text>
-      </TouchableOpacity>
+      {canRequestCall && (
+        <TouchableOpacity
+          style={styles.requestBtn}
+          onPress={() => onRequestCall(mentor)}
+          activeOpacity={0.85}>
+          <View style={styles.requestBtnIcon}>
+            <CallIcon />
+          </View>
+          <Text style={styles.requestBtnText}>{'Request a Call'}</Text>
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 });
@@ -302,6 +210,16 @@ const MentorSkeleton = () => (
     </View>
     <View style={{height: 40, borderRadius: 10, backgroundColor: '#E8E9F1', alignSelf: 'stretch'}} />
   </View>
+);
+
+// ─── Floating "?" help button — exact Figma SVG (20.63 x 20.63, white) ───
+const HelpQuestionIcon = () => (
+  <Svg width={20.631} height={20.63} viewBox="0 0 21 21" fill="none">
+    <Path
+      d="M10.8363 17.349C11.3207 17.349 11.7844 17.5415 12.1269 17.884C12.4693 18.2264 12.6619 18.6901 12.6619 19.1745C12.6619 19.6588 12.4693 20.1225 12.1269 20.465C11.7844 20.8075 11.3207 21 10.8363 21C10.352 21 9.88831 20.8075 9.54583 20.465C9.20336 20.1225 9.01082 19.6588 9.01082 19.1745C9.01082 18.6901 9.20336 18.2264 9.54583 17.884C9.88831 17.5415 10.352 17.349 10.8363 17.349ZM10.8363 0C12.3733 0.00223608 13.8622 0.538127 15.0467 1.51749C16.2312 2.49684 17.0368 3.85883 17.3278 5.36795C17.6187 6.87673 17.377 8.43973 16.642 9.78908C15.9066 11.1387 14.7233 12.1905 13.2974 12.7641L13.1385 12.837C12.7534 13.0269 12.6619 13.2508 12.6619 13.6963C12.6618 14.1805 12.4693 14.6444 12.1269 14.9868C11.7844 15.3292 11.3206 15.5218 10.8363 15.5218C10.3521 15.5218 9.88829 15.3292 9.54583 14.9868C9.20344 14.6444 9.01091 14.1805 9.01082 13.6963V13.2391C9.011 11.1341 10.706 9.87054 11.9404 9.37729C12.4403 9.17678 12.8766 8.8436 13.2017 8.41427C13.5269 7.98483 13.7296 7.47451 13.787 6.93893C13.8444 6.40352 13.7542 5.86291 13.5276 5.37443C13.3009 4.8858 12.9458 4.467 12.4997 4.16498C12.054 3.86329 11.5343 3.68826 10.9968 3.65915C10.459 3.63008 9.92291 3.74905 9.44694 4.00124C8.97115 4.25339 8.57219 4.62952 8.29423 5.09071C8.01621 5.55207 7.87007 6.08089 7.86946 6.61955C7.86946 7.10357 7.67652 7.56765 7.33445 7.91006C6.99198 8.25253 6.52665 8.44507 6.04232 8.44507C5.55811 8.44498 5.09421 8.25246 4.75181 7.91006C4.40944 7.5676 4.2168 7.1038 4.2168 6.61955C4.2168 4.86385 4.91434 3.18048 6.15581 1.93901C7.39727 0.697544 9.08065 1.04829e-07 10.8363 0Z"
+      fill="#FFFFFF"
+    />
+  </Svg>
 );
 
 // ─── "Become a Mentor" promo card — exact Figma SVG/CSS spec ─────────────
@@ -449,14 +367,47 @@ const MentorsScreen = ({navigation}: any) => {
   const [whoYouHelpFilter, setWhoYouHelpFilter] = useState('');
   const [activeSheet, setActiveSheet] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Industry options come from GET /custom/v1/mentors/filters; the hardcoded
+  // list is the fallback shown instantly / if the request fails.
+  const [industryOptions, setIndustryOptions] = useState<FilterOption[]>(INDUSTRY_FILTERS);
+
+  // PERF: the filter-options request (fallback list is already showing) used
+  // to race the first mentors request; fetch it once the list has loaded.
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    getMentorFilterOptions('industry').then(opts => {
+      if (!cancelled && opts) setIndustryOptions(opts);
+    });
+    return () => { cancelled = true; };
+  }, [loading]);
+
+  // PERF: last-seen first page (no filters), shown instantly while the real
+  // request runs.
+  const snapshotShownRef = React.useRef(false);
+  const freshRef = React.useRef(false);
+  useEffect(() => {
+    let alive = true;
+    readSnapshot<MentorItem[]>('mentors').then(snap => {
+      if (!alive || !snap || !snap.length || freshRef.current) return;
+      snapshotShownRef.current = true;
+      setMentors(snap);
+      setHasMore(false); // no paging off stale data; the fresh load sets it
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     loadMentors(1, true);
   }, [experienceFilter, expertiseFilter, industryFilter, whoYouHelpFilter]);
 
   const loadMentors = async (pageNum = 1, reset = false) => {
-    if (reset) setLoading(true);
-    else setLoadingMore(true);
+    if (reset) {
+      if (!snapshotShownRef.current) setLoading(true);
+    } else setLoadingMore(true);
 
     const result = await getMentors(pageNum, {
       experience: experienceFilter,
@@ -465,6 +416,12 @@ const MentorsScreen = ({navigation}: any) => {
       whoYouHelp: whoYouHelpFilter,
     });
 
+    if (reset) {
+      freshRef.current = true;
+      snapshotShownRef.current = false;
+      const noFilters = !experienceFilter && !expertiseFilter && !industryFilter && !whoYouHelpFilter;
+      if (pageNum === 1 && noFilters) writeSnapshot('mentors', result.mentors);
+    }
     if (reset) setMentors(result.mentors);
     else setMentors(prev => [...prev, ...result.mentors]);
     setHasMore(result.hasMore);
@@ -545,9 +502,9 @@ const MentorsScreen = ({navigation}: any) => {
                 style={styles.filterPill}
                 onPress={() => setActiveSheet('industry')}>
                 <Text style={styles.filterPillText}>
-                  {`Industry: ${getFilterLabel(INDUSTRY_FILTERS, industryFilter)}`}
+                  {`Industry: ${getFilterLabel(industryOptions, industryFilter)}`}
                 </Text>
-                <Text style={styles.filterChevron}>{'  ▾'}</Text>
+                <View style={styles.filterChevronWrap}><ChevronDownIcon color="#8F9098" width={12} height={9} /></View>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -556,7 +513,7 @@ const MentorsScreen = ({navigation}: any) => {
                 <Text style={styles.filterPillText}>
                   {`Expertise: ${getFilterLabel(EXPERTISE_FILTERS, expertiseFilter)}`}
                 </Text>
-                <Text style={styles.filterChevron}>{'  ▾'}</Text>
+                <View style={styles.filterChevronWrap}><ChevronDownIcon color="#8F9098" width={12} height={9} /></View>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -565,7 +522,7 @@ const MentorsScreen = ({navigation}: any) => {
                 <Text style={styles.filterPillText}>
                   {`Experience: ${getFilterLabel(EXPERIENCE_FILTERS, experienceFilter)}`}
                 </Text>
-                <Text style={styles.filterChevron}>{'  ▾'}</Text>
+                <View style={styles.filterChevronWrap}><ChevronDownIcon color="#8F9098" width={12} height={9} /></View>
               </TouchableOpacity>
 
               {/* "Who You Help" removed — confirmed via GET
@@ -618,14 +575,26 @@ const MentorsScreen = ({navigation}: any) => {
         }
       />
 
+      {/* Floating help button — Figma: 45x45 circle #46B0E3, right 15.4, sits
+          14px above the tab bar (Figma bottom 104 - tab bar ~90). The tab bar
+          isn't absolute, so bottom is measured from the screen's own edge. */}
+      <TouchableOpacity
+        style={styles.helpFab}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('MentorshipSupport')}
+        accessibilityRole="button"
+        accessibilityLabel="Mentorship help">
+        <HelpQuestionIcon />
+      </TouchableOpacity>
+
       <FilterSheet
         visible={activeSheet === 'industry'}
         title="Filter by Industry"
-        items={INDUSTRY_FILTERS}
+        items={industryOptions}
+        iconFor={getIndustryIcon}
         selected={industryFilter}
         onSelect={setIndustryFilter}
         onClose={() => setActiveSheet(null)}
-        onContinue={() => setActiveSheet(null)}
       />
       <FilterSheet
         visible={activeSheet === 'expertise'}
@@ -634,7 +603,6 @@ const MentorsScreen = ({navigation}: any) => {
         selected={expertiseFilter}
         onSelect={setExpertiseFilter}
         onClose={() => setActiveSheet(null)}
-        onContinue={() => setActiveSheet(null)}
       />
       <FilterSheet
         visible={activeSheet === 'experience'}
@@ -643,7 +611,6 @@ const MentorsScreen = ({navigation}: any) => {
         selected={experienceFilter}
         onSelect={setExperienceFilter}
         onClose={() => setActiveSheet(null)}
-        onContinue={() => setActiveSheet(null)}
       />
       {/* Who You Help FilterSheet removed along with its pill above —
           unreachable now that nothing sets activeSheet to 'whoYouHelp'. */}
@@ -715,6 +682,19 @@ const styles = StyleSheet.create({
   // Figma "Action/Action M" — Navy #192546, 12px, bold, normal line-height
   filterPillText: {fontSize: 12, color: '#192546', fontWeight: '700', fontFamily: 'Runda'},
   filterChevron: {fontSize: 10, color: '#8F9098'},
+  // Figma: 12x9 chevron, fill Neutral-Dark-Lightest #8F9098, pointing down
+  helpFab: {
+    position: 'absolute',
+    right: 15.4,
+    bottom: 14,
+    width: 45,
+    height: 45,
+    borderRadius: 100,
+    backgroundColor: '#46B0E3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterChevronWrap: {marginLeft: 8},
 
   listWrap: {paddingHorizontal: 16, paddingTop: 8},
   // PERF: per-row / footer-button side gutter (was listWrap's paddingHorizontal).

@@ -25,11 +25,14 @@ import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, {Path} from 'react-native-svg';
 import Geolocation from '@react-native-community/geolocation';
+import EmojiPickerSheet from '../components/EmojiPickerSheet';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import {fetchCountries, Country} from '../api/countriesApi';
 import {getCachedCountries, cacheCountries} from '../api/cacheService';
 import {submitWelcomeIntro, resolveCountryForSubmission, getWelcomeIntroConfig} from '../api/profileApi';
 import {getStoredUser} from '../api/authApi';
+import {INDUSTRIES, Industry, buildIndustryOptions} from '../config/industries';
+import {ChevronDownIcon} from '../components/forumsIcons';
 
 const {width} = Dimensions.get('window');
 
@@ -76,25 +79,6 @@ const GradientText = ({text, style}: {text: string; style?: any}) => (
     </LinearGradient>
   </MaskedView>
 );
-
-// ─── Static industry list ─────────────────────────────────────────────────────
-const INDUSTRIES = [
-  {icon: '🚀', name: 'Aerospace and Defense'},
-  {icon: '🏗️', name: 'Construction and Engineering'},
-  {icon: '📚', name: 'Education & Research'},
-  {icon: '🎬', name: 'Media & Entertainment'},
-  {icon: '⚡', name: 'Energy & Infrastructure'},
-  {icon: '💰', name: 'Financial Services'},
-  {icon: '🏛️', name: 'Government & Public Sector'},
-  {icon: '🏨', name: 'Hospitality & Tourism'},
-  {icon: '💻', name: 'Technology & Telecommunications'},
-  {icon: '🏭', name: 'Manufacturing & Production'},
-  {icon: '🤝', name: 'Nonprofit Organizations'},
-  {icon: '🏥', name: 'Healthcare & Pharmaceuticals'},
-  {icon: '🛍️', name: 'Retail & Consumer Goods'},
-  {icon: '🏠', name: 'Real Estate & Property'},
-  {icon: '🚛', name: 'Transportation and Logistics'},
-];
 
 const DEFAULT_COUNTRY: Country = {
   name: 'Ireland',
@@ -179,6 +163,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [step, setStep] = useState(1);
   const [step2Tab, setStep2Tab] = useState<'industry' | 'country'>('industry');
   const [saving, setSaving] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
   const [showCongrats, setShowCongrats] = useState(false);
   const navigatedRef = useRef(false);
 
@@ -190,6 +175,8 @@ const ProfileSetupScreen = ({navigation}: any) => {
   // Step 2
   const [selectedIndustry, setSelectedIndustry] = useState('');
   const [industrySearch, setIndustrySearch] = useState('');
+  // Starts as the local fallback; replaced by the server's industries[] once the config loads.
+  const [industries, setIndustries] = useState<Industry[]>(INDUSTRIES);
   const [countries, setCountries] = useState<Country[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [detectedCountry, setDetectedCountry] = useState<Country | null>(null);
@@ -214,6 +201,9 @@ const ProfileSetupScreen = ({navigation}: any) => {
     getWelcomeIntroConfig().then(cfg => {
       if (cfg && typeof cfg.min_bio_length === 'number' && cfg.min_bio_length > 0) {
         setMinBioLength(cfg.min_bio_length);
+      }
+      if (cfg && Array.isArray(cfg.industries) && cfg.industries.length > 0) {
+        setIndustries(buildIndustryOptions(cfg.industries));
       }
     });
   }, []);
@@ -288,10 +278,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
   const handleContinue = async () => {
     if (step === 1) {
-      if (!photoUri) {
-        Alert.alert('Profile Photo Required', 'Please upload a profile photo to continue.');
-        return;
-      }
+      // Profile photo is optional (App Store 5.1.1 data minimisation).
       if (!jobTitle.trim() || !company.trim()) {
         Alert.alert('Required Fields', 'Please fill in your Job Title and Company to continue.');
         return;
@@ -301,8 +288,20 @@ const ProfileSetupScreen = ({navigation}: any) => {
     else if (step === 2 && step2Tab === 'industry') { setStep2Tab('country'); }
     else if (step === 2 && step2Tab === 'country') { setStep(3); }
     else if (step === 3) {
-      if (!phoneNumber.trim() || !linkedIn.trim() || !introduction.trim()) {
-        Alert.alert('Required Fields', 'Please fill in your Phone Number, LinkedIn URL, and Introduction to continue.');
+      // Phone number and LinkedIn URL: optional on iOS (App Store 5.1.1),
+      // required on Android.
+      if (isPhoneLinkedInRequired) {
+        if (!phoneNumber.trim()) {
+          Alert.alert('Required Fields', 'Please enter your Phone Number to continue.');
+          return;
+        }
+        if (!linkedIn.trim()) {
+          Alert.alert('Required Fields', 'Please enter your LinkedIn URL to continue.');
+          return;
+        }
+      }
+      if (!introduction.trim()) {
+        Alert.alert('Required Fields', 'Please write your Introduction to continue.');
         return;
       }
       if (introLength < minBioLength) {
@@ -319,8 +318,12 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const introLength = introduction.trim().length;
   const introRemaining = Math.max(0, minBioLength - introLength);
   const isIntroLongEnough = introLength >= minBioLength;
-  const isStep3Valid = !!phoneNumber.trim() && !!linkedIn.trim() && isIntroLongEnough;
-  const isStep1Valid = !!photoUri && !!jobTitle.trim() && !!company.trim();
+  // iOS: phone + LinkedIn optional. Android: both required.
+  const isPhoneLinkedInRequired = Platform.OS === 'android';
+  const isStep3Valid =
+    isIntroLongEnough &&
+    (!isPhoneLinkedInRequired || (!!phoneNumber.trim() && !!linkedIn.trim()));
+  const isStep1Valid = !!jobTitle.trim() && !!company.trim();
 
   // Replaced 2026-08-28: this used to be 3 separate calls (uploadAvatar +
   // saveProfile + postIntroductionActivity), any of which could fail
@@ -340,9 +343,9 @@ const ProfileSetupScreen = ({navigation}: any) => {
         company,
         industry: selectedIndustry,
         country: resolveCountryForSubmission(selectedCountry.name),
-        phone: `${selectedPhoneCountry.dialCode}${phoneNumber}`,
-        phoneCountry: selectedPhoneCountry.name,
-        linkedIn,
+        phone: phoneNumber.trim() ? `${selectedPhoneCountry.dialCode}${phoneNumber.trim()}` : '',
+        phoneCountry: phoneNumber.trim() ? selectedPhoneCountry.name : '',
+        linkedIn: linkedIn.trim(),
         bio: introduction,
         photoUri,
       });
@@ -360,7 +363,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
     return 'Intro';
   };
 
-  const filteredIndustries = INDUSTRIES.filter(i => i.name.toLowerCase().includes(industrySearch.toLowerCase()));
+  const filteredIndustries = industries.filter(i => i.label.toLowerCase().includes(industrySearch.toLowerCase()));
   const filteredCountries = countries.filter(c => c.name.toLowerCase().includes(countrySearch.toLowerCase()));
   const filteredPhoneCountries = countries.filter(c => c.name.toLowerCase().includes(phoneSearch.toLowerCase()));
 
@@ -438,7 +441,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
               <View style={styles.uploadFrame}>
                 <CameraIcon />
                 {/* "Tap to Upload Photo" — #46B0E3 14px 500 */}
-                <Text style={styles.uploadText}>{'Tap to Upload Photo '}<Text style={styles.requiredAsterisk}>{'*'}</Text></Text>
+                <Text style={styles.uploadText}>{'Tap to Upload Photo (optional)'}</Text>
                 {/* Subtext — #192546 12px 500 */}
                 <Text style={styles.uploadSubtext}>{'PNG or JPG (Image dimensions must not exceed 200x200 pixels)'}</Text>
               </View>
@@ -475,16 +478,21 @@ const ProfileSetupScreen = ({navigation}: any) => {
           <Text style={styles.sectionLabel}>{'Alphabetical'}</Text>
           <FlatList
             data={filteredIndustries}
-            keyExtractor={item => item.name}
-            renderItem={({item}) => (
-              <TouchableOpacity
-                style={[styles.listItem, selectedIndustry === item.name && styles.listItemActive]}
-                onPress={() => setSelectedIndustry(item.name)}>
-                <Text style={styles.listItemIcon}>{item.icon}</Text>
-                <Text style={[styles.listItemText, selectedIndustry === item.name && styles.listItemTextActive]}>{item.name}</Text>
-                {selectedIndustry === item.name && <Text style={styles.checkmark}>{'✓'}</Text>}
-              </TouchableOpacity>
-            )}
+            keyExtractor={item => item.id}
+            renderItem={({item}) => {
+              const selected = selectedIndustry === item.welcomeValue;
+              return (
+                <TouchableOpacity
+                  style={[styles.listItem, selected && styles.listItemActive]}
+                  onPress={() => setSelectedIndustry(item.welcomeValue)}>
+                  <View style={styles.industryIconWrap}>
+                    {item.Icon ? <item.Icon size={18} color={selected ? '#0C4D91' : '#192546'} /> : null}
+                  </View>
+                  <Text style={[styles.listItemText, selected && styles.listItemTextActive]}>{item.label}</Text>
+                  {selected && <Text style={styles.checkmark}>{'✓'}</Text>}
+                </TouchableOpacity>
+              );
+            }}
           />
         </View>
       )}
@@ -557,10 +565,11 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
           {/* Phone Number */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>{'Phone Number'}</Text>
+            <Text style={styles.label}>{isPhoneLinkedInRequired ? 'Phone Number' : 'Phone Number (optional)'}</Text>
             <View style={styles.phoneRow}>
               <TouchableOpacity style={styles.flagBtn} onPress={() => setShowPhoneModal(true)}>
-                <Text style={styles.flagText}>{selectedPhoneCountry.flag}{' '}{selectedPhoneCountry.dialCode}{' ▼'}</Text>
+                <Text style={styles.flagText}>{selectedPhoneCountry.flag}{' '}{selectedPhoneCountry.dialCode}</Text>
+                <View style={{marginLeft: 6}}><ChevronDownIcon color="#192546" /></View>
               </TouchableOpacity>
               <TextInput style={styles.phoneInput} placeholder="Enter number" placeholderTextColor="#999" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
             </View>
@@ -568,7 +577,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
 
           {/* LinkedIn URL */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>{'LinkedIn URL'}</Text>
+            <Text style={styles.label}>{isPhoneLinkedInRequired ? 'LinkedIn URL' : 'LinkedIn URL (optional)'}</Text>
             <TextInput style={styles.input} placeholder="Your LinkedIn Profile URL" placeholderTextColor="#999" value={linkedIn} onChangeText={setLinkedIn} autoCapitalize="none" keyboardType="url" />
           </View>
 
@@ -595,7 +604,14 @@ const ProfileSetupScreen = ({navigation}: any) => {
               </Text>
               {/* Smiley icon bottom right */}
               <View style={styles.smileyWrap}>
-                <SmileyIcon />
+                <TouchableOpacity onPress={() => setShowEmoji(true)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                  <SmileyIcon />
+                </TouchableOpacity>
+                <EmojiPickerSheet
+                  visible={showEmoji}
+                  onClose={() => setShowEmoji(false)}
+                  onSelect={e => setIntroduction(prev => prev + e)}
+                />
               </View>
             </View>
             {!isIntroLongEnough && introLength > 0 && (
@@ -745,9 +761,8 @@ const styles = StyleSheet.create({
   // Open Camera button — width 350, height 40, border-radius 50, bg #F8F9FE, border #C5C6CC
   openCameraBtn: {
     width: 350,
-    height: 40,
+    minHeight: 40,
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderRadius: 50,
     backgroundColor: '#0C4D91',
     alignSelf: 'center',
@@ -755,7 +770,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
   },
-  openCameraBtnText: {fontFamily: 'Runda-Bold', fontSize: 14, fontWeight: '700', color: '#FFFFFF'},
+  openCameraBtnText: {fontFamily: 'Runda-Bold', fontSize: 14, lineHeight: 20, color: '#FFFFFF'},
 
   // Field group — flex column, gap 8, align-self stretch
   fieldGroup: {
@@ -812,6 +827,7 @@ const styles = StyleSheet.create({
   },
   listItemActive: {backgroundColor: '#EBF5FF'},
   listItemIcon: {fontSize: 18},
+  industryIconWrap: {width: 22, height: 22, alignItems: 'center', justifyContent: 'center'},
   listItemText: {flex: 1, fontFamily: 'Runda', fontSize: 14, color: '#333'},
   listItemTextActive: {color: '#0C4D91', fontWeight: '600'},
   checkmark: {color: '#0C4D91', fontSize: 16, fontWeight: '700'},
@@ -847,7 +863,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     width: '100%',
   },
-  flagBtn: {paddingHorizontal: 12, paddingVertical: 13, backgroundColor: '#F5F5F5', borderRightWidth: 1, borderRightColor: '#E5E7EB'},
+  flagBtn: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 13, backgroundColor: '#F5F5F5', borderRightWidth: 1, borderRightColor: '#E5E7EB'},
   flagText: {fontFamily: 'Runda', fontSize: 13, color: '#333'},
   phoneInput: {flex: 1, paddingHorizontal: 12, paddingVertical: 13, fontFamily: 'Runda', fontSize: 14, color: '#333'},
 

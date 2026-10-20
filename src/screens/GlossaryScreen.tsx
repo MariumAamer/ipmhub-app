@@ -1,10 +1,11 @@
 /* eslint-disable prettier/prettier */
-import React, {useMemo, useRef, useState, useEffect} from 'react';
+import React, {useMemo, useRef, useState, useEffect, useCallback} from 'react';
 import {
+  Keyboard,
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  SectionList,
   StatusBar,
   TextInput,
   TouchableOpacity,
@@ -17,6 +18,7 @@ import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import {GlossaryTerm, getGlossary, searchGlossary} from '../api/supportHubApi';
+import {useDebouncedValue} from '../hooks/useDebouncedValue';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
@@ -48,6 +50,8 @@ const ScrollTopIcon = () => (
 
 // ─── Screen ─────────────────────────────────────────────────────────────────
 
+const ItemSep = () => <View style={{height: 12}} />;
+
 const GlossaryScreen = ({navigation}: any) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,8 +64,12 @@ const GlossaryScreen = ({navigation}: any) => {
   // it's given an explicit numeric height once measured instead.
   const [heroHeight, setHeroHeight] = useState(0);
 
-  const scrollRef = useRef<ScrollView>(null);
-  const letterOffsets = useRef<Record<string, number>>({});
+  // PERF: ~470 terms used to be rendered at once inside a ScrollView. It is
+  // now a virtualized SectionList; letter jumps use scrollToLocation.
+  const listRef = useRef<SectionList<GlossaryTerm>>(null);
+  const pendingJump = useRef<number | null>(null);
+  // PERF: filtering/regrouping every term on every keystroke is debounced.
+  const debouncedQuery = useDebouncedValue(query, 250);
 
   useEffect(() => {
     (async () => {
@@ -73,9 +81,9 @@ const GlossaryScreen = ({navigation}: any) => {
   }, []);
 
   const filteredTerms = useMemo(() => {
-    if (!query.trim()) return terms;
-    return searchGlossary(query, terms);
-  }, [query, terms]);
+    if (!debouncedQuery.trim()) return terms;
+    return searchGlossary(debouncedQuery, terms);
+  }, [debouncedQuery, terms]);
 
   const grouped = useMemo(() => {
     const map: Record<string, GlossaryTerm[]> = {};
@@ -86,7 +94,7 @@ const GlossaryScreen = ({navigation}: any) => {
     });
     return Object.keys(map)
       .sort()
-      .map(letter => ({letter, items: map[letter]}));
+      .map(letter => ({letter, data: map[letter]}));
   }, [filteredTerms]);
 
   const activeLetters = useMemo(() => new Set(grouped.map(g => g.letter)), [grouped]);
@@ -94,14 +102,54 @@ const GlossaryScreen = ({navigation}: any) => {
   const handleGoBack = () => navigation.goBack();
 
   const handleLetterPress = (letter: string) => {
-    const y = letterOffsets.current[letter];
-    if (y === undefined) return;
-    scrollRef.current?.scrollTo({y: Math.max(y - 12, 0), animated: true});
+    const sectionIndex = grouped.findIndex(g => g.letter === letter);
+    if (sectionIndex < 0) return;
+    pendingJump.current = sectionIndex;
+    // itemIndex 0 targets the section header.
+    listRef.current?.scrollToLocation({sectionIndex, itemIndex: 0, viewOffset: 0, animated: true});
+  };
+
+  // Rows far below the rendered window have no measured height yet: jump to
+  // an estimated offset first, then retry the exact scroll once they render.
+  const handleScrollToIndexFailed = (info: {index: number; averageItemLength: number}) => {
+    (listRef.current as any)
+      ?.getScrollResponder?.()
+      ?.scrollTo({y: info.averageItemLength * info.index, animated: false});
+    setTimeout(() => {
+      const idx = pendingJump.current;
+      if (idx == null) return;
+      listRef.current?.scrollToLocation({sectionIndex: idx, itemIndex: 0, viewOffset: 0, animated: true});
+    }, 120);
   };
 
   const handleScrollToTop = () => {
-    scrollRef.current?.scrollTo({y: 0, animated: true});
+    pendingJump.current = null;
+    (listRef.current as any)?.getScrollResponder?.()?.scrollTo({y: 0, animated: true});
   };
+
+  const renderTerm = useCallback(
+    ({item}: {item: GlossaryTerm}) => (
+      <View style={s.termCard}>
+        <Text style={s.termHeading}>{item.title}</Text>
+        <Text style={s.termDetail}>{item.content_text}</Text>
+      </View>
+    ),
+    [],
+  );
+
+  const renderSectionHeader = useCallback(
+    ({section}: {section: any}) => (
+      <View style={s.sectionHeader}>
+        <View style={s.letterHeaderRow}>
+          <View style={s.letterBadge}>
+            <Text style={s.letterBadgeText}>{section.letter}</Text>
+          </View>
+          <View style={s.letterDivider} />
+        </View>
+      </View>
+    ),
+    [],
+  );
 
   return (
     <View style={s.root}>
@@ -151,7 +199,8 @@ const GlossaryScreen = ({navigation}: any) => {
                 returnKeyType="search"
               />
             </View>
-            <TouchableOpacity style={s.searchBtn} activeOpacity={0.85}>
+            {/* Results already filter as the user types; Search just closes the keyboard. */}
+            <TouchableOpacity style={s.searchBtn} activeOpacity={0.85} onPress={Keyboard.dismiss}>
               <Text style={s.searchBtnText}>{'Search'}</Text>
             </TouchableOpacity>
           </View>
@@ -164,13 +213,25 @@ const GlossaryScreen = ({navigation}: any) => {
         </View>
       ) : (
         <View style={s.flexFill}>
-          <ScrollView
-            ref={scrollRef}
+          <SectionList
+            ref={listRef}
+            sections={grouped}
+            keyExtractor={item => String(item.id)}
+            renderItem={renderTerm}
+            renderSectionHeader={renderSectionHeader}
+            ItemSeparatorComponent={ItemSep}
+            stickySectionHeadersEnabled={false}
+            onScrollToIndexFailed={handleScrollToIndexFailed}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={9}
             style={s.scroll}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={s.scrollContent}>
-            <View style={s.body}>
-              {/* ── A–Z jump grid ─────────────────────────────────────── */}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={s.listContent}
+            ListHeaderComponent={
+              <View style={s.listHeader}>
+                {/* ── A–Z jump grid ─────────────────────────────────────── */}
               <View style={s.letterGrid}>
                 {ALPHABET.map(letter => {
                   const active = activeLetters.has(letter);
@@ -189,37 +250,13 @@ const GlossaryScreen = ({navigation}: any) => {
                 })}
               </View>
 
-              <Text style={s.termsCount}>
-                {`${filteredTerms.length} of ${terms.length} Terms`}
-              </Text>
-
-              {/* ── Letter groups ─────────────────────────────────────── */}
-              {grouped.map(group => (
-                <View
-                  key={group.letter}
-                  style={s.letterGroup}
-                  onLayout={e => {
-                    letterOffsets.current[group.letter] = e.nativeEvent.layout.y;
-                  }}>
-                  <View style={s.letterHeaderRow}>
-                    <View style={s.letterBadge}>
-                      <Text style={s.letterBadgeText}>{group.letter}</Text>
-                    </View>
-                    <View style={s.letterDivider} />
-                  </View>
-
-                  {group.items.map(term => (
-                    <View key={term.id} style={s.termCard}>
-                      <Text style={s.termHeading}>{term.title}</Text>
-                      <Text style={s.termDetail}>{term.content_text}</Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
-
-              {!grouped.length && <Text style={s.emptyText}>{'No glossary terms found.'}</Text>}
-            </View>
-          </ScrollView>
+                <Text style={s.termsCount}>
+                  {`${filteredTerms.length} of ${terms.length} Terms`}
+                </Text>
+              </View>
+            }
+            ListEmptyComponent={<Text style={s.emptyText}>{'No glossary terms found.'}</Text>}
+          />
 
           {/* ── Back-to-top floating button ──────────────────────────── */}
           <TouchableOpacity style={s.scrollTopBtn} onPress={handleScrollToTop} activeOpacity={0.85}>
@@ -239,6 +276,9 @@ const s = StyleSheet.create({
   flexFill: {flex: 1},
   scroll: {flex: 1},
   scrollContent: {flexGrow: 1, paddingBottom: 40},
+  listContent: {paddingHorizontal: 16, paddingBottom: 40},
+  listHeader: {paddingTop: 24, gap: 24},
+  sectionHeader: {paddingTop: 24, paddingBottom: 12, backgroundColor: '#FFFFFF'},
   centerFill: {flex: 1, alignItems: 'center', justifyContent: 'center'},
   emptyText: {color: '#8F9098', fontFamily: 'Runda', fontSize: 13, textAlign: 'center', paddingVertical: 12},
 

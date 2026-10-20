@@ -8,6 +8,7 @@ import {
   getMembersBatch,
   resolveFullName,
 } from './feedApi';
+import {registerSessionReset} from './sessionReset';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -205,6 +206,7 @@ export const FILTER_SETS: Record<string, FilterItem[]> = {
 // Feed's activity items. Cache by userId to avoid refetching for users who
 // posted multiple topics in the same page of results.
 const memberCache = new Map<number, {name: string; avatar: string; title: string; flag: string; country: string}>();
+registerSessionReset(() => memberCache.clear());
 
 // Reads from memberCache only — no network call. Caller must have already
 // run prefetchAuthors() for the batch of items being mapped, so this is a
@@ -283,10 +285,14 @@ const mapTopic = (item: any, currentUserId: number | null): ForumTopic => {
   const isLong = rawContent.length > 220;
   const embeddedUser = item._embedded?.user?.[0];
 
+  // Robby (Oct 2026): topics now return author_name / author_avatar /
+  // forum_title directly, so no `_embed=1` and no second request just for
+  // names. The _embedded fallbacks stay in case a response still has them.
   const author = enrichAuthor(
     item.author,
-    embeddedUser?.name || 'IPM Member',
-    embeddedUser?.avatar_urls?.thumb ||
+    item.author_name || embeddedUser?.name || 'IPM Member',
+    item.author_avatar ||
+      embeddedUser?.avatar_urls?.thumb ||
       `https://www.gravatar.com/avatar/${item.author}?s=96&d=identicon`,
   );
 
@@ -302,7 +308,7 @@ const mapTopic = (item: any, currentUserId: number | null): ForumTopic => {
     fullContent: rawContent,
     truncated: isLong,
     forumId: item.forum_id || item.parent || 0,
-    forumName: item._embedded?.forum?.[0]?.title?.rendered || '',
+    forumName: item.forum_title || item._embedded?.forum?.[0]?.title?.rendered || '',
     tags,
     replyCount: parseInt(item.total_reply_count, 10) || 0,
     voiceCount: parseInt(item.voice_count, 10) || 0,
@@ -341,10 +347,14 @@ export const getTopics = async (
     tagTermId?: number;
     currentUserId?: number | null;
     sortBy?: ForumSortBy;
+    // PERF: when provided, topics are returned immediately (author name/avatar
+    // use fallbacks) and this fires with the re-mapped list once the author
+    // batch lookup finishes — the list no longer waits on that extra request.
+    onAuthorsReady?: (topics: ForumTopic[]) => void;
   } = {},
 ): Promise<{topics: ForumTopic[]; hasMore: boolean}> => {
   const headers = await authHeaders();
-  let url = `${BASE}/buddyboss/v1/topics?per_page=15&page=${pageNum}&_embed=1`;
+  let url = `${BASE}/buddyboss/v1/topics?per_page=15&page=${pageNum}`;
   if (opts.search) url += `&search=${encodeURIComponent(opts.search)}`;
   if (opts.tagTermId) url += `&topic-tag=${opts.tagTermId}`;
   if (opts.sortBy === 'popular') url += `&orderby=popular&order=desc`;
@@ -355,9 +365,20 @@ export const getTopics = async (
   const data = await res.json();
   if (!Array.isArray(data)) return {topics: [], hasMore: false};
 
+  const mapAll = () => data.map((item: any) => mapTopic(item, opts.currentUserId ?? null));
+  if (opts.onAuthorsReady) {
+    const onReady = opts.onAuthorsReady;
+    const needsAuthors = data.some((i: any) => i.author && !memberCache.has(i.author));
+    const first = mapAll();
+    if (needsAuthors) {
+      prefetchAuthors(data)
+        .then(() => onReady(mapAll()))
+        .catch(() => {});
+    }
+    return {topics: first, hasMore: data.length === 15};
+  }
   await prefetchAuthors(data);
-  const topics = data.map((item: any) => mapTopic(item, opts.currentUserId ?? null));
-  return {topics, hasMore: data.length === 15};
+  return {topics: mapAll(), hasMore: data.length === 15};
 };
 
 // ─── GET single topic detail ─────────────────────────────────────────────────
@@ -365,15 +386,26 @@ export const getTopic = async (
   topicId: number,
   currentUserId: number | null = null,
   skipAuthorPrefetch = false,
+  // PERF: when provided, the topic is returned right away and this fires with
+  // the author-enriched version once the author lookup completes.
+  onAuthorsReady?: (topic: ForumTopic) => void,
 ): Promise<ForumTopic | null> => {
   const headers = await authHeaders();
-  const res = await fetch(`${BASE}/buddyboss/v1/topics/${topicId}?_embed=1`, {headers});
+  const res = await fetch(`${BASE}/buddyboss/v1/topics/${topicId}`, {headers});
   if (!res.ok) return null;
   const data = await res.json();
   // Callers that only need tags/voice count (Feed forum-card enrichment)
   // pass skipAuthorPrefetch=true — otherwise every topic in a batch fires its
   // own extra author-profile request that the caller never uses.
-  if (!skipAuthorPrefetch) await prefetchAuthors([data]);
+  if (!skipAuthorPrefetch) {
+    if (onAuthorsReady && data.author && !memberCache.has(data.author)) {
+      prefetchAuthors([data])
+        .then(() => onAuthorsReady(mapTopic(data, currentUserId)))
+        .catch(() => {});
+    } else {
+      await prefetchAuthors([data]);
+    }
+  }
   return mapTopic(data, currentUserId);
 };
 

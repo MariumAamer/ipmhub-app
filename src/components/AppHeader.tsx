@@ -17,6 +17,8 @@ import {apiRequest} from '../api/apiClient';
 import {getUserIdFromToken} from '../api/profileApi';
 import {getUnreadNotificationCount} from '../api/notificationsApi';
 import {getUnreadMessageCount} from '../api/dmApi';
+import {registerSessionReset} from '../api/sessionReset';
+import {drawerCache} from '../api/drawerCache';
 
 interface AppHeaderProps {
   navigation: any;
@@ -43,6 +45,19 @@ const getStoredUser = async () => {
 const UNREAD_TTL_MS = 30 * 1000;
 let cachedProfile: {avatar: string | null; userId: number | null} | null = null;
 let cachedUnread: {notif: number; msg: number; at: number} | null = null;
+// Logout/login: drop the previous account's avatar and unread counts.
+registerSessionReset(() => {
+  cachedProfile = null;
+  cachedUnread = null;
+});
+
+// Profile photo changed/removed: drop the cached avatar (and the drawer's copy
+// of the member profile) so headers/drawers mounted from now on refetch it.
+export const invalidateHeaderAvatar = () => {
+  cachedProfile = null;
+  drawerCache.profile = null;
+  drawerCache.profileAt = 0;
+};
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -209,6 +224,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({navigation, onDrawerOpen}) => {
           setMyAvatar(avatar);
           setMyUserId(id);
           cachedProfile = {avatar, userId: id};
+          // Same endpoint the profile drawer needs — hand it over so the
+          // drawer doesn't have to request it again.
+          drawerCache.profile = profile;
+          drawerCache.profileAt = Date.now();
           return;
         }
       }

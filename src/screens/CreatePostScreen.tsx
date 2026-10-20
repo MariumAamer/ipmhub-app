@@ -13,17 +13,44 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
+  FlatList,
+  Keyboard,
 } from 'react-native';
 // Was importing SafeAreaView from 'react-native' — that core component is
 // iOS-only (a no-op on Android), so the close (X) button and Post button
 // sat under the Android status bar. Swapped to the real cross-platform
 // SafeAreaView, which measures the actual device inset on both platforms.
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {launchImageLibrary} from 'react-native-image-picker';
+import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import {getCachedCredentials} from '../api/credentialsCache';
-import Svg, {Path, Circle} from 'react-native-svg';
+import Svg, {Path, Circle, G, Rect} from 'react-native-svg';
 import ScheduleModal from '../components/ScheduleModal';
-import {updateActivity, resolveFullName} from '../api/feedApi';
+import {updateActivity, resolveFullName, stripHtml} from '../api/feedApi';
+
+// xProfile lookup across EVERY profile group, by confirmed field ID first and
+// then by field name. The old code only looked inside group "1", so a job
+// title / company stored in any other group never showed under the name.
+const getXProfileValue = (data: any, fieldId: number, names: string[]): string => {
+  const groups = data?.xprofile?.groups;
+  if (!groups || typeof groups !== 'object') return '';
+  const groupKeys = Object.keys(groups);
+  for (const gk of groupKeys) {
+    const raw = groups[gk]?.fields?.[String(fieldId)]?.value?.raw;
+    if (raw && String(raw).trim()) return stripHtml(String(raw)).trim();
+  }
+  for (const gk of groupKeys) {
+    const fields = groups[gk]?.fields;
+    if (!fields || typeof fields !== 'object') continue;
+    for (const fk of Object.keys(fields)) {
+      const f = fields[fk];
+      if (names.includes(f?.name) && f?.value?.raw && String(f.value.raw).trim()) {
+        return stripHtml(String(f.value.raw)).trim();
+      }
+    }
+  }
+  return '';
+};
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -115,6 +142,15 @@ const CameraBoxIcon = () => (
   </Svg>
 );
 
+// Camera toolbar icon — exact Figma export (25x25, rounded #E8E9F1 tile,
+// dark #192546 camera glyph).
+const CameraToolbarIcon = () => (
+  <Svg width={25} height={25} viewBox="0 0 25 25" fill="none">
+    <Rect width={25} height={25} rx={5} fill="#E8E9F1" />
+    <Path d="M15.0333 12.8182C15.0333 13.5094 14.7691 14.1722 14.2987 14.6609C13.8283 15.1497 13.1903 15.4242 12.525 15.4242C11.8597 15.4242 11.2217 15.1497 10.7513 14.6609C10.2809 14.1722 10.0167 13.5094 10.0167 12.8182C10.0167 12.127 10.2809 11.4642 10.7513 10.9754C11.2217 10.4867 11.8597 10.2121 12.525 10.2121C13.1903 10.2121 13.8283 10.4867 14.2987 10.9754C14.7691 11.4642 15.0333 12.127 15.0333 12.8182ZM9.10865 6.08152C9.26478 5.75658 9.50497 5.48327 9.80226 5.29224C10.0995 5.10121 10.4422 5.00001 10.7917 5H14.2583C14.6078 5.00001 14.9505 5.10121 15.2477 5.29224C15.545 5.48327 15.7852 5.75658 15.9413 6.08152L16.675 7.60606H17.5417C18.2069 7.60606 18.8449 7.88063 19.3153 8.36936C19.7857 8.85809 20.05 9.52095 20.05 10.2121V16.7273C20.05 17.4184 19.7857 18.0813 19.3153 18.57C18.8449 19.0588 18.2069 19.3333 17.5417 19.3333H7.50833C6.84308 19.3333 6.20508 19.0588 5.73467 18.57C5.26427 18.0813 5 17.4184 5 16.7273V10.2121C5 9.52095 5.26427 8.85809 5.73467 8.36936C6.20508 7.88063 6.84308 7.60606 7.50833 7.60606H8.37496L9.10865 6.08152ZM16.2875 12.8182C16.2875 11.7814 15.8911 10.7871 15.1855 10.054C14.4799 9.32094 13.5229 8.90909 12.525 8.90909C11.5271 8.90909 10.5701 9.32094 9.86451 10.054C9.15891 10.7871 8.7625 11.7814 8.7625 12.8182C8.7625 13.8549 9.15891 14.8492 9.86451 15.5823C10.5701 16.3154 11.5271 16.7273 12.525 16.7273C13.5229 16.7273 14.4799 16.3154 15.1855 15.5823C15.8911 14.8492 16.2875 13.8549 16.2875 12.8182Z" fill="#192546" />
+  </Svg>
+);
+
 const VideoIcon = () => (
   <Svg width={25} height={25} viewBox="0 0 25 25" fill="none">
     <Path d="M6.58079 6C5.89632 6 5.23989 6.2719 4.7559 6.7559C4.2719 7.23989 4 7.89632 4 8.58079V16.3232C4 17.0076 4.2719 17.6641 4.7559 18.1481C5.23989 18.632 5.89632 18.9039 6.58079 18.9039H13.678C14.3624 18.9039 15.0189 18.632 15.5029 18.1481C15.9868 17.6641 16.2588 17.0076 16.2588 16.3232V8.58079C16.2588 7.89632 15.9868 7.23989 15.5029 6.7559C15.0189 6.2719 14.3624 6 13.678 6H6.58079Z" fill="#8F9098" />
@@ -132,7 +168,9 @@ const AttachIcon = () => (
 const AddPhotosIcon = () => (
   <Svg width={40} height={40} viewBox="0 0 40 40" fill="none">
     <Circle cx="20" cy="20" r="20" fill="#E8E9F1" />
+    <G transform="translate(-2.527 0.831)">
     <Path d="M25.0364 19.8206C25.0364 20.512 24.7721 21.175 24.3015 21.6639C23.831 22.1528 23.1928 22.4274 22.5273 22.4274C21.8619 22.4274 21.2237 22.1528 20.7531 21.6639C20.2826 21.175 20.0182 20.512 20.0182 19.8206C20.0182 19.1292 20.2826 18.4661 20.7531 17.9773C21.2237 17.4884 21.8619 17.2137 22.5273 17.2137C23.1928 17.2137 23.831 17.4884 24.3015 17.9773C24.7721 18.4661 25.0364 19.1292 25.0364 19.8206ZM19.1099 13.0819C19.2661 12.7568 19.5063 12.4834 19.8037 12.2923C20.1011 12.1012 20.4439 12 20.7935 12H24.2611C24.6108 12 24.9535 12.1012 25.2509 12.2923C25.5483 12.4834 25.7885 12.7568 25.9447 13.0819L26.6786 14.6069H27.5455C28.211 14.6069 28.8492 14.8815 29.3197 15.3704C29.7903 15.8593 30.0546 16.5223 30.0546 17.2137V23.7309C30.0546 24.4222 29.7903 25.0853 29.3197 25.5742C28.8492 26.0631 28.211 26.3377 27.5455 26.3377H17.5091C16.8437 26.3377 16.2055 26.0631 15.7349 25.5742C15.2644 25.0853 15 24.4222 15 23.7309V17.2137C15 16.5223 15.2644 15.8593 15.7349 15.3704C16.2055 14.8815 16.8437 14.6069 17.5091 14.6069H18.376L19.1099 13.0819ZM26.291 19.8206C26.291 18.7835 25.8944 17.7889 25.1886 17.0556C24.4828 16.3223 23.5255 15.9103 22.5273 15.9103C21.5291 15.9103 20.5718 16.3223 19.866 17.0556C19.1602 17.7889 18.7637 18.7835 18.7637 19.8206C18.7637 20.8577 19.1602 21.8522 19.866 22.5856C20.5718 23.3189 21.5291 23.7309 22.5273 23.7309C23.5255 23.7309 24.4828 23.3189 25.1886 22.5856C25.8944 21.8522 26.291 20.8577 26.291 19.8206Z" fill="#8F9098" />
+    </G>
   </Svg>
 );
 
@@ -141,6 +179,20 @@ interface PickedImage {
   type: string;
   fileName: string;
 }
+
+interface PickedVideo {
+  uri: string;
+  type: string;
+  fileName: string;
+}
+
+const EMOJIS = [
+  '😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😋',
+  '😎','🤩','🥳','🤔','🤗','😏','😌','😴','😢','😭','😮','😱','😡','🙄','😬','🤝',
+  '👍','👎','👏','🙌','🙏','💪','👋','🤞','✌️','👌','🫡','🎉','🎊','🔥','⭐','✨',
+  '💡','✅','❌','⚡','🚀','🎯','📈','📊','📅','📌','📝','📚','💼','🏆','🌍','☕',
+  '❤️','💙','💜','💯','👀','🤯','😅','🫶',
+];
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 const CreatePostScreen = ({navigation, route}: any) => {
@@ -155,6 +207,10 @@ const CreatePostScreen = ({navigation, route}: any) => {
   const [scheduling, setScheduling] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [video, setVideo] = useState<PickedVideo | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [sel, setSel] = useState({start: 0, end: 0});
+  const [forcedSel, setForcedSel] = useState<{start: number; end: number} | undefined>(undefined);
 
   const inputRef = useRef<TextInput>(null);
 
@@ -205,6 +261,101 @@ const CreatePostScreen = ({navigation, route}: any) => {
         }
       },
     );
+  };
+
+  const addPickedAssets = (res: any) => {
+    if (res.didCancel) return;
+    if (res.errorCode) {
+      Alert.alert(
+        'Could not open camera',
+        res.errorMessage || 'Please allow camera access in Settings and try again.',
+      );
+      return;
+    }
+    if (res.assets) {
+      const picked: PickedImage[] = res.assets
+        .filter((a: any) => !!a.uri)
+        .map((a: any) => ({
+          uri: a.uri as string,
+          type: a.type || 'image/jpeg',
+          fileName: a.fileName || `photo_${Date.now()}.jpg`,
+        }));
+      setImages(prev => [...prev, ...picked].slice(0, 4));
+    }
+  };
+
+  const handleTakePhoto = () => {
+    if (images.length >= 4) {
+      Alert.alert('Up to 4 photos', 'Remove one before adding another.');
+      return;
+    }
+    launchCamera({mediaType: 'photo', quality: 0.8, saveToPhotos: false}, addPickedAssets);
+  };
+
+  const handlePhotoOptions = () => {
+    Alert.alert('Add Photo', undefined, [
+      {text: 'Take Photo', onPress: () => setTimeout(handleTakePhoto, Platform.OS === 'ios' ? 600 : 0)},
+      {text: 'Choose from Library', onPress: () => setTimeout(handlePickImage, Platform.OS === 'ios' ? 600 : 0)},
+      {text: 'Cancel', style: 'cancel'},
+    ]);
+  };
+
+  const handlePickVideo = () => {
+    launchImageLibrary({mediaType: 'video', selectionLimit: 1}, res => {
+      if (res.didCancel) return;
+      if (res.errorCode) {
+        Alert.alert('Could not open videos', res.errorMessage || 'Please allow access and try again.');
+        return;
+      }
+      const a = res.assets?.[0];
+      if (a?.uri) {
+        setVideo({
+          uri: a.uri,
+          type: a.type || 'video/mp4',
+          fileName: a.fileName || `video_${Date.now()}.mp4`,
+        });
+      }
+    });
+  };
+
+  const openEmoji = () => {
+    Keyboard.dismiss();
+    setShowEmoji(true);
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const start = Math.min(sel.start, content.length);
+    const end = Math.min(sel.end, content.length);
+    setContent(content.slice(0, start) + emoji + content.slice(end));
+    const pos = start + emoji.length;
+    setSel({start: pos, end: pos});
+    setForcedSel({start: pos, end: pos});
+  };
+
+  // NOTE: /buddyboss/v1/video/upload + bp_videos on /activity are NOT
+  // Postman-confirmed yet (photos use /media/upload, confirmed). Verify with
+  // Robby; failures fall into the same "Post anyway?" prompt as photos.
+  const uploadVideo = async (token: string): Promise<number | null> => {
+    if (!video) return null;
+    try {
+      const formData = new FormData();
+      formData.append('file', {uri: video.uri, type: video.type, name: video.fileName} as any);
+      formData.append('upload_privacy', 'public');
+      const res = await fetch(`${BASE}/buddyboss/v1/video/upload`, {
+        method: 'POST',
+        headers: {Authorization: `Bearer ${token}`},
+        body: formData,
+      });
+      if (!res.ok) {
+        console.log('uploadVideo failed', res.status, await res.text().catch(() => ''));
+        return null;
+      }
+      const data = await res.json();
+      return data?.upload_id ?? data?.id ?? null;
+    } catch (err: any) {
+      console.log('uploadVideo exception', err?.message || err);
+      return null;
+    }
   };
 
   const uploadImages = async (token: string): Promise<{ids: number[]; failed: number}> => {
@@ -275,14 +426,21 @@ const CreatePostScreen = ({navigation, route}: any) => {
         return;
       }
 
-      const {ids: mediaIds, failed} = await uploadImages(token);
+      const {ids: mediaIds, failed: imgFailed} = await uploadImages(token);
+      let videoId: number | null = null;
+      let failed = imgFailed;
+      if (video) {
+        videoId = await uploadVideo(token);
+        if (videoId == null) failed++;
+      }
+      const attachmentCount = images.length + (video ? 1 : 0);
       if (failed > 0) {
         const proceed = await new Promise<boolean>(resolve => {
           Alert.alert(
-            'Photo upload problem',
-            failed === images.length
-              ? "Your photo(s) couldn't be uploaded. Post without them anyway?"
-              : `${failed} of ${images.length} photo(s) couldn't be uploaded. Post with just the rest?`,
+            'Upload problem',
+            failed === attachmentCount
+              ? "Your attachment(s) couldn't be uploaded. Post without them anyway?"
+              : `${failed} of ${attachmentCount} attachment(s) couldn't be uploaded. Post with just the rest?`,
             [
               {text: 'Cancel', style: 'cancel', onPress: () => resolve(false)},
               {text: 'Post Anyway', onPress: () => resolve(true)},
@@ -306,6 +464,7 @@ const CreatePostScreen = ({navigation, route}: any) => {
       };
       if (userId) body.user_id = userId;
       if (mediaIds.length > 0) body.bp_media_ids = mediaIds;
+      if (videoId != null) body.bp_videos = [videoId];
 
       const res = await fetch(`${BASE}/buddyboss/v1/activity`, {
         method: 'POST',
@@ -357,6 +516,7 @@ const CreatePostScreen = ({navigation, route}: any) => {
 
       const scheduledISO = buildScheduledISO(date, time, meridiem);
       const {ids: mediaIds} = await uploadImages(token);
+      const videoId = video ? await uploadVideo(token) : null;
 
       const userId = await getUserId();
       const body: any = {
@@ -368,6 +528,7 @@ const CreatePostScreen = ({navigation, route}: any) => {
       };
       if (userId) body.user_id = userId;
       if (mediaIds.length > 0) body.bp_media_ids = mediaIds;
+      if (videoId != null) body.bp_videos = [videoId];
 
       const res = await fetch(`${BASE}/buddyboss/v1/activity`, {
         method: 'POST',
@@ -419,8 +580,8 @@ const CreatePostScreen = ({navigation, route}: any) => {
   const firstName = profile?.name?.split(' ')[0] || '';
   const placeholder = `Any PM insights or recent projects to share, ${firstName}...`;
 
-  const jobTitle = profile?.xprofile?.groups?.['1']?.fields?.['1097']?.value?.raw || '';
-  const company = profile?.xprofile?.groups?.['1']?.fields?.['1187']?.value?.raw || '';
+  const jobTitle = getXProfileValue(profile, 1097, ['Job Title', 'Designation', 'Position']);
+  const company = getXProfileValue(profile, 1187, ['Company', 'Organization', 'Organisation', 'Company Name']);
   const subtitle = jobTitle && company
     ? `${jobTitle} at ${company}`
     : jobTitle || company || '';
@@ -502,58 +663,99 @@ const CreatePostScreen = ({navigation, route}: any) => {
               placeholderTextColor="#8F9098"
               value={content}
               onChangeText={setContent}
+              onSelectionChange={e => {
+                setSel(e.nativeEvent.selection);
+                if (forcedSel) setForcedSel(undefined);
+              }}
+              selection={forcedSel}
               multiline
               textAlignVertical="top"
             />
             {/* Smiley at bottom-right */}
-            <TouchableOpacity style={s.smileyBtn}>
+            <TouchableOpacity style={s.smileyBtn} onPress={openEmoji} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
               <SmileyIcon />
             </TouchableOpacity>
           </View>
 
-          {/* ── Add Photos area ── */}
-          {images.length === 0 ? (
-            <TouchableOpacity style={s.addPhotosArea} onPress={handlePickImage}>
-              <AddPhotosIcon />
-              <Text style={s.addPhotosTitle}>{'Add Photos'}</Text>
-              <Text style={s.addPhotosSubtitle}>{'Or drag and drop'}</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={s.imagesGrid}>
-              {images.map((img, i) => (
-                <View key={i} style={s.imageThumb}>
-                  <Image source={{uri: img.uri}} style={s.imageThumbImg} />
-                  <TouchableOpacity
-                    style={s.removeImageBtn}
-                    onPress={() => setImages(prev => prev.filter((_, idx) => idx !== i))}>
-                    <Text style={s.removeImageText}>{'✕'}</Text>
+          {/* ── Add Photos card ── Figma "Feed - Create a post": the photo /
+              video / attach icons sit INSIDE this card, bottom-left — not in
+              a bar pinned to the bottom of the screen. */}
+          <View style={s.mediaCard}>
+            {images.length === 0 && !video ? (
+              <TouchableOpacity style={s.addPhotosArea} onPress={handlePickImage} activeOpacity={0.7}>
+                <AddPhotosIcon />
+                <Text style={s.addPhotosTitle}>{'Add Photos'}</Text>
+                <Text style={s.addPhotosSubtitle}>{'Or drag and drop'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={s.imagesGrid}>
+                {images.map((img, i) => (
+                  <View key={i} style={s.imageThumb}>
+                    <Image source={{uri: img.uri}} style={s.imageThumbImg} />
+                    <TouchableOpacity
+                      style={s.removeImageBtn}
+                      onPress={() => setImages(prev => prev.filter((_, idx) => idx !== i))}>
+                      <Text style={s.removeImageText}>{'✕'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {video ? (
+                  <View style={s.videoThumb}>
+                    <VideoIcon />
+                    <Text style={s.videoThumbName} numberOfLines={2}>{video.fileName}</Text>
+                    <TouchableOpacity style={s.removeImageBtn} onPress={() => setVideo(null)}>
+                      <Text style={s.removeImageText}>{'✕'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                {images.length < 4 && (
+                  <TouchableOpacity style={s.addMoreBtn} onPress={handlePickImage}>
+                    <Text style={s.addMoreIcon}>{'+'}</Text>
                   </TouchableOpacity>
-                </View>
-              ))}
-              {images.length < 4 && (
-                <TouchableOpacity style={s.addMoreBtn} onPress={handlePickImage}>
-                  <Text style={s.addMoreIcon}>{'+'}</Text>
+                )}
+              </View>
+            )}
+
+            <View style={s.mediaIcons}>
+              <TouchableOpacity style={s.toolbarBtn} onPress={handlePhotoOptions}>
+                <CameraToolbarIcon />
+              </TouchableOpacity>
+              <TouchableOpacity style={s.toolbarBtn} onPress={handlePickVideo}>
+                <VideoIcon />
+              </TouchableOpacity>
+              <TouchableOpacity style={s.toolbarBtn} onPress={handlePickImage}>
+                <CameraBoxIcon />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={{height: 24}} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* ── Emoji picker ── */}
+      <Modal visible={showEmoji} transparent animationType="slide" onRequestClose={() => setShowEmoji(false)}>
+        <TouchableOpacity style={s.emojiOverlay} activeOpacity={1} onPress={() => setShowEmoji(false)}>
+          <View style={s.emojiSheet} onStartShouldSetResponder={() => true}>
+            <View style={s.emojiHeader}>
+              <Text style={s.emojiTitle}>{'Emoji'}</Text>
+              <TouchableOpacity onPress={() => setShowEmoji(false)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                <Text style={s.emojiClose}>{'✕'}</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={EMOJIS}
+              numColumns={8}
+              keyExtractor={(e, i) => `${e}-${i}`}
+              renderItem={({item}) => (
+                <TouchableOpacity style={s.emojiCell} onPress={() => insertEmoji(item)}>
+                  <Text style={s.emojiChar}>{item}</Text>
                 </TouchableOpacity>
               )}
-            </View>
-          )}
-
-          <View style={{height: 120}} />
-        </ScrollView>
-
-        {/* ── Bottom toolbar — Figma SVG icons ── */}
-        <View style={s.toolbar}>
-          <TouchableOpacity style={s.toolbarBtn} onPress={handlePickImage}>
-            <CameraBoxIcon />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.toolbarBtn}>
-            <VideoIcon />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.toolbarBtn}>
-            <AttachIcon />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ── Schedule Modal ── */}
       <ScheduleModal
@@ -661,12 +863,25 @@ const s = StyleSheet.create({
     marginTop: 8,
   },
 
-  addPhotosArea: {
+  mediaCard: {
     marginHorizontal: 16,
-    marginTop: 20,
-    paddingVertical: 24,
+    marginTop: 16,
+    minHeight: 170,
+    justifyContent: 'space-between',
+  },
+  addPhotosArea: {
+    flex: 1,
+    paddingTop: 24,
+    paddingBottom: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
+  },
+  mediaIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
   },
   addPhotosTitle: {
     fontSize: 15,
@@ -680,7 +895,6 @@ const s = StyleSheet.create({
   imagesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
     gap: 8,
     marginTop: 8,
   },
@@ -722,6 +936,39 @@ const s = StyleSheet.create({
     gap: 16,
   },
   toolbarBtn: {padding: 4},
+
+  videoThumb: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#E8E9F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+  },
+  videoThumbName: {fontSize: 10, color: '#192546', marginTop: 4, textAlign: 'center', fontFamily: 'Runda'},
+
+  emojiOverlay: {flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end'},
+  emojiSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 12,
+    paddingTop: 16,
+    paddingBottom: 24,
+    maxHeight: '50%',
+  },
+  emojiHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginBottom: 8,
+  },
+  emojiTitle: {fontSize: 16, fontWeight: '700', color: '#192546', fontFamily: 'Runda'},
+  emojiClose: {fontSize: 18, color: '#8F9098'},
+  emojiCell: {width: '12.5%', alignItems: 'center', justifyContent: 'center', paddingVertical: 8},
+  emojiChar: {fontSize: 24},
 });
 
 export default CreatePostScreen;

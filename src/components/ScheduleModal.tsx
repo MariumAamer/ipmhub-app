@@ -112,21 +112,23 @@ const MiniCalendar = ({
         {cells.map((d, i) => (
           <TouchableOpacity
             key={i}
-            style={[
-              cal.cell,
-              d && isSelected(d) && cal.cellSelected,
-              d && isToday(d) && !isSelected(d) && cal.cellToday,
-            ]}
-            onPress={() => d && !isPast(d) && handleDay(d)}
+            style={cal.cell}
+            onPress={() => !!d && !isPast(d) && handleDay(d)}
             disabled={!d || isPast(d)}
             activeOpacity={d && !isPast(d) ? 0.7 : 1}>
-            <Text style={[
-              cal.cellText,
-              d && isSelected(d) && cal.cellTextSelected,
-              d && isPast(d) && cal.cellTextPast,
+            <View style={[
+              cal.cellCircle,
+              !!d && isSelected(d) && cal.cellSelected,
+              !!d && isToday(d) && !isSelected(d) && cal.cellToday,
             ]}>
-              {d ?? ''}
-            </Text>
+              <Text style={[
+                cal.cellText,
+                !!d && isSelected(d) && cal.cellTextSelected,
+                !!d && isPast(d) && cal.cellTextPast,
+              ]}>
+                {d ?? ''}
+              </Text>
+            </View>
           </TouchableOpacity>
         ))}
       </View>
@@ -147,10 +149,15 @@ const cal = StyleSheet.create({
   navBtn: {padding: 6},
   navArrow: {fontSize: 20, color: '#192546', fontWeight: '600'},
   monthLabel: {fontSize: 14, fontWeight: '700', color: '#192546', fontFamily: 'Runda'},
-  dayRow: {flexDirection: 'row', justifyContent: 'space-around', marginBottom: 4},
-  dayHeader: {width: 32, textAlign: 'center', fontSize: 11, color: '#8F9098', fontFamily: 'Runda'},
+  dayRow: {flexDirection: 'row', marginBottom: 4},
+  // Same 1/7 width as the grid cells so each header sits exactly above its column.
+  dayHeader: {width: '14.2857%', textAlign: 'center', fontSize: 11, color: '#8F9098', fontFamily: 'Runda'},
   grid: {flexDirection: 'row', flexWrap: 'wrap'},
-  cell: {width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 16},
+  // Cell = one column slot (exactly 1/7 wide); the circle is a fixed-size
+  // child centered inside it, so the selected date is a true centered circle
+  // under its weekday header.
+  cell: {width: '14.2857%', height: 36, alignItems: 'center', justifyContent: 'center'},
+  cellCircle: {width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center'},
   cellSelected: {backgroundColor: '#0C4D91'},
   cellToday: {borderWidth: 1, borderColor: '#0C4D91'},
   cellText: {fontSize: 13, color: '#192546', fontFamily: 'Runda'},
