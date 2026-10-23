@@ -26,7 +26,7 @@
 
 import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {useFocusEffect} from '@react-navigation/native';
-import {View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar, Linking} from 'react-native';
+import {View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar, Linking, Platform} from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import AppHeader from '../components/AppHeader';
@@ -1448,6 +1448,9 @@ const CourseDetailScreen = ({route, navigation}: any) => {
       // tested, but reading the correct field means this stays
       // right if that ever changes (e.g. if a direct
       // checkout/cart link gets added here later).
+      // iOS: never send a non-enrolled user out to the website's
+      // course/purchase page.
+      if (Platform.OS === 'ios') return;
       Linking.openURL(sidebar.enrollment.button.url).catch((err) =>
         console.error('[CourseDetailScreen] CTA', err),
       );
@@ -1649,13 +1652,16 @@ const CourseDetailScreen = ({route, navigation}: any) => {
               stepTitle={currentStep.step_title}
               onPress={handleCtaPress}
             />
-          ) : (
+          ) : Platform.OS === 'ios' && !sidebar.enrollment.is_enrolled ? null : (
+            // iOS: the "Take this Course" button (opens the website's
+            // purchase page) is hidden for courses the user isn't enrolled in.
             <TouchableOpacity style={styles.ctaButton} onPress={handleCtaPress}>
               <Text style={styles.ctaButtonText}>{decodeEntities(sidebar.enrollment.button.label)}</Text>
             </TouchableOpacity>
           )}
 
-          {header.meta.price_type !== 'closed' && !sidebar.enrollment.is_enrolled && (
+          {/* Price is hidden on iOS. */}
+          {Platform.OS !== 'ios' && header.meta.price_type !== 'closed' && !sidebar.enrollment.is_enrolled && (
             <Text style={styles.priceText}>{decodeEntities(header.meta.price)}</Text>
           )}
 

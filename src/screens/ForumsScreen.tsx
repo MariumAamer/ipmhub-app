@@ -408,7 +408,7 @@ const EMPTY_TOPICS: ForumTopic[] = [];
 const topicKeyExtractor = (t: ForumTopic) => String(t.id);
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-const ForumsScreen = ({navigation}: any) => {
+const ForumsScreen = ({navigation, route}: any) => {
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
   // PERF: a topics request (plus author batch) used to fire on every keystroke.
@@ -566,6 +566,18 @@ const ForumsScreen = ({navigation}: any) => {
       setFilterSheetKey(tab.filterKey);
     }
   };
+
+  // Deep-link from the iOS empty My Courses state: navigate('MainApp',
+  // {screen: 'Forums', params: {openTab: 'industry'}}) activates that tab and
+  // opens its filter sheet, exactly like tapping the tab yourself.
+  useEffect(() => {
+    const key = route?.params?.openTab;
+    if (!key) return;
+    const tab = TABS.find(t => t.key === key);
+    if (tab) handleTabPress(tab);
+    navigation?.setParams?.({openTab: undefined}); // consume it so it doesn't re-fire
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.params?.openTab]);
 
   const handleMenuEdit = () => {
     setMenuTopic(null);

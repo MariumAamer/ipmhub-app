@@ -11,6 +11,7 @@ import {
   Dimensions,
   TouchableWithoutFeedback,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path} from 'react-native-svg';
@@ -19,6 +20,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {logoutUser} from '../api/authApi';
 import LogoutConfirmDialog from './LogoutConfirmDialog';
 import {drawerCache, isDrawerFresh, DRAWER_TTL_MS} from '../api/drawerCache';
+import {emailForDisplay} from '../utils/displayEmail';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.85;
@@ -240,6 +242,12 @@ const MENU_ITEMS = [
   {key: 'Setting',        Icon: SettingIcon,        screen: 'Settings'},
   {key: 'Help & Support', Icon: HelpIcon,           screen: 'HelpSupport'},
 ];
+
+// iOS: the "Store" entry is hidden from the drawer (kept on Android).
+// The Store screen/route itself is untouched.
+const VISIBLE_MENU_ITEMS = MENU_ITEMS.filter(
+  item => !(Platform.OS === 'ios' && item.key === 'Store'),
+);
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ProfileDrawerProps {
@@ -619,7 +627,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
           <View style={styles.menuDivider} />
 
           {/* ── Menu — bold labels, no dividers, no chevron ── */}
-          {MENU_ITEMS.map(item => (
+          {VISIBLE_MENU_ITEMS.map(item => (
             <TouchableOpacity
               key={item.key}
               style={styles.menuItem}
@@ -645,7 +653,7 @@ const ProfileDrawer = ({visible, onClose, navigation}: ProfileDrawerProps) => {
               activeOpacity={0.7}>
               <LogoutIcon />
               <Text style={styles.actionLabel}>{'Log Out'}</Text>
-              <Text style={styles.actionEmail} numberOfLines={1}>{email}</Text>
+              <Text style={styles.actionEmail} numberOfLines={1}>{emailForDisplay(email)}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionRow, styles.actionRowLast]}

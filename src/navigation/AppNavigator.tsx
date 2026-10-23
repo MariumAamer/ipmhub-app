@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useEffect, useState} from 'react';
-import {Linking} from 'react-native';
+import {Linking, Platform} from 'react-native';
 import {
   NavigationContainer,
   createNavigationContainerRef,
@@ -227,7 +227,10 @@ const AppNavigator = () => {
   <Stack.Screen name="DMConversation" component={DMConversationScreen} options={{headerShown: false}} />
   <Stack.Screen name="DMNewMessage" component={DMNewMessageScreen} options={{headerShown: false}} />
   <Stack.Screen name="DMMembers" component={DMMembersScreen} options={{headerShown: false}} />
-  <Stack.Screen name="Store" component={StoreScreen} options={{headerShown: false}} />
+  {/* Store (prices / external purchase links) is not registered on iOS. */}
+  {Platform.OS !== 'ios' && (
+    <Stack.Screen name="Store" component={StoreScreen} options={{headerShown: false}} />
+  )}
   <Stack.Screen name="Badges" component={BadgesScreen} />
   <Stack.Screen name="StepContent" component={StepContentScreen} />
   <Stack.Screen name="Quiz" component={QuizScreen} />

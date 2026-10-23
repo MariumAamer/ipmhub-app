@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useEffect, useRef, useState} from 'react';
-import {View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, StatusBar, ActivityIndicator, Linking} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, StatusBar, ActivityIndicator, Linking, Platform} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
@@ -201,8 +201,12 @@ const ErrorBlock = ({onRetry}: {onRetry: () => void}) => (
 // rgba(0,0,0,.15); logo panel 100.234 wide, gradient #D4EEFC→#FFF; title
 // 18.224/500; divider 32.927x0.911 #42C0FB; items list 12.757/400 #979797;
 // button 81.098x22.78 radius 7.29 #084D92, text white 10.023/700.
+// iOS (Figma "Certifications - My Certifications - Empty"): full-width card,
+// title in the same 14/500 + short underline as the My Certification card,
+// grey items list, and NO "Read More" button.
+const IS_IOS = Platform.OS === 'ios';
 const RecommendedBodyCard = ({body}: {body: RecommendedBody}) => (
-  <View style={styles.recCard}>
+  <View style={[styles.recCard, IS_IOS && styles.recCardIOS]}>
     <LinearGradient
       colors={['#D4EEFC', '#FFFFFF']}
       start={{x: 0, y: 0.2175}}
@@ -210,18 +214,22 @@ const RecommendedBodyCard = ({body}: {body: RecommendedBody}) => (
       style={styles.recLogoPanel}>
       <Image source={{uri: body.logo}} style={styles.recLogoImg} resizeMode="contain" />
     </LinearGradient>
-    <View style={styles.recBody}>
+    <View style={[styles.recBody, IS_IOS && styles.recBodyIOS]}>
       <View>
-        <Text style={styles.recTitle}>{body.title}</Text>
-        <View style={styles.recTitleUnderline} />
+        <Text style={[styles.recTitle, IS_IOS && styles.recTitleIOS]}>{body.title}</Text>
+        <View style={[styles.recTitleUnderline, IS_IOS && styles.recTitleUnderlineIOS]} />
       </View>
-      <Text style={styles.recItemsList}>{body.items.join('\n')}</Text>
-      <TouchableOpacity
-        style={styles.readMoreBtn}
-        onPress={() => Linking.openURL(body.learn_more_url)}
-        activeOpacity={0.85}>
-        <Text style={styles.readMoreBtnText}>{'Read More'}</Text>
-      </TouchableOpacity>
+      <Text style={[styles.recItemsList, IS_IOS && styles.recItemsListIOS]}>
+        {body.items.join('\n')}
+      </Text>
+      {!IS_IOS && (
+        <TouchableOpacity
+          style={styles.readMoreBtn}
+          onPress={() => Linking.openURL(body.learn_more_url)}
+          activeOpacity={0.85}>
+          <Text style={styles.readMoreBtnText}>{'Read More'}</Text>
+        </TouchableOpacity>
+      )}
     </View>
   </View>
 );
@@ -325,7 +333,10 @@ const MyCertificationCard = ({cert}: {cert: MyCertification}) => {
         </View>
       </View>
 
-      {cert.footer?.message ? (
+      {/* iOS: no banner under the card (Figma shows none). The "Recertify"
+          link in the status row above still works — it reads cert.footer
+          directly, not this banner. */}
+      {Platform.OS !== 'ios' && cert.footer?.message ? (
         <View style={bannerBoxStyle}>
           <Text style={bannerTextBaseStyle}>
             {cert.footer.message}
@@ -374,7 +385,7 @@ const MyCertificationsTab = () => {
     return (
       <View style={styles.tabContent}>
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>{data.empty_title}</Text>
+          <Text style={[styles.emptyTitle, IS_IOS && styles.emptyTitleIOS]}>{data.empty_title}</Text>
           <View style={styles.emptyDivider} />
           <Text style={styles.emptySubtitle}>{data.empty_message}</Text>
         </View>
@@ -388,6 +399,10 @@ const MyCertificationsTab = () => {
 
   return (
     <View style={styles.tabContent}>
+      {/* iOS has no tab bar, so a populated account gets a page heading. */}
+      {Platform.OS === 'ios' && (
+        <Text style={styles.myCertsHeading}>{'My Certifications'}</Text>
+      )}
       {data.certificates.map((cert, i) => (
         <MyCertificationCard key={cert.certificate_id ?? i} cert={cert} />
       ))}
@@ -837,7 +852,9 @@ const CertificationsScreen = ({navigation}: any) => {
       <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
 
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      {/* iOS: no tab bar (Overview / IPM Certifications aren't offered there),
+          so activeTab stays 'my'. */}
+      {Platform.OS !== 'ios' && <TabBar active={activeTab} onChange={setActiveTab} />}
 
       <View style={{flex: 1}}>
         <ScrollView
@@ -912,6 +929,16 @@ const styles = StyleSheet.create({
   tabUnderline: {height: 2, backgroundColor: '#0C4D91', marginTop: 4, borderRadius: 1},
 
   tabContent: {paddingHorizontal: 16, paddingTop: 16},
+  // iOS "My Certifications" page heading (replaces the tab bar) — Heading/H2:
+  // Runda 18 / 700 / line-height normal / letter-spacing 0.09, Navy Blue.
+  myCertsHeading: {
+    color: '#192546',
+    fontFamily: 'Runda',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.09,
+    marginBottom: 16,
+  },
   tabOuter: {width: '100%'},
   loadingWrap: {paddingVertical: 60, alignItems: 'center'},
   errorText: {fontSize: 13, color: '#8F9098', fontFamily: 'Runda', marginBottom: 10},
@@ -934,6 +961,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
   },
+  // iOS: same Heading/H2 as the "My Certifications" page heading
+  emptyTitleIOS: {fontWeight: '700', color: '#192546', fontSize: 18, letterSpacing: 0.09},
   emptyDivider: {width: 70.164, height: 0.462, backgroundColor: '#46B1E4', marginBottom: 12},
   emptySubtitle: {
     fontSize: 13.668,
@@ -1053,6 +1082,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.191,
     marginVertical: 10,
   },
+  // iOS overrides for the empty-state body cards (see RecommendedBodyCard)
+  recCardIOS: {width: '100%', minHeight: 0},
+  recBodyIOS: {padding: 16, justifyContent: 'flex-start'},
+  recTitleIOS: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#192546',
+    lineHeight: 18,
+    letterSpacing: 0,
+  },
+  recTitleUnderlineIOS: {width: 43, height: 1.5, backgroundColor: '#46B0E3', marginTop: 4},
+  recItemsListIOS: {fontSize: 12, lineHeight: 16, color: '#8F9098', letterSpacing: 0, marginTop: 8, marginBottom: 0},
   readMoreBtn: {
     width: 81.098,
     height: 22.78,

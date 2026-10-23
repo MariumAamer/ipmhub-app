@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   StatusBar,
   Linking,
+  Platform,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -34,6 +35,7 @@ import CourseCard from '../components/CourseCard';
 import CompletedCourseCard from '../components/CompletedCourseCard';
 import ResumeBanner from '../components/ResumeBanner';
 import EmptyCoursesRecommendation from '../components/EmptyCoursesRecommendation';
+import EmptyCoursesIOS from '../components/EmptyCoursesIOS';
 import {
   getUpcomingCoursesTabs,
   getUpcomingCourses,
@@ -240,13 +242,23 @@ const MyCoursesTab = ({navigation}: {navigation: any}) => {
   if (courses.length === 0 && completedCourses.length === 0) {
     return (
       <ScrollView style={{width: '100%'}} showsVerticalScrollIndicator={false}>
-        <EmptyCoursesRecommendation navigation={navigation} />
+        {Platform.OS === 'ios' ? (
+          <EmptyCoursesIOS navigation={navigation} />
+        ) : (
+          <EmptyCoursesRecommendation navigation={navigation} />
+        )}
       </ScrollView>
     );
   }
 
   return (
     <ScrollView style={{width: '100%'}} showsVerticalScrollIndicator={false}>
+      {/* iOS has no tab bar, so the populated state gets a "My Courses"
+          heading instead (Figma). The empty state has its own layout. */}
+      {Platform.OS === 'ios' && (
+        <Text style={styles.myCoursesHeading}>{'My Courses'}</Text>
+      )}
+
       {/* Resume banner — only meaningful when there's an active in-progress
           course to resume; the no-active-course response shape from
           getResumeBanner() is unconfirmed, so we simply don't render rather
@@ -825,7 +837,9 @@ const CoursesScreen = ({navigation}: any) => {
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <StatusBar barStyle="dark-content" />
       <AppHeader navigation={navigation} onDrawerOpen={() => setDrawerOpen(true)} />
-      <TopTabs active={tab} onChange={setTab} />
+      {/* iOS: no tab bar at all (Upcoming / Search All Courses aren't offered
+          there), so `tab` stays 'my'. */}
+      {Platform.OS !== 'ios' && <TopTabs active={tab} onChange={setTab} />}
       {tab === 'my' && <MyCoursesTab navigation={navigation} />}
       {tab === 'upcoming' && <UpcomingCoursesTab onOpenCourse={openCourse} />}
       {tab === 'search' && <SearchAllCoursesTab />}
@@ -856,6 +870,16 @@ const styles = StyleSheet.create({
     fontFamily: 'Runda-Bold',
     fontSize: 18,
     marginBottom: 24, // preserves the spacing the old header band's own paddingBottom provided
+  },
+
+  // iOS "My Courses" page heading (replaces the tab bar) — Heading/H2
+  myCoursesHeading: {
+    color: '#192546', // IPM Navy Blue
+    fontFamily: 'Runda-Bold',
+    fontSize: 18,
+    letterSpacing: 0.09,
+    paddingHorizontal: 16,
+    paddingTop: 24,
   },
 
   topTabsRow: {
