@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
-  PermissionsAndroid,
   Platform,
   Image,
   Alert,
@@ -24,7 +23,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, {Path} from 'react-native-svg';
-import Geolocation from '@react-native-community/geolocation';
+import {getDeviceCountryCode} from '../utils/deviceRegion';
 import EmojiPickerSheet from '../components/EmojiPickerSheet';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import {fetchCountries, Country} from '../api/countriesApi';
@@ -182,7 +181,6 @@ const ProfileSetupScreen = ({navigation}: any) => {
   const [detectedCountry, setDetectedCountry] = useState<Country | null>(null);
   const [countrySearch, setCountrySearch] = useState('');
   const [loadingCountries, setLoadingCountries] = useState(false);
-  const [detectingLocation, setDetectingLocation] = useState(false);
 
   // Step 3
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -196,7 +194,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
   // the default, then override with GET /welcome-intro/config → min_bio_length.
   const [minBioLength, setMinBioLength] = useState(DEFAULT_MIN_BIO_LENGTH);
 
-  useEffect(() => { loadCountriesAndDetectLocation(); }, []);
+  useEffect(() => { loadCountries(); }, []);
   useEffect(() => {
     getWelcomeIntroConfig().then(cfg => {
       if (cfg && typeof cfg.min_bio_length === 'number' && cfg.min_bio_length > 0) {
@@ -208,50 +206,23 @@ const ProfileSetupScreen = ({navigation}: any) => {
     });
   }, []);
 
-  const requestLocationPermission = async (): Promise<boolean> => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {title: 'Location Permission', message: 'IPM Hub needs your location to auto-select your country.', buttonNeutral: 'Ask Me Later', buttonNegative: 'Cancel', buttonPositive: 'OK'},
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch { return false; }
-    }
-    return true;
+  // Pre-select the country from the phone's Region setting. No location
+  // permission, no GPS and no request to a third party.
+  const detectUserCountry = (countryList: Country[]) => {
+    const code = getDeviceCountryCode();
+    if (!code) return;
+    const found = countryList.find(c => c.code === code);
+    if (found) { setSelectedCountry(found); setDetectedCountry(found); setSelectedPhoneCountry(found); }
   };
 
-  const detectUserCountry = async (countryList: Country[]) => {
-    setDetectingLocation(true);
-    try {
-      const hasPermission = await requestLocationPermission();
-      if (!hasPermission) { setDetectingLocation(false); return; }
-      Geolocation.getCurrentPosition(
-        async position => {
-          try {
-            const {latitude, longitude} = position.coords;
-            const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
-            const data = await response.json();
-            const found = countryList.find(c => c.code === data.countryCode);
-            if (found) { setSelectedCountry(found); setDetectedCountry(found); setSelectedPhoneCountry(found); }
-          } catch {} finally { setDetectingLocation(false); }
-        },
-        () => setDetectingLocation(false),
-        {enableHighAccuracy: false, timeout: 10000, maximumAge: 60000},
-      );
-    } catch { setDetectingLocation(false); }
-  };
-
-  const loadCountriesAndDetectLocation = async () => {
+  const loadCountries = async () => {
     setLoadingCountries(true);
     try {
       const cached = await getCachedCountries();
       const data = cached || (await fetchCountries());
       if (!cached) await cacheCountries(data);
       setCountries(data);
-      // PERF: show the country list as soon as it's loaded; GPS/permission/reverse-geocode (up to ~10s+) runs in the background and only adds the "Based on your location" row.
-      setLoadingCountries(false);
-      await detectUserCountry(data);
+      detectUserCountry(data);
     } catch {} finally { setLoadingCountries(false); }
   };
 
@@ -504,11 +475,10 @@ const ProfileSetupScreen = ({navigation}: any) => {
             <Text style={styles.searchIcon}>{'🔍'}</Text>
             <TextInput style={styles.searchInput} placeholder="Type your country name" placeholderTextColor="#999" value={countrySearch} onChangeText={setCountrySearch} />
           </View>
-          {/* PERF: don't block the list on location detection; only on the country list itself */}
           {loadingCountries ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#0C4D91" />
-              <Text style={styles.loadingText}>{detectingLocation ? 'Detecting your location...' : 'Loading countries...'}</Text>
+              <Text style={styles.loadingText}>{'Loading countries...'}</Text>
             </View>
           ) : (
             <FlatList
@@ -518,7 +488,7 @@ const ProfileSetupScreen = ({navigation}: any) => {
                 <>
                   {detectedCountry && (
                     <>
-                      <Text style={styles.sectionLabel}>{'Based on your location'}</Text>
+                      <Text style={styles.sectionLabel}>{'Based on your device region'}</Text>
                       <TouchableOpacity
                         style={[styles.listItem, selectedCountry.code === detectedCountry.code && styles.listItemActive]}
                         onPress={() => setSelectedCountry(detectedCountry)}>

@@ -342,6 +342,54 @@ export const deleteAccount = async (): Promise<void> => {
   await logoutUser();
 };
 
+// ─── Download My Data (WordPress personal-data export request) ──────────────
+// Robby, 2026-10-20: POST /custom/v1/account/data-export with a JWT and no
+// body (the member is always the token user).
+//   200 -> {success, request_id, request_status: 'pending_confirmation',
+//           email: 'j***@domain', message}   (WP emails a confirmation link)
+//   409 -> code 'data_export_already_requested' (+ current status)
+// GET on the same path returns none | pending_confirmation | confirmed |
+// completed | failed.
+export interface DataExportRequestResult {
+  alreadyRequested: boolean;
+  status: string;
+  maskedEmail: string;
+  message: string;
+}
+
+export const requestDataExport = async (): Promise<DataExportRequestResult> => {
+  const token = await getToken();
+  if (!token) throw new Error('You need to be signed in to request your data.');
+  const response = await fetch(`${BASE_URL}/custom/v1/account/data-export`, {
+    method: 'POST',
+    headers: {Authorization: `Bearer ${token}`},
+  });
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {}
+
+  if (response.status === 409 || data?.code === 'data_export_already_requested') {
+    return {
+      alreadyRequested: true,
+      status: data?.request_status || data?.data?.request_status || '',
+      maskedEmail: data?.email || '',
+      message: clean(data?.message || ''),
+    };
+  }
+  if (!response.ok || data?.code || data?.success === false) {
+    throw new Error(
+      clean(data?.message || 'Could not send your data request. Please try again.'),
+    );
+  }
+  return {
+    alreadyRequested: false,
+    status: data?.request_status || 'pending_confirmation',
+    maskedEmail: data?.email || '',
+    message: clean(data?.message || ''),
+  };
+};
+
 // ─── Forgot Password / Reset Password (Profile Builder plugin) ───────────────
 // This site uses the Profile Builder plugin's own recover-password flow at
 // /lost-password/, NOT a custom REST endpoint and NOT vanilla

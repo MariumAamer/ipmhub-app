@@ -1,10 +1,15 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useRef} from 'react';
+import React, {useState, useRef, useEffect} from 'react';
 import {View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, StatusBar, Modal, FlatList, Dimensions, Animated, Alert, ActivityIndicator} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
 import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
-import {TIMEZONES, submitMentorApplication} from '../api/mentorApplicationApi';
+import {
+  TIMEZONES,
+  submitMentorApplication,
+  getMentorApplicationConfig,
+  MentorApplicationConfig,
+} from '../api/mentorApplicationApi';
 import {ChevronDownIcon} from '../components/forumsIcons';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
@@ -23,20 +28,28 @@ const STEPS = [
 ];
 
 // ─── Real option lists — matching live web copy exactly ──────────────────
+// These are only the offline fallback — the live lists come from
+// GET /custom/v1/mentors/apply → options (same values the server validates).
 const EXPERTISE_OPTIONS = [
   'Agile & Scrum',
-  'AI in Project Management',
-  'Budget & Cost Management',
-  'Career Development & Transitions',
+  'Waterfall & Traditional PM',
   'Change Management',
-  'Data Analytics & Reporting',
+  'Stakeholder Management',
+  'Risk Management',
+  'Project Planning & Scheduling',
+  'Programme Management',
+  'PMO Setup & Management',
   'Digital Transformation',
   'Leadership & Team Management',
-  'Motivation & Resilience',
+  'Data Analytics & Reporting',
+  'Budget & Cost Management',
+  'Procurement & Contract Management',
+  'Sustainability & ESG',
+  'AI in Project Management',
+  'Career Development & Transitions',
   'Negotiation & Communication',
-  'Programme Management',
-  'Project Planning & Scheduling',
-  'Stakeholder Management',
+  'Motivation & Resilience',
+  'Other',
 ];
 
 const WHO_YOU_HELP_OPTIONS = [
@@ -67,14 +80,25 @@ const LANGUAGE_OPTIONS = [
   'Other',
 ];
 const RESPONSE_TIME_OPTIONS = ['Within 24 hours', 'Within 48 hours', 'Within 72 hours'];
-const SESSIONS_PER_MONTH_OPTIONS = ['01', '02', '03', '04', '05', '06', '07'];
+const SESSIONS_PER_MONTH_OPTIONS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
 const AVAILABILITY_OPTIONS = ['Once per week', 'A few times per week', 'Flexible'];
 
 const YEARS_EXPERIENCE_OPTIONS = [
-  '1–5 years',
+  '0-3 years',
+  '3–5 years',
   '5–10 years',
   '10–15 years',
   '15+ years',
+];
+
+// Offline fallback for the consent list (live copy: GET /mentors/apply → consent.statements).
+const CONSENT_FALLBACK = [
+  'I understand that applications are subject to review and approval by the IPM Foundation team.',
+  'I consent to my submitted information being used for mentor evaluation and programme setup.',
+  'I understand that participation in the IPM Foundation Mentorship Programme is voluntary and unpaid.',
+  'I understand that onboarding materials and next steps will be provided upon approval.',
+  'I understand that my application is subject to IPM review and approval.',
+  'I consent to my profile information being displayed publicly on IPM Hub.',
 ];
 
 // ─── Icons ─────────────────────────────────────────────────────────────────
@@ -298,10 +322,21 @@ const MultiSelectList = ({
 const MentorApplicationScreen = ({navigation}: any) => {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  // Live form options / limits / consent text from GET /custom/v1/mentors/apply.
+  const [config, setConfig] = useState<MentorApplicationConfig | null>(null);
 
-  // Step 1 — Professional
-  const [firstName, setFirstName] = useState('');
-  const [email, setEmail] = useState('');
+  useEffect(() => {
+    let alive = true;
+    getMentorApplicationConfig().then(c => {
+      if (alive) setConfig(c);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Step 1 — Professional (name, role, company, country, LinkedIn and industry
+  // come from the member's profile — the API does not accept them here)
   const [timezone, setTimezone] = useState('');
   const [yearsExperience, setYearsExperience] = useState('');
 
@@ -332,11 +367,32 @@ const MentorApplicationScreen = ({navigation}: any) => {
   const [motivation, setMotivation] = useState('');
 
   // Step 9 — Consent
-  const [consent1, setConsent1] = useState(false);
-  const [consent2, setConsent2] = useState(false);
-  const [consent3, setConsent3] = useState(false);
-  const [consent4, setConsent4] = useState(false);
-  const allConsented = consent1 && consent2 && consent3 && consent4;
+  const [consents, setConsents] = useState<boolean[]>([]);
+  const consentStatements =
+    config?.consent?.statements && config.consent.statements.length > 0
+      ? config.consent.statements
+      : CONSENT_FALLBACK;
+  const allConsented = consentStatements.every((_, i) => !!consents[i]);
+
+  // Option lists: server values win, hardcoded copies are the fallback.
+  const pickOpts = (key: keyof NonNullable<MentorApplicationConfig['options']>, fallback: string[]) => {
+    const live = config?.options?.[key];
+    return live && live.length > 0 ? live : fallback;
+  };
+  const timezoneOptions = pickOpts('timezone', TIMEZONES.map(t => t.label));
+  const experienceOptions = pickOpts('experience', YEARS_EXPERIENCE_OPTIONS);
+  const expertiseOptions = pickOpts('expertise', EXPERTISE_OPTIONS);
+  const menteeOptions = pickOpts('mentee_profile', WHO_YOU_HELP_OPTIONS);
+  const supportOptions = pickOpts('support', SUPPORT_OPTIONS);
+  const durationOptions = pickOpts('duration', SESSION_DURATION_OPTIONS);
+  const spokenOptions = pickOpts('spoken', LANGUAGE_OPTIONS);
+  const hoursOptions = pickOpts('hours', RESPONSE_TIME_OPTIONS);
+  const menteesOptions = pickOpts('mentees', SESSIONS_PER_MONTH_OPTIONS);
+  const availableOptions = pickOpts('available_sessions', AVAILABILITY_OPTIONS);
+  const limits = config?.limits || {};
+  const expertiseMax = limits.expertise_max || 5;
+  const menteeMax = limits.mentee_profile_max || 3;
+  const hasExistingApplication = !!config?.application?.exists;
 
   // Active bottom sheet
   const [activeSheet, setActiveSheet] = useState<string | null>(null);
@@ -374,30 +430,53 @@ const MentorApplicationScreen = ({navigation}: any) => {
     else setStep(prev => Math.max(prev - 1, 0));
   };
 
+  // Returns the first problem found (and the step it lives on), or null.
+  const findProblem = (): {step: number; message: string} | null => {
+    if (!timezone) return {step: 0, message: 'Please select your time zone.'};
+    if (!yearsExperience) return {step: 0, message: 'Please select your years of experience.'};
+    if (!shortBio.trim()) return {step: 1, message: 'Please write your short biography.'};
+    if (!extendedBio.trim()) return {step: 1, message: 'Please write your extended biography.'};
+    if (!cv && !hasExistingApplication) return {step: 1, message: 'Please upload your CV / resume.'};
+    if (expertise.length < 1) return {step: 2, message: 'Please select at least one area of expertise.'};
+    if (whoYouHelp.length < 1) return {step: 3, message: 'Please select at least one mentee profile.'};
+    if (!sessionDuration) return {step: 5, message: 'Please select a session duration.'};
+    if (languages.length < 1) return {step: 5, message: 'Please select at least one language.'};
+    if (!responseTime) return {step: 5, message: 'Please select your typical response time.'};
+    if (!sessionsPerMonth) return {step: 6, message: 'Please select how many sessions you can support.'};
+    if (!availability) return {step: 6, message: 'Please select your general availability.'};
+    if (!motivation.trim()) return {step: 7, message: 'Please tell us why you would like to become a mentor.'};
+    return null;
+  };
+
   const handleSubmit = async () => {
-    if (!allConsented) return;
+    if (!allConsented || submitting) return;
+    const problem = findProblem();
+    if (problem) {
+      setStep(problem.step);
+      Alert.alert('Missing information', problem.message);
+      return;
+    }
     setSubmitting(true);
-    const ok = await submitMentorApplication({
-      firstName,
-      email,
+    const result = await submitMentorApplication({
       timezone,
-      yearsExperience,
-      shortBio,
-      extendedBio,
+      experience: yearsExperience,
+      expertise,
+      menteeProfile: whoYouHelp,
+      shortBio: shortBio.trim(),
+      extendedBio: extendedBio.trim(),
       cvUri: cv?.uri || null,
       cvName: cv?.name || null,
-      expertise,
-      whoYouHelp,
+      cvType: cv?.type || null,
       support,
-      sessionDuration,
-      languages,
-      responseTime,
-      sessionsPerMonth,
-      availability,
-      motivation,
+      duration: sessionDuration,
+      spoken: languages,
+      hours: responseTime,
+      mentees: sessionsPerMonth,
+      availableSessions: availability,
+      programme: motivation.trim(),
     });
     setSubmitting(false);
-    if (ok) {
+    if (result.ok) {
       Alert.alert(
         'Application Submitted',
         'Thank you for applying to the IPM Foundation Mentorship Programme. We will review your application and be in touch.',
@@ -406,7 +485,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
     } else {
       Alert.alert(
         'Submission Failed',
-        'The mentor application endpoint is not live yet on the backend. Please try again later.',
+        result.message || 'We could not submit your application. Please try again.',
       );
     }
   };
@@ -417,22 +496,14 @@ const MentorApplicationScreen = ({navigation}: any) => {
       case 0: // Professional
         return (
           <>
-            <Text style={s.fieldLabel}>{'First Name*'}</Text>
-            <TextInput
-              style={s.input}
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder=""
-            />
-            <Text style={s.fieldLabel}>{'Email Address*'}</Text>
-            <TextInput
-              style={s.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder=""
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+            <Text style={s.helperText}>
+              {'Your name, role, company, country, LinkedIn and industry are taken from your IPM Hub profile. Update them in your profile if they are out of date.'}
+            </Text>
+            {hasExistingApplication ? (
+              <Text style={s.helperText}>
+                {'We found an existing mentor application on your account.'}
+              </Text>
+            ) : null}
             <Text style={s.fieldLabel}>{'Time Zone*'}</Text>
             <TouchableOpacity style={s.selectInput} onPress={() => setActiveSheet('timezone')}>
               <Text style={[s.selectInputText, !timezone && s.placeholderText]}>
@@ -461,6 +532,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
               style={s.textArea}
               value={shortBio}
               onChangeText={setShortBio}
+              maxLength={limits.shortbio_max || 1000}
               multiline
               numberOfLines={4}
               textAlignVertical="top"
@@ -473,6 +545,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
               style={s.textArea}
               value={extendedBio}
               onChangeText={setExtendedBio}
+              maxLength={limits.extendedbio_max || 5000}
               multiline
               numberOfLines={6}
               textAlignVertical="top"
@@ -480,7 +553,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
             <Text style={s.helperText}>
               {'200–300 words — shown in About section of full profile'}
             </Text>
-            <Text style={s.fieldLabel}>{'Upload Your CV / Resume*'}</Text>
+            <Text style={s.fieldLabel}>{hasExistingApplication ? 'Upload Your CV / Resume' : 'Upload Your CV / Resume*'}</Text>
             <TouchableOpacity style={s.uploadBox} onPress={handlePickCv}>
               <Text style={s.uploadBoxText} numberOfLines={1}>
                 {cv?.name || 'Choose File'}
@@ -494,12 +567,12 @@ const MentorApplicationScreen = ({navigation}: any) => {
       case 2: // Expertise
         return (
           <>
-            <Text style={s.questionText}>{'Select up to 5 areas of expertise*'}</Text>
+            <Text style={s.questionText}>{`Select up to ${expertiseMax} areas of expertise*`}</Text>
             <MultiSelectList
-              options={EXPERTISE_OPTIONS}
+              options={expertiseOptions}
               selected={expertise}
               onToggle={opt => toggleInList(expertise, setExpertise, opt)}
-              maxSelect={5}
+              maxSelect={expertiseMax}
             />
           </>
         );
@@ -507,12 +580,12 @@ const MentorApplicationScreen = ({navigation}: any) => {
       case 3: // Who You Help
         return (
           <>
-            <Text style={s.questionText}>{'Select up to 3 mentee profiles*'}</Text>
+            <Text style={s.questionText}>{`Select up to ${menteeMax} mentee profiles*`}</Text>
             <MultiSelectList
-              options={WHO_YOU_HELP_OPTIONS}
+              options={menteeOptions}
               selected={whoYouHelp}
               onToggle={opt => toggleInList(whoYouHelp, setWhoYouHelp, opt)}
-              maxSelect={3}
+              maxSelect={menteeMax}
             />
           </>
         );
@@ -522,7 +595,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
           <>
             <Text style={s.questionText}>{'What types of support can you offer?'}</Text>
             <MultiSelectList
-              options={SUPPORT_OPTIONS}
+              options={supportOptions}
               selected={support}
               onToggle={opt => toggleInList(support, setSupport, opt)}
             />
@@ -542,7 +615,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
 
             <Text style={s.fieldLabel}>{'Languages Spoken*'}</Text>
             <MultiSelectList
-              options={LANGUAGE_OPTIONS}
+              options={spokenOptions}
               selected={languages}
               onToggle={opt => toggleInList(languages, setLanguages, opt)}
             />
@@ -592,6 +665,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
               style={[s.textArea, {height: 160}]}
               value={motivation}
               onChangeText={setMotivation}
+              maxLength={limits.programme_max || 3000}
               multiline
               textAlignVertical="top"
             />
@@ -605,36 +679,21 @@ const MentorApplicationScreen = ({navigation}: any) => {
             <Text style={s.questionText}>
               {'Please confirm the following before submitting your application*'}
             </Text>
-            {[
-              {
-                value: consent1,
-                set: setConsent1,
-                label: 'I understand that applications are subject to review and approval by the IPM Foundation team*',
-              },
-              {
-                value: consent2,
-                set: setConsent2,
-                label: 'I consent to my submitted information being used for mentor evaluation and programme setup*',
-              },
-              {
-                value: consent3,
-                set: setConsent3,
-                label: 'I understand that participation in the IPM Foundation Mentorship Programme is voluntary and unpaid*',
-              },
-              {
-                value: consent4,
-                set: setConsent4,
-                label: 'I understand that onboarding materials and next steps will be provided upon approval*',
-              },
-            ].map((c, i) => (
+            {consentStatements.map((statement, i) => (
               <TouchableOpacity
                 key={i}
                 style={s.consentRow}
-                onPress={() => c.set(!c.value)}>
-                <View style={[s.checkbox, c.value && s.checkboxChecked]}>
-                  {c.value ? <CheckMark /> : null}
+                onPress={() =>
+                  setConsents(prev => {
+                    const next = consentStatements.map((_, k) => !!prev[k]);
+                    next[i] = !next[i];
+                    return next;
+                  })
+                }>
+                <View style={[s.checkbox, consents[i] && s.checkboxChecked]}>
+                  {consents[i] ? <CheckMark /> : null}
                 </View>
-                <Text style={s.consentText}>{c.label}</Text>
+                <Text style={s.consentText}>{statement.replace(/\.$/, '') + '*'}</Text>
               </TouchableOpacity>
             ))}
             <Text style={s.helperText}>{'All items are required'}</Text>
@@ -704,7 +763,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
         visible={activeSheet === 'timezone'}
         title="Time Zone"
         listLabel="Select Time Zone"
-        items={TIMEZONES.map(t => t.label)}
+        items={timezoneOptions}
         selected={timezone}
         onSelect={setTimezone}
         onClose={() => setActiveSheet(null)}
@@ -714,7 +773,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
         visible={activeSheet === 'years'}
         title="Years of Experience"
         listLabel="Select Years"
-        items={YEARS_EXPERIENCE_OPTIONS}
+        items={experienceOptions}
         selected={yearsExperience}
         onSelect={setYearsExperience}
         onClose={() => setActiveSheet(null)}
@@ -724,7 +783,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
         visible={activeSheet === 'duration'}
         title="Session Duration"
         listLabel="Select Duration"
-        items={SESSION_DURATION_OPTIONS}
+        items={durationOptions}
         selected={sessionDuration}
         onSelect={setSessionDuration}
         onClose={() => setActiveSheet(null)}
@@ -734,7 +793,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
         visible={activeSheet === 'responseTime'}
         title="Response Time"
         listLabel="Select Time"
-        items={RESPONSE_TIME_OPTIONS}
+        items={hoursOptions}
         selected={responseTime}
         onSelect={setResponseTime}
         onClose={() => setActiveSheet(null)}
@@ -742,9 +801,9 @@ const MentorApplicationScreen = ({navigation}: any) => {
       />
       <PickerSheet
         visible={activeSheet === 'sessionsPerMonth'}
-        title="Session Duration"
+        title="Sessions per Month"
         listLabel="Select Sessions"
-        items={SESSIONS_PER_MONTH_OPTIONS}
+        items={menteesOptions}
         selected={sessionsPerMonth}
         onSelect={setSessionsPerMonth}
         onClose={() => setActiveSheet(null)}
@@ -754,7 +813,7 @@ const MentorApplicationScreen = ({navigation}: any) => {
         visible={activeSheet === 'availability'}
         title="Select Availability"
         listLabel={null}
-        items={AVAILABILITY_OPTIONS}
+        items={availableOptions}
         selected={availability}
         onSelect={setAvailability}
         onClose={() => setActiveSheet(null)}

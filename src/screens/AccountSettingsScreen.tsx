@@ -9,6 +9,7 @@ import LogoutConfirmDialog from '../components/LogoutConfirmDialog';
 import EyeClosedIcon from '../components/EyeClosedIcon';
 import EyeOpenIcon from '../components/EyeOpenIcon';
 import {logoutUser} from '../api/authApi';
+import {emailForDisplay, isApplePrivateRelay} from '../utils/displayEmail';
 import {
   getNotificationSettings,
   updateNotificationSettings,
@@ -543,6 +544,16 @@ const AccountSettingsScreen = ({navigation}: any) => {
                 placeholderTextColor="#C0C0C0"
               />
             )}
+            {isApplePrivateRelay(email) && (
+              <View style={styles.hintRow}>
+                <View style={styles.hintIconBox}>
+                  <ExclamationIcon />
+                </View>
+                <Text style={styles.hintText}>
+                  {'Apple is hiding your real email. Messages are forwarded to you.'}
+                </Text>
+              </View>
+            )}
             <View style={styles.hintRow}>
               <View style={styles.hintIconBox}>
                 <ExclamationIcon />
@@ -605,7 +616,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
             <TouchableOpacity style={styles.actionRow} onPress={handleLogout} activeOpacity={0.7}>
               <LogoutIcon />
               <Text style={styles.actionLabel}>{'Log Out'}</Text>
-              <Text style={styles.actionEmail} numberOfLines={1}>{email}</Text>
+              <Text style={styles.actionEmail} numberOfLines={1}>{emailForDisplay(email)}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionRow}

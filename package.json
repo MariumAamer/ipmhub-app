@@ -11,10 +11,10 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@dr.pogodin/react-native-fs": "^2.40.4",
     "@invertase/react-native-apple-authentication": "^2.5.1",
     "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^2.2.0",
-    "@react-native-community/geolocation": "^3.4.0",
     "@react-native-documents/picker": "^12.0.2",
     "@react-native-firebase/app": "^25.1.0",
     "@react-native-firebase/messaging": "^25.1.0",

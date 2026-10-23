@@ -14,7 +14,9 @@ import {
   ScrollView,
   Dimensions,
   ViewStyle,
+  Platform,
 } from 'react-native';
+import {SafeAreaProvider, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {SearchIcon, FilterIcon} from './forumsIcons';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
@@ -67,6 +69,14 @@ export const SearchFilterRow = ({
   </View>
 );
 
+// A Modal is its own native window, so the sheets get their own
+// SafeAreaProvider. This spacer keeps the last row / Continue button clear of
+// the iOS home indicator (Android keeps its existing spacing).
+const BottomInset = () => {
+  const insets = useSafeAreaInsets();
+  return <View style={{height: Platform.OS === 'ios' ? insets.bottom : 0}} />;
+};
+
 // ─── Sheet frame (overlay + rounded sheet + centered title + ✕) ─────────────
 const SheetFrame = ({
   visible,
@@ -82,18 +92,21 @@ const SheetFrame = ({
   if (!visible) return null;
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
-      <View style={st.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-        <View style={st.sheet}>
-          <View style={st.sheetHeader}>
-            <Text style={st.sheetTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={st.closeBtn} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-              <Text style={st.closeIcon}>{'✕'}</Text>
-            </TouchableOpacity>
+      <SafeAreaProvider>
+        <View style={st.overlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+          <View style={st.sheet}>
+            <View style={st.sheetHeader}>
+              <Text style={st.sheetTitle}>{title}</Text>
+              <TouchableOpacity onPress={onClose} style={st.closeBtn} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+                <Text style={st.closeIcon}>{'✕'}</Text>
+              </TouchableOpacity>
+            </View>
+            {children}
+            <BottomInset />
           </View>
-          {children}
         </View>
-      </View>
+      </SafeAreaProvider>
     </Modal>
   );
 };
@@ -147,6 +160,7 @@ export const FilterSheet = ({
   onApply,
   onClose,
   sectionLabel,
+  applyOnTap = false,
 }: {
   visible: boolean;
   title: string;
@@ -155,6 +169,8 @@ export const FilterSheet = ({
   onApply: (id: string) => void;
   onClose: () => void;
   sectionLabel?: string;
+  // true = tapping a row applies it and closes the sheet (no Continue button).
+  applyOnTap?: boolean;
 }) => {
   const [draft, setDraft] = useState<string | null>(selectedId);
   useEffect(() => {
@@ -175,17 +191,26 @@ export const FilterSheet = ({
               count={item.count}
               selected={sel}
               icon={item.icon ? item.icon(sel ? '#0C4D91' : '#192546') : null}
-              onPress={() => setDraft(item.id)}
+              onPress={() => {
+                if (applyOnTap) {
+                  onApply(item.id);
+                  onClose();
+                } else {
+                  setDraft(item.id);
+                }
+              }}
             />
           );
         }}
       />
-      <ContinueButton
-        onPress={() => {
-          onApply(draft ?? '');
-          onClose();
-        }}
-      />
+      {applyOnTap ? null : (
+        <ContinueButton
+          onPress={() => {
+            onApply(draft ?? '');
+            onClose();
+          }}
+        />
+      )}
     </SheetFrame>
   );
 };
@@ -329,6 +354,7 @@ export const SortSheet = ({
   if (!visible) return null;
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+      <SafeAreaProvider>
       <View style={st.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
         <View style={st.sortSheet}>
@@ -350,8 +376,10 @@ export const SortSheet = ({
               <Text style={[st.sortRowText, selectedId === o.id && st.sortRowTextActive]}>{o.label}</Text>
             </TouchableOpacity>
           ))}
+          <BottomInset />
         </View>
       </View>
+      </SafeAreaProvider>
     </Modal>
   );
 };

@@ -22,10 +22,9 @@
  *   current test user with summary.ipma: null. This screen always
  *   renders the NON-IPMA header. Flag before this ships if IPMA members
  *   are expected to hit this screen too.
- * - "Download CPD Record (.xls)" has no confirmed endpoint yet — the
- *   button is present per the Figma spec but shows a "coming soon" alert
- *   rather than fabricating a request. Swap in the real endpoint once
- *   Robby confirms it.
+ * - "Download CPD Record" calls GET /custom/v1/my-pdus/export (Robby,
+ *   2026-10-20), honouring the activity/year filters, then opens the OS
+ *   "save as" sheet.
  */
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
@@ -38,8 +37,9 @@ import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
 import {getUserIdFromToken} from '../api/profileApi';
+import {saveDocuments, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import {
-  getMyPdus, deletePduRecord, MyPdusResponse, PduRecord, PduSummary,
+  getMyPdus, deletePduRecord, exportCpdRecord, MyPdusResponse, PduRecord, PduSummary,
 } from '../api/pdusApi';
 import {FilterSheet as ForumFilterSheetUI} from '../components/forumStyleControls';
 
@@ -308,6 +308,7 @@ const FilterSheet = ({
     selectedId={selected}
     onApply={onSelect}
     onClose={onClose}
+    applyOnTap
   />
 );
 
@@ -430,6 +431,37 @@ const PDUsTrackerScreen = ({navigation}: any) => {
   const [yearSheetOpen, setYearSheetOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PduRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // Downloads the member's CPD record (honouring the current filters) and
+  // opens the system "save as" sheet.
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const file = await exportCpdRecord({
+        format: 'xlsx',
+        activityType: activityFilter,
+        startYear: yearFilter,
+      });
+      await saveDocuments({
+        sourceUris: [encodeURI(`file://${file.path}`)],
+        mimeType: file.mimeType,
+        fileName: file.fileName,
+        copy: true,
+      });
+    } catch (err: any) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
+        console.log('exportCpdRecord error:', err);
+        Alert.alert(
+          'Download failed',
+          err?.message || 'Could not download your CPD record. Please try again.',
+        );
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // PERF: this runs on mount AND on the navigation 'focus' event (which also
   // fires on first focus), so the records were fetched twice at open, and the
@@ -591,10 +623,17 @@ const PDUsTrackerScreen = ({navigation}: any) => {
 
           <Text style={s.helpText}>{summary?.records_help}</Text>
 
-          {/* "Download CPD Record (.xls)" is hidden until the backend provides an
-              export endpoint — a button that only said "coming soon" would be
-              flagged as incomplete in App Store review. Restore it once Robby
-              confirms the endpoint. */}
+          <TouchableOpacity
+            style={[s.downloadBtn, {marginTop: 12}]}
+            onPress={handleExport}
+            disabled={exporting}
+            activeOpacity={0.8}>
+            {exporting ? (
+              <ActivityIndicator size="small" color={C.blueDark} />
+            ) : (
+              <Text style={s.downloadBtnText}>{'Download CPD Record (.xlsx)'}</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />

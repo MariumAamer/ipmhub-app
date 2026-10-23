@@ -1,6 +1,5 @@
 /* eslint-disable prettier/prettier */
 import {getToken} from './feedApi';
-import {getUserIdFromToken} from './profileApi';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -111,73 +110,133 @@ export const TIMEZONES: TimezoneOption[] = TZ_RAW.map(([label, offsetMinutes]) =
   offsetMinutes,
 }));
 
-// ─── Mentor application submission ────────────────────────────────────────
-export interface MentorApplicationData {
-  firstName: string;
-  email: string;
-  timezone: string;
-  yearsExperience: string;
-  shortBio: string;
-  extendedBio: string;
-  cvUri: string | null;
-  cvName: string | null;
-  expertise: string[];
-  whoYouHelp: string[];
-  support: string[];
-  sessionDuration: string;
-  languages: string[];
-  responseTime: string;
-  sessionsPerMonth: string;
-  availability: string;
-  motivation: string;
+// ─── Mentor application (Robby, 2026-10-20) ───────────────────────────────
+// GET  /custom/v1/mentors/apply  -> form options, profile prefill, any existing
+//                                   application, limits, required list, consent
+// POST /custom/v1/mentors/apply  -> multipart; CV in `upload_cv`
+// Name, role, company, country, LinkedIn and industry come from the member's
+// profile, so they must NOT be sent.
+export interface MentorApplicationConfig {
+  profile?: Record<string, string>;
+  application?: {exists: boolean; [key: string]: any};
+  options?: Partial<
+    Record<
+      | 'timezone'
+      | 'experience'
+      | 'expertise'
+      | 'mentee_profile'
+      | 'support'
+      | 'duration'
+      | 'spoken'
+      | 'hours'
+      | 'mentees'
+      | 'available_sessions',
+      string[]
+    >
+  >;
+  limits?: {
+    expertise_max?: number;
+    mentee_profile_max?: number;
+    cv_max_bytes?: number;
+    shortbio_max?: number;
+    extendedbio_max?: number;
+    programme_max?: number;
+  };
+  consent?: {statements?: string[]};
 }
 
-// ⚠️ Backend endpoint needed: POST /ipm/v1/mentor-application
-// This endpoint does not exist yet — see the list drafted for Robby.
-// Until it's built, submission will fail gracefully (returns false) so the
-// UI can show an appropriate message rather than crash.
+export const getMentorApplicationConfig =
+  async (): Promise<MentorApplicationConfig | null> => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`${BASE}/custom/v1/mentors/apply`, {
+        headers: token ? {Authorization: `Bearer ${token}`} : {},
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as MentorApplicationConfig;
+    } catch (err) {
+      console.log('getMentorApplicationConfig error:', err);
+      return null;
+    }
+  };
+
+export interface MentorApplicationData {
+  timezone: string;
+  experience: string;
+  expertise: string[]; // 1–5
+  menteeProfile: string[]; // 1–3
+  shortBio: string; // max 1000
+  extendedBio: string; // max 5000
+  cvUri: string | null; // required on the first application only
+  cvName: string | null;
+  cvType: string | null;
+  support: string[]; // optional
+  duration: string;
+  spoken: string[]; // at least 1
+  hours: string;
+  mentees: string; // "01"–"10"
+  availableSessions: string;
+  programme: string; // max 3000
+}
+
+export interface MentorApplicationResult {
+  ok: boolean;
+  message?: string;
+}
+
 export const submitMentorApplication = async (
   data: MentorApplicationData,
-): Promise<boolean> => {
+): Promise<MentorApplicationResult> => {
   try {
-    // PERF: independent lookups - run in parallel instead of sequentially.
-    const [token, userId] = await Promise.all([getToken(), getUserIdFromToken()]);
+    const token = await getToken();
 
     const formData = new FormData();
-    formData.append('user_id', String(userId ?? ''));
-    formData.append('first_name', data.firstName);
-    formData.append('email', data.email);
     formData.append('timezone', data.timezone);
-    formData.append('years_experience', data.yearsExperience);
-    formData.append('short_bio', data.shortBio);
-    formData.append('extended_bio', data.extendedBio);
-    formData.append('expertise', JSON.stringify(data.expertise));
-    formData.append('who_you_help', JSON.stringify(data.whoYouHelp));
-    formData.append('support', JSON.stringify(data.support));
-    formData.append('session_duration', data.sessionDuration);
-    formData.append('languages', JSON.stringify(data.languages));
-    formData.append('response_time', data.responseTime);
-    formData.append('sessions_per_month', data.sessionsPerMonth);
-    formData.append('availability', data.availability);
-    formData.append('motivation', data.motivation);
+    formData.append('experience', data.experience);
+    data.expertise.forEach(v => formData.append('expertise[]', v));
+    data.menteeProfile.forEach(v => formData.append('mentee_profile[]', v));
+    formData.append('shortbio', data.shortBio);
+    formData.append('extendedbio', data.extendedBio);
+    data.support.forEach(v => formData.append('support[]', v));
+    formData.append('duration', data.duration);
+    data.spoken.forEach(v => formData.append('spoken[]', v));
+    formData.append('hours', data.hours);
+    formData.append('mentees', data.mentees);
+    formData.append('available_sessions', data.availableSessions);
+    formData.append('programme', data.programme);
+    formData.append('consent_confirmed', 'true');
 
     if (data.cvUri) {
-      formData.append('cv', {
+      formData.append('upload_cv', {
         uri: data.cvUri,
-        type: 'application/octet-stream',
+        type: data.cvType || 'application/octet-stream',
         name: data.cvName || 'cv.pdf',
       } as any);
     }
 
-    const res = await fetch(`${BASE}/ipm/v1/mentor-application`, {
+    // Do NOT set Content-Type by hand — RN generates the multipart boundary.
+    const res = await fetch(`${BASE}/custom/v1/mentors/apply`, {
       method: 'POST',
       headers: token ? {Authorization: `Bearer ${token}`} : {},
       body: formData,
     });
 
-    return res.ok;
+    let body: any = null;
+    try {
+      body = await res.json();
+    } catch {}
+
+    if (!res.ok || body?.success === false || body?.code) {
+      console.log(`submitMentorApplication failed (${res.status}):`, body);
+      return {
+        ok: false,
+        message:
+          body?.error?.reason || body?.message || `Request failed (${res.status})`,
+      };
+    }
+    return {ok: true, message: body?.message};
   } catch (err) {
     console.log('submitMentorApplication error:', err);
-    return false;
+    return {ok: false, message: 'Could not reach the server. Check your connection and try again.'};
   }
 };

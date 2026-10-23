@@ -182,6 +182,78 @@ export const getMyPdus = async (userId: number): Promise<MyPdusResponse> => {
   return res.json();
 };
 
+// ─── Export CPD record (Robby, 2026-10-20) ──────────────────────────────────
+// GET /custom/v1/my-pdus/export?format=xlsx|csv[&activity_type=..][&start_year=..]
+// Returns the FILE ITSELF (not JSON/URL) and needs the Bearer header, so it is
+// downloaded natively into the cache dir; the screen then offers the OS
+// "save as" sheet. Filters mirror /my-pdus/records.
+export interface CpdExportResult {
+  path: string;
+  fileName: string;
+  mimeType: string;
+}
+
+export const exportCpdRecord = async (opts: {
+  format?: 'xlsx' | 'csv';
+  activityType?: string;
+  startYear?: string;
+}): Promise<CpdExportResult> => {
+  const token = await getToken();
+  if (!token) throw new Error('Please sign in again to export your record.');
+
+  // Loaded lazily: the library needs its native module, and a build that
+  // lacks it must not crash every screen that imports this file.
+  let RNFS: typeof import('@dr.pogodin/react-native-fs');
+  try {
+    RNFS = require('@dr.pogodin/react-native-fs');
+  } catch {
+    throw new Error('Downloads are not available in this build. Please update the app.');
+  }
+
+  const format = opts.format || 'xlsx';
+  const qs = [`format=${format}`];
+  if (opts.activityType) qs.push(`activity_type=${encodeURIComponent(opts.activityType)}`);
+  if (opts.startYear) qs.push(`start_year=${encodeURIComponent(opts.startYear)}`);
+
+  const fileName = `IPM-CPD-Record.${format}`;
+  const path = `${RNFS.CachesDirectoryPath}/${fileName}`;
+  try {
+    await RNFS.unlink(path);
+  } catch {
+    // no previous export — fine
+  }
+
+  const {promise} = RNFS.downloadFile({
+    fromUrl: `${BASE}/my-pdus/export?${qs.join('&')}`,
+    toFile: path,
+    headers: {Authorization: `Bearer ${token}`},
+  });
+  const result = await promise;
+
+  if (result.statusCode !== 200) {
+    // The body is a WP error JSON, e.g. {code, message}.
+    let message = '';
+    try {
+      message = JSON.parse(await RNFS.readFile(path, 'utf8'))?.message || '';
+    } catch {
+      // body wasn't JSON
+    }
+    try {
+      await RNFS.unlink(path);
+    } catch {}
+    throw new Error(message || `Export failed (${result.statusCode})`);
+  }
+
+  return {
+    path,
+    fileName,
+    mimeType:
+      format === 'csv'
+        ? 'text/csv'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+};
+
 // Shared by create + update — same field set, same multipart shape.
 const buildRecordFormData = (input: CpdRecordInput): FormData => {
   const fd = new FormData();

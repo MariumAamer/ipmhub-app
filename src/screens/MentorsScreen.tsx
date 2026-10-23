@@ -431,8 +431,9 @@ const MentorsScreen = ({navigation}: any) => {
   };
 
   // Request a Call opens the mentor's Calendly link (calendly_link, falling
-  // back to request_call_url) once the backend field is populated — both
-  // are confirmed real fields but empty for every mentor seen so far.
+  // back to request_call_url). Since 2026-10-20 the backend's request_call_url
+  // always has a value (mentor profile URL when no Calendly is set); the card
+  // hides the button if both are empty.
   // PERF: useCallback with [] — only uses its argument + module APIs (no stale
   // closure possible), keeps the memoized MentorCard props stable.
   const handleRequestCall = useCallback((mentor: MentorItem) => {
@@ -440,11 +441,6 @@ const MentorsScreen = ({navigation}: any) => {
     if (url) {
       Linking.openURL(url).catch(() =>
         Alert.alert('Error', "Couldn't open the booking link. Please try again."),
-      );
-    } else {
-      Alert.alert(
-        'Coming Soon',
-        `A booking link for ${mentor.name} hasn't been set up yet. We're working on this feature.`,
       );
     }
   }, []);

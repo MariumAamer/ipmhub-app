@@ -29,8 +29,9 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Alert, Modal,
 } from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import {SafeAreaView, SafeAreaProvider, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
+import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 import Svg, {Path} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import {BackBtn, Dropdown} from '../components/editShared';
@@ -156,13 +157,13 @@ const DayMonthCalendar = ({
                 key={i}
                 style={[
                   dc.cell,
-                  d && d === selectedDay && viewMonth === selectedMonth && dc.cellSelected,
+                  !!d && d === selectedDay && viewMonth === selectedMonth && dc.cellSelected,
                 ]}
                 disabled={!d}
                 onPress={() => d && handleDay(d)}>
                 <Text style={[
                   dc.cellText,
-                  d && d === selectedDay && viewMonth === selectedMonth && dc.cellTextSelected,
+                  !!d && d === selectedDay && viewMonth === selectedMonth && dc.cellTextSelected,
                 ]}>
                   {d ?? ''}
                 </Text>
@@ -208,20 +209,33 @@ const DateField = ({
   );
 };
 
-const ActivityTypePicker = ({
-  visible, options, selected, onSelect, onClose,
+// Body of the picker. Lives inside its own SafeAreaProvider (see below) so
+// useSafeAreaInsets() reads the insets of the Modal's window.
+const ActivityTypePickerBody = ({
+  options, selected, onSelect, onClose,
 }: {
-  visible: boolean; options: {id: string; label: string}[]; selected: string;
+  options: {id: string; label: string}[]; selected: string;
   onSelect: (id: string) => void; onClose: () => void;
-}) => (
-  <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-    <SafeAreaView style={{flex: 1, backgroundColor: '#FFFFFF'}}>
+}) => {
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: '#FFFFFF',
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }}>
       <View style={{paddingHorizontal: 16, paddingTop: 16}}>
         <BackBtn onPress={onClose} />
         <Text style={ap.title}>{'Select Activity Type'}</Text>
         <Text style={ap.subtitle}>{'Select the category that best describes your professional development activity.'}</Text>
       </View>
-      <ScrollView contentContainerStyle={{paddingHorizontal: 16, gap: 6, paddingBottom: 24}}>
+      <ScrollView
+        contentContainerStyle={{paddingHorizontal: 16, gap: 6, paddingBottom: 24}}
+        showsVerticalScrollIndicator={false}>
         {options.map(opt => (
           <TouchableOpacity
             key={opt.id}
@@ -231,7 +245,35 @@ const ActivityTypePicker = ({
           </TouchableOpacity>
         ))}
       </ScrollView>
-    </SafeAreaView>
+    </View>
+  );
+};
+
+// A Modal is a separate native window (UIViewController on iOS, Dialog on
+// Android), so the app-level SafeAreaProvider doesn't reach into it. The
+// picker gets its own provider and applies the insets itself, which keeps
+// the title clear of the iOS notch / Dynamic Island and the last option
+// clear of the home indicator.
+const ActivityTypePicker = ({
+  visible, options, selected, onSelect, onClose,
+}: {
+  visible: boolean; options: {id: string; label: string}[]; selected: string;
+  onSelect: (id: string) => void; onClose: () => void;
+}) => (
+  <Modal
+    visible={visible}
+    animationType="slide"
+    presentationStyle="fullScreen"
+    statusBarTranslucent
+    onRequestClose={onClose}>
+    <SafeAreaProvider>
+      <ActivityTypePickerBody
+        options={options}
+        selected={selected}
+        onSelect={onSelect}
+        onClose={onClose}
+      />
+    </SafeAreaProvider>
   </Modal>
 );
 
@@ -270,9 +312,8 @@ const AddEditCPDRecordScreen = ({navigation, route}: any) => {
 
   const handlePickFile = async () => {
     try {
-      const DocumentPicker = require('react-native-document-picker').default;
-      const result = await DocumentPicker.pickSingle({
-        type: [DocumentPicker.types.pdf, DocumentPicker.types.images, DocumentPicker.types.doc, DocumentPicker.types.docx],
+      const [result] = await pick({
+        type: [types.pdf, types.images, types.doc, types.docx],
       });
       if (result.size && result.size > 10 * 1024 * 1024) {
         Alert.alert('File too large', 'Please choose a file under 10MB.');
@@ -280,7 +321,8 @@ const AddEditCPDRecordScreen = ({navigation, route}: any) => {
       }
       setFile({uri: result.uri, name: result.name || 'attachment', type: result.type || 'application/octet-stream'});
     } catch (err: any) {
-      if (!err?.toString?.()?.includes('cancel')) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
+        console.log('[AddEditCPDRecord] file pick error:', err);
         Alert.alert('Error', 'Could not select file. Please try again.');
       }
     }
@@ -324,7 +366,16 @@ const AddEditCPDRecordScreen = ({navigation, route}: any) => {
       }
       navigation?.goBack();
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not save this record. Please try again.');
+      console.log('[AddEditCPDRecord] save error:', e?.message, e, {hasFile: !!file, isEdit});
+      const msg = e?.message || '';
+      Alert.alert(
+        'Error',
+        /network request failed/i.test(msg)
+          ? (file
+              ? 'Could not upload your record. Check your connection, or remove the supporting document and try again.'
+              : 'Could not reach the server. Check your connection and try again.')
+          : msg || 'Could not save this record. Please try again.',
+      );
     } finally {
       setSaving(false);
     }
