@@ -20,6 +20,11 @@ import {
 } from '../api/feedApi';
 import {getUserIdFromToken} from '../api/profileApi';
 import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
+import ReportModal from '../components/ReportModal';
+import {submitReport} from '../api/reportApi';
+import {AuthorOptionsSheet, blockAuthor} from '../components/AuthorOptionsSheet';
+import {BlockMemberSheet} from '../components/MemberModeration';
+import SuccessToast from '../components/SuccessToast';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -29,6 +34,20 @@ const EMPTY_POSTS: IntroPost[] = [];
 // Card width leaves the next card peeking in from the right edge, matching Figma.
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 const INSIGHT_CARD_WIDTH = SCREEN_WIDTH * 0.72;
+
+// ─── Report / Block (App Store 1.2) ──────────────────────────────────────────
+// Same flow as Feed: "•••" → AuthorOptionsSheet (Report + Block) → ReportModal
+// or BlockMemberSheet. An intro post is a BuddyBoss activity (activityId), so
+// it reports as item_type 'activity'. Intro comments report as item_type
+// 'comment' (confirmed by backend — not 'activity_comment').
+type IntroReportTarget = {
+  kind: 'post' | 'comment';
+  id: number; // activity id (post) or activity comment id
+  authorId: number;
+  authorName: string;
+  authorAvatar?: string;
+};
+let openIntroOptions: ((t: IntroReportTarget) => void) | null = null;
 
 // ─── Shared icons — identical to FeedScreen ──────────────────────────────────
 const CommentIcon = ({color = '#192546'}: {color?: string}) => (
@@ -134,7 +153,7 @@ const InsightsStrip = React.memo(({insights, rowIndex}: {insights: any[]; rowInd
 // mounted). On unmount the latest state is saved into the screen-level ref
 // and restored on re-mount, so scrolling away and back does not revert an
 // optimistic like, a just-posted comment, or an unsent draft.
-const IntroCard = React.memo(({post, myAvatar, navigation, stateCache}: any) => {
+const IntroCard = React.memo(({post, myAvatar, myUserId, navigation, stateCache}: any) => {
   const saved = stateCache?.current?.[post.id];
   const [textExpanded, setTextExpanded] = useState<boolean>(saved?.textExpanded ?? false);
   const [commentText, setCommentText] = useState<string>(saved?.commentText ?? '');
@@ -205,6 +224,7 @@ const IntroCard = React.memo(({post, myAvatar, navigation, stateCache}: any) => 
         {
           id: result?.id ?? result?.comment_id ?? `local-${Date.now()}`,
           author: {
+            id: myUserId || 0,
             name: result?.name || 'You',
             avatar: myAvatar || '',
           },
@@ -294,6 +314,22 @@ const IntroCard = React.memo(({post, myAvatar, navigation, stateCache}: any) => 
             {[post.author.title, post.time].filter(Boolean).join(', ')}
           </Text>
         </View>
+        {!!post.activityId && post.author.id !== myUserId && (
+          <TouchableOpacity
+            style={styles.moreBtn}
+            hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+            onPress={() =>
+              openIntroOptions?.({
+                kind: 'post',
+                id: post.activityId,
+                authorId: post.author.id,
+                authorName: post.author.name,
+                authorAvatar: post.author.avatar,
+              })
+            }>
+            <Text style={styles.moreText}>{'•••'}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Content — Figma: Body/Body M, 14px 400, #192546, lineHeight 18 */}
@@ -381,6 +417,22 @@ const IntroCard = React.memo(({post, myAvatar, navigation, stateCache}: any) => 
                         <Text style={styles.commentLikeCount}>
                           {`${c.likes} ${c.likes === 1 ? 'Like' : 'Likes'}`}
                         </Text>
+                      </TouchableOpacity>
+                    )}
+                    {typeof c.id === 'number' && c.author?.id !== myUserId && (
+                      <TouchableOpacity
+                        style={styles.moreBtn}
+                        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                        onPress={() =>
+                          openIntroOptions?.({
+                            kind: 'comment',
+                            id: c.id,
+                            authorId: c.author?.id || 0,
+                            authorName: c.author?.name || 'Member',
+                            authorAvatar: c.author?.avatar,
+                          })
+                        }>
+                        <Text style={styles.moreText}>{'•••'}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -471,6 +523,13 @@ const IntrosScreen = ({navigation}: any) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
+  const [myUserId, setMyUserId] = useState<number | null>(null);
+  // Report / Block
+  const [optionsTarget, setOptionsTarget] = useState<IntroReportTarget | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [showBlock, setShowBlock] = useState(false);
+  const [blockedToast, setBlockedToast] = useState('');
   // PERF: per-card state saved when a FlatList row unmounts (see IntroCard).
   const cardStateCache = useRef<Record<string, any>>({});
   // PERF: sync lock so onEndReached can't start two page fetches in one tick.
@@ -500,6 +559,7 @@ const IntrosScreen = ({navigation}: any) => {
 
   const initUser = async () => {
     const userId = await getUserIdFromToken();
+    if (userId) setMyUserId(Number(userId));
     if (userId) {
       const profile = await getMemberProfile(userId);
       if (profile?.avatar_urls?.thumb) setMyAvatar(profile.avatar_urls.thumb);
@@ -651,6 +711,53 @@ const IntrosScreen = ({navigation}: any) => {
     loadPosts(page + 1);
   };
 
+  // ─── Report / Block handlers (same flow as Feed comments) ──────────────────
+  useEffect(() => {
+    openIntroOptions = t => {
+      setOptionsTarget(t);
+      setShowOptions(true);
+    };
+    return () => {
+      openIntroOptions = null;
+    };
+  }, []);
+
+  // Native Modals can't open while the menu Modal is still dismissing on iOS,
+  // hence the short delay (same as Feed).
+  const handleReportPress = () => {
+    setShowOptions(false);
+    setTimeout(() => setShowReport(true), 400);
+  };
+
+  const handleReportSubmit = async (reasons: string[], note: string) => {
+    if (!optionsTarget) return;
+    await submitReport(
+      optionsTarget.kind === 'post' ? 'activity' : 'comment',
+      optionsTarget.id,
+      reasons,
+      note,
+    );
+  };
+
+  const handleBlockPress = () => {
+    setShowOptions(false);
+    setShowBlock(true);
+  };
+
+  // POST /blocked-members {user_id}. Their intros leave the list.
+  const handleBlockConfirm = async () => {
+    const t = optionsTarget;
+    setShowBlock(false);
+    if (!t) return;
+    const err = await blockAuthor(t.authorId, {name: t.authorName, avatarUrl: t.authorAvatar});
+    if (err) {
+      Alert.alert('Could not block member', err);
+      return;
+    }
+    setPosts(prev => prev.filter(p => p.author.id !== t.authorId));
+    setBlockedToast(`You blocked ${t.authorName}.`);
+  };
+
   const keyExtractor = useCallback((post: IntroPost) => String(post.id), []);
 
   // PERF: row = IntroCard (+ the Insights strip after every 3rd post, as before).
@@ -658,16 +765,16 @@ const IntrosScreen = ({navigation}: any) => {
   const renderItem = useCallback(
     ({item, index}: {item: IntroPost; index: number}) => (
       <>
-        <IntroCard post={item} myAvatar={myAvatar} navigation={navigation} stateCache={cardStateCache} />
+        <IntroCard post={item} myAvatar={myAvatar} myUserId={myUserId} navigation={navigation} stateCache={cardStateCache} />
         {(index + 1) % 3 === 0 && insights.length > 0 && (
           <InsightsStrip insights={insights} rowIndex={index} />
         )}
       </>
     ),
-    [insights, myAvatar, navigation],
+    [insights, myAvatar, myUserId, navigation],
   );
   // PERF: state that row rendering reads (also invalidates rows if it changes).
-  const rowExtraData = useMemo(() => ({insights, myAvatar}), [insights, myAvatar]);
+  const rowExtraData = useMemo(() => ({insights, myAvatar, myUserId}), [insights, myAvatar, myUserId]);
 
   return (
     <View style={styles.container}>
@@ -770,6 +877,36 @@ const IntrosScreen = ({navigation}: any) => {
         }
       />
 
+      {/* Report / Block — same sheets as Feed */}
+      <AuthorOptionsSheet
+        visible={showOptions}
+        onClose={() => setShowOptions(false)}
+        reportLabel={optionsTarget?.kind === 'comment' ? 'Report comment' : 'Report post'}
+        onReport={handleReportPress}
+        authorName={optionsTarget?.authorName}
+        canBlock={!!optionsTarget?.authorId}
+        onBlock={handleBlockPress}
+      />
+      <ReportModal
+        visible={showReport}
+        noun={optionsTarget?.kind === 'comment' ? 'Comment' : 'Post'}
+        showIntro={optionsTarget?.kind !== 'comment'}
+        onClose={() => setShowReport(false)}
+        onSubmit={handleReportSubmit}
+      />
+      <BlockMemberSheet
+        visible={showBlock}
+        name={optionsTarget?.authorName ?? ''}
+        onClose={() => setShowBlock(false)}
+        onConfirm={handleBlockConfirm}
+      />
+      <SuccessToast
+        visible={!!blockedToast}
+        variant="info"
+        message={blockedToast}
+        onHide={() => setBlockedToast('')}
+      />
+
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
     </View>
   );
@@ -835,6 +972,9 @@ const styles = StyleSheet.create({
   },
   cardAvatar: {width: 42, height: 42, borderRadius: 21},
   cardAuthorInfo: {flex: 1},
+  // "•••" Report / Block trigger — same look as Feed's comment menu button.
+  moreBtn: {marginLeft: 'auto', paddingVertical: 2, paddingHorizontal: 4},
+  moreText: {fontSize: 14, letterSpacing: 1, color: '#8F9098', fontWeight: '500', fontFamily: 'Runda'},
   nameWithFlag: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap'},
   flagText: {fontSize: 14},
   cardAuthorName: {

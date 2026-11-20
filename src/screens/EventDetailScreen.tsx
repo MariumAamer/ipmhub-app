@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, ActivityIndicator, Alert} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, ActivityIndicator, Alert, Platform} from 'react-native';
 import Svg, {Path, Rect, G, Defs, ClipPath} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -245,7 +245,8 @@ const EventDetailScreen = ({navigation, route}: Props) => {
       </ScrollView>
 
       {/* Sticky Register Now / Registered / Coming Soon */}
-      {!!event.registrationUrl && (
+      {/* iOS: no "Coming Soon" button, so the bar only shows for Registered / Register Now. */}
+      {!!event.registrationUrl && !(Platform.OS === 'ios' && !isRegistered && !isNearestUpcoming) && (
         <View style={s.btnWrap}>
           {isRegistered ? (
             <View style={s.registeredBtn}>

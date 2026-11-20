@@ -2,7 +2,7 @@
 import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image, TouchableOpacity,
-  StatusBar, ActivityIndicator, Linking, Alert, TextInput,
+  StatusBar, ActivityIndicator, Linking, Alert, TextInput, Platform,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Svg, {Path} from 'react-native-svg';
@@ -117,7 +117,8 @@ const EventCard = ({event, onCardPress, onRegisterPress, isRegistered, isRegiste
             ? <ActivityIndicator color="#FFFFFF" size="small"/>
             : <Text style={cardStyles.registerBtnText}>{'Register Now'}</Text>}
         </View>
-      ) : (
+      ) : Platform.OS === 'ios' ? null : (
+        // iOS: no "Coming Soon" button (card already shows the date).
         <View style={cardStyles.comingSoonBtn}>
           <Text style={cardStyles.comingSoonText}>{'Coming Soon'}</Text>
         </View>

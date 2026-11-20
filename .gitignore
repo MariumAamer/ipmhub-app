@@ -82,3 +82,12 @@ android/cert_key.pub
 
 check.apk
 apk_check/
+
+# Expo local cache
+.expo/
+
+# Scratch folder, not app source
+/Claude outputs/
+
+# Backup files
+*.bak

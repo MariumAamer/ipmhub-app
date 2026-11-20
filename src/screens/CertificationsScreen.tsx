@@ -306,7 +306,7 @@ const MyCertificationCard = ({cert}: {cert: MyCertification}) => {
             {statusCode === 'active' ? (
               <Text style={[styles.certStatusText, styles.certStatusActive]}>{statusLead}</Text>
             ) : statusCode === 'expired' ? (
-              hasRecertifyLink ? (
+              hasRecertifyLink && !IS_IOS ? (
                 <Text style={styles.certStatusText}>
                   <Text style={styles.certStatusExpired}>{statusLead}</Text>
                   {' - '}

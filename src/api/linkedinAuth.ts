@@ -62,3 +62,29 @@ export const openLinkedInAuth = (
       reject(err);
     });
   });
+
+// ─── Re-confirm with LinkedIn (account deletion) ─────────────────────────────
+// Same OAuth app and redirects as the Sign In screen. The code is NOT
+// exchanged here: the server swaps it for a token and checks the LinkedIn
+// email matches the Hub account (POST /account/deletion {code, redirect_uri}).
+const LINKEDIN_CLIENT_ID = '86aeqmka1c4bj1';
+export const LINKEDIN_REDIRECT_URI =
+  'https://hub.instituteprojectmanagement.com/linkedin-callback-app';
+const LINKEDIN_APP_REDIRECT = 'ipmhub://linkedin-callback';
+const LINKEDIN_AUTH_URL =
+  `https://www.linkedin.com/oauth/v2/authorization?response_type=code` +
+  `&client_id=${LINKEDIN_CLIENT_ID}` +
+  `&redirect_uri=${encodeURIComponent(LINKEDIN_REDIRECT_URI)}` +
+  `&scope=openid%20profile%20email`;
+
+/** Resolves {code, redirectUri}, or null if the member cancelled. Throws if LinkedIn returned no code. */
+export const requestLinkedInCode = async (): Promise<{
+  code: string;
+  redirectUri: string;
+} | null> => {
+  const url = await openLinkedInAuth(LINKEDIN_AUTH_URL, LINKEDIN_APP_REDIRECT);
+  if (!url) return null;
+  const match = url.match(/[?&]code=([^&]+)/);
+  if (!match) throw new Error('LinkedIn confirmation was not completed.');
+  return {code: decodeURIComponent(match[1]), redirectUri: LINKEDIN_REDIRECT_URI};
+};

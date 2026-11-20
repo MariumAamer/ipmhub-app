@@ -57,6 +57,11 @@ import {
 } from '../api/coursesApi';
 import {getUserIdFromToken} from '../api/profileApi';
 import {parseCourseOverviewHtml, ContentBlock} from '../utils/parseCourseOverviewHtml';
+import ReportModal from '../components/ReportModal';
+import {submitReport} from '../api/reportApi';
+import {AuthorOptionsSheet, blockAuthor} from '../components/AuthorOptionsSheet';
+import {BlockMemberSheet} from '../components/MemberModeration';
+import SuccessToast from '../components/SuccessToast';
 
 // ─── Icons ──────────────────────────────────────────────────────────────
 
@@ -283,6 +288,12 @@ const StepContentScreen = ({route, navigation}: any) => {
   const [postingComment, setPostingComment] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
+  // Report / Block on lesson comments (App Store 1.2) — same sheets as Feed.
+  const [optionsTarget, setOptionsTarget] = useState<StepComment | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [showBlock, setShowBlock] = useState(false);
+  const [blockedToast, setBlockedToast] = useState('');
 
   useEffect(() => {
     let cancelled = false; // PERF: drop stale results if params change mid-flight
@@ -341,6 +352,48 @@ const StepContentScreen = ({route, navigation}: any) => {
         prev.map((c) => (c.id === parentId ? {...c, replies: [...(c.replies || []), newComment]} : c)),
       );
     }
+  };
+
+  // ─── Report / Block a lesson comment ─────────────────────────────────────
+  const openCommentOptions = (c: StepComment) => {
+    setOptionsTarget(c);
+    setShowOptions(true);
+  };
+
+  // Native Modals can't open while the menu Modal is still dismissing on iOS.
+  const handleReportPress = () => {
+    setShowOptions(false);
+    setTimeout(() => setShowReport(true), 400);
+  };
+
+  // item_type 'comment' (WordPress comment) — confirmed by backend.
+  const handleReportSubmit = async (reasons: string[], note: string) => {
+    if (!optionsTarget) return;
+    await submitReport('comment', optionsTarget.id, reasons, note);
+  };
+
+  const handleBlockPress = () => {
+    setShowOptions(false);
+    setShowBlock(true);
+  };
+
+  // POST /blocked-members {user_id}; their comments (and replies) leave the list.
+  const handleBlockConfirm = async () => {
+    const t = optionsTarget;
+    setShowBlock(false);
+    if (!t?.author_id) return;
+    const name = decodeEntities(t.author_name) || 'Member';
+    const err = await blockAuthor(t.author_id, {name, avatarUrl: t.author_avatar});
+    if (err) {
+      Alert.alert('Could not block member', err);
+      return;
+    }
+    const strip = (list: StepComment[]): StepComment[] =>
+      list
+        .filter(c => c.author_id !== t.author_id)
+        .map(c => ({...c, replies: c.replies ? strip(c.replies) : c.replies}));
+    setComments(prev => strip(prev));
+    setBlockedToast(`You blocked ${name}.`);
   };
 
   // Wired to the now-CONFIRMED markStepComplete endpoint. It returns the
@@ -650,6 +703,8 @@ const StepContentScreen = ({route, navigation}: any) => {
                   key={c.id}
                   comment={c}
                   onReply={() => setReplyingTo(c.id)}
+                  myUserId={userId}
+                  onMore={openCommentOptions}
                 />
               ))
             )}
@@ -694,6 +749,36 @@ const StepContentScreen = ({route, navigation}: any) => {
         videoUrl={videoModalUrl}
         onClose={() => setVideoModalUrl(null)}
       />
+
+      {/* Report / Block a lesson comment — same sheets as Feed */}
+      <AuthorOptionsSheet
+        visible={showOptions}
+        onClose={() => setShowOptions(false)}
+        reportLabel="Report comment"
+        onReport={handleReportPress}
+        authorName={optionsTarget ? decodeEntities(optionsTarget.author_name) : undefined}
+        canBlock={!!optionsTarget?.author_id}
+        onBlock={handleBlockPress}
+      />
+      <ReportModal
+        visible={showReport}
+        noun="Comment"
+        showIntro={false}
+        onClose={() => setShowReport(false)}
+        onSubmit={handleReportSubmit}
+      />
+      <BlockMemberSheet
+        visible={showBlock}
+        name={optionsTarget ? decodeEntities(optionsTarget.author_name) : ''}
+        onClose={() => setShowBlock(false)}
+        onConfirm={handleBlockConfirm}
+      />
+      <SuccessToast
+        visible={!!blockedToast}
+        variant="info"
+        message={blockedToast}
+        onHide={() => setBlockedToast('')}
+      />
     </>
   );
 };
@@ -701,7 +786,17 @@ const StepContentScreen = ({route, navigation}: any) => {
 // Single comment card — per Figma spec (bordered box, avatar, name, date,
 // text, Reply link). Renders its own replies indented one level, same
 // styling. No confirmed data yet for deeper nesting than one level.
-const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => void}) => {
+const CommentCard = ({
+  comment,
+  onReply,
+  myUserId,
+  onMore,
+}: {
+  comment: StepComment;
+  onReply: () => void;
+  myUserId: number;
+  onMore: (c: StepComment) => void;
+}) => {
   const [expanded, setExpanded] = useState(false);
   const fullText = decodeEntities(comment.content);
   // Long comments (e.g. pasted assignments) show a preview with See more.
@@ -728,6 +823,15 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
           <Text style={styles.commentAuthorName}>{decodeEntities(comment.author_name)}</Text>
           <Text style={styles.commentDate}>{decodeEntities(comment.date_formatted)}</Text>
         </View>
+        {/* Report / Block — hidden on your own comments */}
+        {!!comment.id && comment.author_id !== myUserId && (
+          <TouchableOpacity
+            style={styles.commentMoreBtn}
+            hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+            onPress={() => onMore(comment)}>
+            <Text style={styles.commentMoreText}>{'•••'}</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <View style={styles.commentBody}>
         <Text style={styles.commentText} numberOfLines={isLong && !expanded ? 5 : undefined}>
@@ -745,7 +849,7 @@ const CommentCard = ({comment, onReply}: {comment: StepComment; onReply: () => v
     </View>
     {comment.replies?.map((reply) => (
       <View key={reply.id} style={{marginLeft: 24, marginTop: 8}}>
-        <CommentCard comment={reply} onReply={onReply} />
+        <CommentCard comment={reply} onReply={onReply} myUserId={myUserId} onMore={onMore} />
       </View>
     ))}
   </View>
@@ -942,6 +1046,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   commentAuthorRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  // "•••" Report / Block trigger — same look as Feed's comment menu button.
+  commentMoreBtn: {marginLeft: 'auto', paddingVertical: 2, paddingHorizontal: 4},
+  commentMoreText: {fontSize: 14, letterSpacing: 1, color: '#8F9098', fontWeight: '500', fontFamily: 'Runda'},
   commentAvatar: {width: 38, height: 38, borderRadius: 100},
   commentAuthorName: {color: '#192546', fontFamily: 'Runda-Medium', fontSize: 14},
   commentDate: {color: '#8F9098', fontFamily: 'Runda', fontSize: 12, marginTop: 2},

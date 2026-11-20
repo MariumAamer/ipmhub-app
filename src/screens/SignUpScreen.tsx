@@ -20,8 +20,10 @@ import {
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import {registerUser, socialLogin, getPostAuthRoute} from '../api/authApi';
+import {resolveScheduledDeletion} from '../utils/deletionPrompt';
 import AppleSignInButton from '../components/AppleSignInButton';
 import SocialButton, {GoogleIcon, LinkedInSquareIcon} from '../components/SocialButton';
+import SocialTermsNotice from '../components/SocialTermsNotice';
 import EyeClosedIcon from '../components/EyeClosedIcon';
 import EyeOpenIcon from '../components/EyeOpenIcon';
 import BackButton from '../components/BackButton';
@@ -79,6 +81,8 @@ const LINKEDIN_AUTH_URL =
   `&redirect_uri=${encodeURIComponent(LINKEDIN_REDIRECT)}` +
   `&scope=openid%20profile%20email`;
 
+const TERMS_URL = 'https://projectmanagement.ie/terms-and-conditions/';
+
 const SignUpScreen = ({navigation}: any) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -106,7 +110,7 @@ const SignUpScreen = ({navigation}: any) => {
     else if (password.length < 8) e.password = 'Min. 8 characters required';
     if (!confirmPassword) e.confirm = 'Please confirm your password';
     else if (password !== confirmPassword) e.confirm = 'Passwords do not match';
-    if (!agreed) e.agreed = 'Please agree to the Privacy Policy';
+    if (!agreed) e.agreed = 'Please agree to the Terms of Service, Community Guidelines and Privacy Policy';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -143,6 +147,7 @@ const SignUpScreen = ({navigation}: any) => {
       const idToken = info.data?.idToken ?? (info as any).idToken;
       if (!idToken) throw new Error('No token received from Google');
       const user = await socialLogin('google', idToken);
+      if ((await resolveScheduledDeletion()) === 'signed_out') return;
       const route = await getPostAuthRoute(user);
       navigation.replace(route);
     } catch (err: any) {
@@ -188,6 +193,7 @@ const SignUpScreen = ({navigation}: any) => {
         return;
       }
       const user = await socialLogin('linkedin', decodeURIComponent(match[1]));
+      if ((await resolveScheduledDeletion()) === 'signed_out') return;
       const route = await getPostAuthRoute(user);
       navigation.replace(route);
     } catch (err: any) {
@@ -241,6 +247,7 @@ const SignUpScreen = ({navigation}: any) => {
             mode="sign-up"
             disabled={loading || googleLoading || linkedinLoading}
             onSuccess={async user => {
+              if ((await resolveScheduledDeletion()) === 'signed_out') return;
               const route = await getPostAuthRoute(user);
               navigation.replace(route);
             }}
@@ -261,6 +268,9 @@ const SignUpScreen = ({navigation}: any) => {
             disabled={loading || googleLoading}
           />
         </View>
+
+        {/* Agreement for social sign-in / sign-up (App Store 1.2) */}
+        <SocialTermsNotice navigation={navigation} />
 
         {/* ── Divider ── */}
         <View style={styles.divider}>
@@ -375,7 +385,7 @@ const SignUpScreen = ({navigation}: any) => {
           <Text style={styles.fieldErr}>{errors.confirm}</Text>
         ) : null}
 
-        {/* ── Privacy Policy checkbox ── */}
+        {/* ── Terms of Service / Community Guidelines / Privacy Policy checkbox (Apple 1.2) ── */}
         <View style={styles.checkRow}>
           <TouchableOpacity
             style={[styles.checkbox, agreed && styles.checkboxOn]}
@@ -391,13 +401,26 @@ const SignUpScreen = ({navigation}: any) => {
             {/* Action/Action M: #46B0E3 12px 500 */}
             <Text
               style={styles.privacyLink}
+              onPress={() => Linking.openURL(TERMS_URL)}>
+              {'Terms\u00A0of\u00A0Service'}
+            </Text>
+            {', '}
+            <Text
+              style={styles.privacyLink}
+              onPress={() => navigation.navigate('CommunityGuidelines')}>
+              {'Community\u00A0Guidelines'}
+            </Text>
+            {'\nand\u00A0'}
+            <Text
+              style={styles.privacyLink}
               onPress={() =>
                 Linking.openURL(
                   'https://hub.instituteprojectmanagement.com/privacy-policy/',
                 )
               }>
-              {'Privacy Policy'}
+              {'Privacy\u00A0Policy'}
             </Text>
+            {". IPM Hub doesn't tolerate\nobjectionable content or abusive users."}
           </Text>
         </View>
         {errors.agreed ? (
@@ -408,9 +431,9 @@ const SignUpScreen = ({navigation}: any) => {
 
         {/* ── Sign Up button ── */}
         <TouchableOpacity
-          style={[styles.signUpBtn, loading && styles.signUpBtnDisabled]}
+          style={[styles.signUpBtn, (loading || !agreed) && styles.signUpBtnDisabled]}
           onPress={handleSignUp}
-          disabled={loading}
+          disabled={loading || !agreed}
           activeOpacity={0.85}>
           {loading ? (
             <ActivityIndicator color="#FFF" />
@@ -530,8 +553,8 @@ const styles = StyleSheet.create({
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 12,
+    marginTop: 20,
+    marginBottom: 24,
   },
   checkbox: {
     width: 17,
@@ -549,10 +572,12 @@ const styles = StyleSheet.create({
 
   // Body/Body S: #71727A 12px 400 lh 16px
   checkLabel: {
+    flex: 1,
+    flexShrink: 1,
     fontFamily: 'Runda',
     fontSize: 12,
     fontWeight: '400',
-    color: '#71727A',
+    color: '#192546',
     lineHeight: 16,
   },
   // Action/Action M: #46B0E3 12px 500

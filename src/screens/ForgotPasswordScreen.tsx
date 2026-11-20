@@ -104,7 +104,7 @@ const ForgotPasswordScreen = ({navigation, route}: any) => {
   // ── Stage 1 → 2: Request reset email ───────────────────────────────────
   const handleRequestReset = async () => {
     if (!email.trim()) {
-      setRequestError('Please enter your username or email address.');
+      setRequestError('Please enter your email address.');
       return;
     }
     setRequesting(true);
@@ -182,7 +182,7 @@ const ForgotPasswordScreen = ({navigation, route}: any) => {
         {stage === 'request' && (
           <>
             <Text style={styles.instructions}>
-              {'Please enter your username or email address.\nYou will receive a link to create a new password via\nemail.'}
+              {'Please enter your email address.\nYou will receive a link to create a new password via\nemail.'}
             </Text>
 
             <View style={styles.fieldBlock}>

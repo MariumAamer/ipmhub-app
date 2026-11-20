@@ -8,7 +8,6 @@ export const getToken = async (): Promise<string | null> => {
     const creds = await getCachedCredentials();
     if (!creds?.password) return null;
     const token = JSON.parse(creds.password)?.token ?? null;
-    console.log('[DEBUG] Bearer token:', token); // TEMP: remove before commit
     return token;
   } catch {
     return null;
@@ -623,25 +622,6 @@ export const unmuteActivity = async (postId: number): Promise<boolean> => {
   return res.ok;
 };
 
-// ─── Report activity ──────────────────────────────────────────────────────────
-export const reportActivity = async (
-  postId: number,
-  reasons: string[],
-): Promise<boolean> => {
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/buddyboss/v1/moderation`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      item_id: postId,
-      item_type: 'activity',
-      category_id: reasons.join(','),
-      note: reasons.join(', '),
-    }),
-  });
-  return res.ok;
-};
-
 // ─── Fetch member profile to get designation + flag ──────────────────────────
 // xprofile=1 is required — without it BuddyBoss omits xprofile groups/fields
 // entirely, so full name + job title resolve to blank and silently fall back
@@ -703,7 +683,7 @@ export const getMemberByUsername = async (username: string): Promise<any> => {
 // ─── Introductions ────────────────────────────────────────────────────────────
 export interface IntroComment {
   id: number;
-  author: {name: string; avatar: string};
+  author: {id?: number; name: string; avatar: string};
   content: string;
   time: string;
 }
@@ -797,6 +777,8 @@ export const getIntroductions = async (page = 1): Promise<IntroPost[]> => {
       embeddedComments: (item.comments || []).map((c: any) => ({
         id: c.id,
         author: {
+          // Needed for Report / Block on intro comments.
+          id: Number(c.author?.user_id) || 0,
           name: decodeEntities(c.author?.full_name || 'Member'),
           avatar:
             c.author?.avatar ||
@@ -885,6 +867,7 @@ export const getActivityComments = async (
   return list.map((c: any) => ({
     id: c.id,
     author: {
+      id: Number(c.user_id) || 0,
       name: decodeEntities(c.name || c.user_fullname || 'Member'),
       avatar:
         c.user_avatar?.thumb ||

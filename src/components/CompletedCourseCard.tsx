@@ -80,16 +80,6 @@ const FormatIcon = () => (
   </Svg>
 );
 
-// Connecting-pill arrow — from the Welcome-back banner's course pill spec
-const PillArrow = () => (
-  <Svg width={9} height={9} viewBox="0 0 9 9" fill="none">
-    <Path
-      d="M6.34492 5.38164L6.43457 5.28262C6.82532 4.80378 6.82532 4.11146 6.43457 3.63262L6.34492 3.53359L2.9541 0.143359L2.06816 1.02812L2.28027 1.24082L5.45957 4.41953C5.48009 4.44078 5.47989 4.47529 5.45898 4.49629L2.06641 7.89004L2.95176 8.77539L6.34492 5.38164Z"
-      fill="#192546"
-    />
-  </Svg>
-);
-
 // "Revisit Course" refresh icon — from the earlier confirmed spec
 const RevisitIcon = ({color}: {color: string}) => (
   <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
@@ -120,7 +110,6 @@ interface Props {
 
 const CompletedCourseCard = ({course, onPressFallback}: Props) => {
   const dateLabel = course.date_range?.display ?? course.enrollment?.date_display ?? '';
-  const pill = course.primary_recommended;
   const percentage = course.progress?.percentage ?? course.progress_pct ?? 100;
   const hasCertificate = !!course.certificate_url;
 
@@ -240,15 +229,6 @@ const CompletedCourseCard = ({course, onPressFallback}: Props) => {
         )}
       </View>
 
-      {pill?.title ? (
-        <TouchableOpacity
-          style={styles.pill}
-          activeOpacity={0.85}
-          onPress={() => pill.link && Linking.openURL(pill.link)}>
-          <Text style={styles.pillText} numberOfLines={1}>{pill.label || pill.title}</Text>
-          <PillArrow />
-        </TouchableOpacity>
-      ) : null}
     </View>
   );
 };

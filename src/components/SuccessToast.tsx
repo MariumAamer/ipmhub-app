@@ -38,7 +38,26 @@ const CheckIcon = () => (
   </Svg>
 );
 
+// Info variant (Figma "You blocked …" toast): #46B0E3 circle with a white "i".
+const InfoIcon = () => (
+  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+    <Circle cx={7.99984} cy={7.99935} r={7.33333} fill="#46B0E3" />
+    <Path
+      d="M6.42219 7.20901C6.42219 6.84082 6.72066 6.54235 7.08885 6.54235H8.00004C8.36823 6.54235 8.66671 6.84082 8.66671 7.20901V10.3135H9.47062C9.83881 10.3135 10.1373 10.612 10.1373 10.9802C10.1373 11.3484 9.83881 11.6469 9.47062 11.6469H6.52946C6.16127 11.6469 5.86279 11.3484 5.86279 10.9802C5.86279 10.612 6.16127 10.3135 6.52946 10.3135H7.33337V7.87568H7.08885C6.72066 7.87568 6.42219 7.5772 6.42219 7.20901Z"
+      fill="#FFFFFF"
+      fillRule="evenodd"
+      clipRule="evenodd"
+    />
+    <Path
+      d="M8.82179 5.22584C8.82179 5.70761 8.43123 6.09816 7.94946 6.09816C7.46769 6.09816 7.07714 5.70761 7.07714 5.22584C7.07714 4.74407 7.46769 4.35352 7.94946 4.35352C8.43123 4.35352 8.82179 4.74407 8.82179 5.22584Z"
+      fill="#FFFFFF"
+    />
+  </Svg>
+);
+
 interface SuccessToastProps {
+  /** 'success' (green check, default) or 'info' (blue "i"). */
+  variant?: 'success' | 'info';
   visible: boolean;
   message: string;
   onHide?: () => void;
@@ -60,6 +79,7 @@ const SuccessToast = ({
   duration = 3000,
   bottomOffset = 24,
   inline = false,
+  variant = 'success',
 }: SuccessToastProps) => {
   const opacity = useRef(new Animated.Value(0)).current;
   const onHideRef = useRef(onHide);
@@ -86,9 +106,9 @@ const SuccessToast = ({
   const body = (
     <Animated.View style={[s.toast, {opacity}]}>
       <View style={s.icon}>
-        <CheckIcon />
+        {variant === 'info' ? <InfoIcon /> : <CheckIcon />}
       </View>
-      <Text style={s.text}>{message}</Text>
+      <Text style={[s.text, variant === 'info' && s.textInfo]}>{message}</Text>
     </Animated.View>
   );
 
@@ -139,6 +159,8 @@ const s = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
+  // Figma Body/Body M (info toast): Runda 400, 14/18, #FFF
+  textInfo: {fontFamily: 'Runda-Normal', fontSize: 14, lineHeight: 18},
 });
 
 export default SuccessToast;

@@ -59,7 +59,7 @@ const ArticleSubmissionScreen = ({navigation}: any) => {
   const [lastName, setLastName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [email, setEmail] = useState('');
-  const [bio, setBio] = useState('');
+  const   [bio, setBio] = useState('');
   const [file, setFile] = useState<any>(null);
   const [profilePicture, setProfilePicture] = useState<any>(null);
   const [linkedinUrl, setLinkedinUrl] = useState('');

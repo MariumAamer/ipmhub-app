@@ -343,7 +343,7 @@ const MentorshipPromoCard = ({navigation}: {navigation: any}) => (
       style={styles.becomeMemberBtn}
       onPress={() => navigation.navigate('MentorApplication')}
       activeOpacity={0.85}>
-      <Text style={styles.becomeMemberBtnText}>{'Become a Member'}</Text>
+      <Text style={styles.becomeMemberBtnText}>{'Apply to Be a Mentor'}</Text>
     </TouchableOpacity>
     </View>
   </View>

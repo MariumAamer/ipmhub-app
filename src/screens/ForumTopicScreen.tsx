@@ -1,13 +1,17 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef} from 'react';
 import LinearGradient from 'react-native-linear-gradient';
-import {View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, StatusBar, Platform, RefreshControl, ActivityIndicator, Modal, Alert} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, StatusBar, Platform, RefreshControl, ActivityIndicator, Alert} from 'react-native';
+import {submitReport} from '../api/reportApi';
+import ReportModal from '../components/ReportModal';
+import {AuthorOptionsSheet, blockAuthor} from '../components/AuthorOptionsSheet';
+import {BlockMemberSheet} from '../components/MemberModeration';
+import SuccessToast from '../components/SuccessToast';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {
   getTopic,
   getReplies,
   deleteTopic,
-  reportForumItem,
   getCurrentUserId,
   ForumTopic,
   ForumReply,
@@ -26,7 +30,6 @@ import ShareLinkedInModal from '../components/ShareLinkedInModal';
 // NOTE: no "like a reply" endpoint exists yet in forumsApi.ts — the Like
 // button below is visual only (local toggle, not persisted). Flagged as a
 // backend gap, same pattern as other known-missing endpoints in this app.
-const REPORT_REASONS = ['Spam', 'Harassment or hate speech', 'Misinformation', 'Other'];
 
 const ForumTopicScreen = ({navigation, route}: any) => {
   const topicId = route?.params?.topicId;
@@ -37,7 +40,24 @@ const ForumTopicScreen = ({navigation, route}: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [repliesLoading, setRepliesLoading] = useState(false); // PERF: replies load after the topic renders
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [reportVisible, setReportVisible] = useState(false);
+  // What is being reported: the discussion itself or one of its replies.
+  const [reportTarget, setReportTarget] = useState<{
+    type: 'forum_topic' | 'forum_reply';
+    id: number;
+    noun: string;
+  } | null>(null);
+  // "…" menu on another member's discussion or reply: Report / Block author.
+  const [optionsTarget, setOptionsTarget] = useState<{
+    kind: 'topic' | 'reply';
+    id: number;
+    authorId: number;
+    authorName: string;
+    authorAvatar: string;
+    authorTitle: string;
+  } | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
+  const [showBlock, setShowBlock] = useState(false);
+  const [blockedToast, setBlockedToast] = useState('');
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [likedReplies, setLikedReplies] = useState<Record<number, boolean>>({});
   const scrollRef = useRef<ScrollView>(null);
@@ -73,11 +93,53 @@ const ForumTopicScreen = ({navigation, route}: any) => {
     loadData();
   }, [topicId]);
 
-  const handleReport = async (reason: string) => {
-    setReportVisible(false);
-    if (!topicId) return;
-    await reportForumItem(topicId, 'topic', [reason]);
-    Alert.alert('Reported', 'Thanks — our team will review this discussion.');
+  const openOptions = (t: NonNullable<typeof optionsTarget>) => {
+    setOptionsTarget(t);
+    setShowOptions(true);
+  };
+
+  const handleOptionsReport = () => {
+    const t = optionsTarget;
+    setShowOptions(false);
+    if (!t) return;
+    // iOS can't present a Modal while the menu Modal is still dismissing.
+    setTimeout(
+      () =>
+        setReportTarget(
+          t.kind === 'topic'
+            ? {type: 'forum_topic', id: t.id, noun: 'Discussion'}
+            : {type: 'forum_reply', id: t.id, noun: 'Reply'},
+        ),
+      400,
+    );
+  };
+
+  const handleOptionsBlock = () => {
+    setShowOptions(false);
+    setShowBlock(true);
+  };
+
+  // POST /blocked-members {user_id}. Blocking a reply's author hides their
+  // replies; blocking the discussion's author leaves the discussion.
+  const handleBlockConfirm = async () => {
+    const t = optionsTarget;
+    setShowBlock(false);
+    if (!t) return;
+    const err = await blockAuthor(t.authorId, {
+      name: t.authorName,
+      avatarUrl: t.authorAvatar,
+      title: t.authorTitle,
+    });
+    if (err) {
+      Alert.alert('Could not block member', err);
+      return;
+    }
+    setBlockedToast(`You blocked ${t.authorName}.`);
+    if (t.kind === 'topic') {
+      setTimeout(() => navigation?.goBack(), 1500);
+    } else {
+      setReplies(prev => prev.filter(r => r.author.id !== t.authorId));
+    }
   };
 
   const handleDeleteTopic = () => {
@@ -133,7 +195,9 @@ const ForumTopicScreen = ({navigation, route}: any) => {
       {/* ── Header: back + Report Forum ── */}
       <View style={styles.header}>
         <BackButton style={styles.backBtn} onPress={() => navigation?.goBack()} size={28} />
-        <TouchableOpacity style={styles.reportBtn} onPress={() => setReportVisible(true)}>
+        <TouchableOpacity style={styles.reportBtn} onPress={() =>
+            setReportTarget({type: 'forum_topic', id: topicId, noun: 'Discussion'})
+          }>
           <ReportIcon size={21} />
           <Text style={styles.reportText}>{'Report Forum'}</Text>
         </TouchableOpacity>
@@ -153,7 +217,22 @@ const ForumTopicScreen = ({navigation, route}: any) => {
               <TouchableOpacity onPress={handleDeleteTopic} style={styles.moreBtn}>
                 <Text style={styles.moreDots}>{'•••'}</Text>
               </TouchableOpacity>
-            ) : null}
+            ) : (
+              <TouchableOpacity
+                style={styles.moreBtn}
+                onPress={() =>
+                  openOptions({
+                    kind: 'topic',
+                    id: topic.id,
+                    authorId: topic.author.id,
+                    authorName: topic.author.name,
+                    authorAvatar: topic.author.avatar,
+                    authorTitle: topic.author.title,
+                  })
+                }>
+                <Text style={styles.moreDots}>{'•••'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.authorRow}>
@@ -260,49 +339,68 @@ const ForumTopicScreen = ({navigation, route}: any) => {
                   <LikeIcon size={16} color={likedReplies[reply.id] ? '#0C4D91' : '#8F9098'} />
                   <Text style={styles.likeText}>{'Like'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.replyToCommentBtn}
-                  onPress={() =>
-                    navigation?.navigate('ReplyToDiscussion', {
-                      topicId: topic.id,
-                      topicTitle: topic.title,
-                      authorName: reply.author.name,
-                    })
-                  }>
-                  <ReplyIcon size={12} color="#192546" />
-                  <Text style={styles.replyToCommentText}>{'Reply'}</Text>
-                </TouchableOpacity>
+                <View style={styles.replyRightActions}>
+                  <TouchableOpacity
+                    style={styles.replyToCommentBtn}
+                    onPress={() =>
+                      navigation?.navigate('ReplyToDiscussion', {
+                        topicId: topic.id,
+                        topicTitle: topic.title,
+                        authorName: reply.author.name,
+                      })
+                    }>
+                    <ReplyIcon size={12} color="#192546" />
+                    <Text style={styles.replyToCommentText}>{'Reply'}</Text>
+                  </TouchableOpacity>
+                  {!reply.isOwn && (
+                    <TouchableOpacity
+                      style={styles.replyReportBtn}
+                      onPress={() =>
+                        openOptions({
+                          kind: 'reply',
+                          id: reply.id,
+                          authorId: reply.author.id,
+                          authorName: reply.author.name,
+                          authorAvatar: reply.author.avatar,
+                          authorTitle: reply.author.title,
+                        })
+                      }>
+                      <Text style={styles.moreDots}>{'•••'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
           ))}
         </View>
       </ScrollView>
 
-      {/* ── Report sheet ── */}
-      <Modal
-        transparent
-        animationType="slide"
-        visible={reportVisible}
-        onRequestClose={() => setReportVisible(false)}>
-        <View style={styles.sheetOverlay}>
-          <View style={styles.reportSheet}>
-            <Text style={styles.reportSheetTitle}>{'Report this discussion'}</Text>
-            {REPORT_REASONS.map(reason => (
-              <TouchableOpacity
-                key={reason}
-                style={styles.reportReasonRow}
-                onPress={() => handleReport(reason)}>
-                <Text style={styles.reportReasonText}>{reason}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.reportCancelBtn}
-              onPress={() => setReportVisible(false)}>
-              <Text style={styles.reportCancelText}>{'Cancel'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* ── Report (discussion or reply) ── */}
+      <ReportModal
+        visible={!!reportTarget}
+        noun={reportTarget?.noun}
+        onClose={() => setReportTarget(null)}
+        onSubmit={async (labels, note) => {
+          if (!reportTarget) return;
+          await submitReport(reportTarget.type, reportTarget.id, labels, note);
+        }}
+      />
+
+      {/* ── More Options (Report / Block author) ── */}
+      <AuthorOptionsSheet
+        visible={showOptions}
+        onClose={() => setShowOptions(false)}
+        reportLabel={optionsTarget?.kind === 'reply' ? 'Report reply' : 'Report discussion'}
+        onReport={handleOptionsReport}
+        authorName={optionsTarget?.authorName}
+        onBlock={handleOptionsBlock}
+      />
+      <BlockMemberSheet
+        visible={showBlock}
+        name={optionsTarget?.authorName ?? ''}
+        onClose={() => setShowBlock(false)}
+        onConfirm={handleBlockConfirm}
+      />
 
       <ShareLinkedInModal
         visible={shareModalVisible}
@@ -310,6 +408,12 @@ const ForumTopicScreen = ({navigation, route}: any) => {
         context="singleDiscussion"
         topicId={topic.id}
         topicTitle={topic.title}
+      />
+      <SuccessToast
+        visible={!!blockedToast}
+        variant="info"
+        message={blockedToast}
+        onHide={() => setBlockedToast('')}
       />
     </SafeAreaView>
   );
@@ -454,21 +558,9 @@ const styles = StyleSheet.create({
   },
   replyToCommentText: {color: '#192546', fontFamily: 'Runda', fontSize: 10, fontWeight: '500'},
 
-  // Report reason sheet
-  sheetOverlay: {flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end'},
-  reportSheet: {backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20},
-  reportSheetTitle: {
-    color: '#0C4D91',
-    fontFamily: 'Runda',
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  reportReasonRow: {paddingVertical: 12},
-  reportReasonText: {color: '#192546', fontFamily: 'Runda', fontSize: 14, fontWeight: '500'},
-  reportCancelBtn: {paddingVertical: 12, alignItems: 'center'},
-  reportCancelText: {color: '#8F9098', fontFamily: 'Runda', fontSize: 14, fontWeight: '500'},
+  replyRightActions: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  replyReportBtn: {flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, paddingHorizontal: 4},
+  replyReportText: {color: '#8F9098', fontFamily: 'Runda', fontSize: 10, fontWeight: '500'},
 });
 
 export default ForumTopicScreen;

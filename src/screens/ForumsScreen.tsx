@@ -2,7 +2,12 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {useDebouncedValue} from '../hooks/useDebouncedValue';
 import {readSnapshot, writeSnapshot} from '../api/snapshotCache';
-import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Linking, Modal, FlatList, Platform} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, StatusBar, ActivityIndicator, RefreshControl, Linking, Modal, FlatList, Platform, Alert} from 'react-native';
+import {submitReport as sendReport} from '../api/reportApi';
+import ReportModal from '../components/ReportModal';
+import {AuthorOptionsSheet, blockAuthor} from '../components/AuthorOptionsSheet';
+import {BlockMemberSheet} from '../components/MemberModeration';
+import SuccessToast from '../components/SuccessToast';
 import LinearGradient from 'react-native-linear-gradient';
 import {BRAND_GRADIENT} from '../config/brandGradient';
 import AppHeader from '../components/AppHeader';
@@ -16,7 +21,6 @@ import {
   ForumSortBy,
   getTopics,
   getExploreForums,
-  reportForumItem,
   getCurrentUserId,
 } from '../api/forumsApi';
 import {
@@ -79,101 +83,6 @@ const TopicMenu = ({
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
-    </Modal>
-  );
-};
-
-// ─── Multi-step report flow ───────────────────────────────────────────────────
-const REPORT_REASONS = [
-  'Spam',
-  'Harassment or bullying',
-  'Misinformation',
-  'Inappropriate content',
-  'Other',
-];
-
-const ReportSheet = ({
-  visible,
-  onClose,
-  onSubmit,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSubmit: (reasons: string[]) => void;
-}) => {
-  const [step, setStep] = useState<'select' | 'done'>('select');
-  const [selected, setSelected] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (visible) {
-      setStep('select');
-      setSelected([]);
-    }
-  }, [visible]);
-
-  const toggle = (reason: string) => {
-    setSelected(prev =>
-      prev.includes(reason) ? prev.filter(r => r !== reason) : [...prev, reason],
-    );
-  };
-
-  const submit = () => {
-    onSubmit(selected);
-    setStep('done');
-  };
-
-  if (!visible) return null;
-  return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
-      <View style={styles.sheetOverlay}>
-        <View style={styles.reportSheet}>
-          {step === 'select' ? (
-            <>
-              <Text style={styles.sheetTitle}>{'Report Forum'}</Text>
-              <Text style={styles.sheetSubtitle}>
-                {'Tell us why you are reporting this discussion.'}
-              </Text>
-              {REPORT_REASONS.map(reason => (
-                <TouchableOpacity
-                  key={reason}
-                  style={styles.reportRow}
-                  onPress={() => toggle(reason)}>
-                  <View
-                    style={[
-                      styles.checkbox,
-                      selected.includes(reason) && styles.checkboxChecked,
-                    ]}
-                  />
-                  <Text style={styles.reportRowText}>{reason}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                disabled={selected.length === 0}
-                onPress={submit}
-                style={{marginTop: 8, opacity: selected.length === 0 ? 0.5 : 1}}>
-                <LinearGradient {...BRAND_GRADIENT} style={styles.gradientBtn}>
-                  <Text style={styles.gradientBtnText}>{'Submit Report'}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.cancelTextBtn} onPress={onClose}>
-                <Text style={styles.cancelTextBtnLabel}>{'Cancel'}</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={styles.sheetTitle}>{'Report Submitted'}</Text>
-              <Text style={styles.sheetSubtitle}>
-                {'Thank you. Our moderation team will review this discussion.'}
-              </Text>
-              <TouchableOpacity onPress={onClose} style={{marginTop: 8}}>
-                <LinearGradient {...BRAND_GRADIENT} style={styles.gradientBtn}>
-                  <Text style={styles.gradientBtnText}>{'Done'}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
     </Modal>
   );
 };
@@ -437,6 +346,9 @@ const ForumsScreen = ({navigation, route}: any) => {
   // Topic menu state
   const [menuTopic, setMenuTopic] = useState<ForumTopic | null>(null);
   const [reportTopic, setReportTopic] = useState<ForumTopic | null>(null);
+  // "Block author" from another member's discussion menu.
+  const [blockTopic, setBlockTopic] = useState<ForumTopic | null>(null);
+  const [blockedToast, setBlockedToast] = useState('');
 
   // Explore Forums (Trending/Latest) — only shown when sortBy === 'popular'
   const [trending, setTrending] = useState<ForumTopic[]>([]);
@@ -592,13 +504,42 @@ const ForumsScreen = ({navigation, route}: any) => {
   };
 
   const handleMenuReport = () => {
-    setReportTopic(menuTopic);
+    const topic = menuTopic;
     setMenuTopic(null);
+    // iOS can't present a Modal while the menu Modal is still dismissing.
+    setTimeout(() => setReportTopic(topic), 400);
   };
 
-  const submitReport = async (reasons: string[]) => {
+  const handleMenuBlock = () => {
+    const topic = menuTopic;
+    setMenuTopic(null);
+    setBlockTopic(topic);
+  };
+
+  // POST /blocked-members {user_id}; their discussions leave every list here.
+  const handleBlockConfirm = async () => {
+    const topic = blockTopic;
+    setBlockTopic(null);
+    if (!topic) return;
+    const err = await blockAuthor(topic.author.id, {
+      name: topic.author.name,
+      avatarUrl: topic.author.avatar,
+      title: topic.author.title,
+    });
+    if (err) {
+      Alert.alert('Could not block member', err);
+      return;
+    }
+    const keep = (t: ForumTopic) => t.author.id !== topic.author.id;
+    setTopics(prev => prev.filter(keep));
+    setTrending(prev => prev.filter(keep));
+    setLatest(prev => prev.filter(keep));
+    setBlockedToast(`You blocked ${topic.author.name}.`);
+  };
+
+  const submitReport = async (reasons: string[], note: string) => {
     if (reportTopic) {
-      await reportForumItem(reportTopic.id, 'topic', reasons);
+      await sendReport('forum_topic', reportTopic.id, reasons, note);
     }
   };
 
@@ -848,16 +789,40 @@ const ForumsScreen = ({navigation, route}: any) => {
       />
 
       <TopicMenu
-        visible={!!menuTopic}
-        isOwn={!!menuTopic?.isOwn}
+        visible={!!menuTopic && !!menuTopic.isOwn}
+        isOwn={true}
         onClose={() => setMenuTopic(null)}
         onEdit={handleMenuEdit}
         onDelete={handleMenuDelete}
         onReport={handleMenuReport}
       />
 
-      <ReportSheet
+      {/* Other members' discussions: Report / Block author (Figma More Options) */}
+      <AuthorOptionsSheet
+        visible={!!menuTopic && !menuTopic.isOwn}
+        onClose={() => setMenuTopic(null)}
+        reportLabel="Report discussion"
+        onReport={handleMenuReport}
+        authorName={menuTopic?.author.name}
+        onBlock={handleMenuBlock}
+      />
+
+      <BlockMemberSheet
+        visible={!!blockTopic}
+        name={blockTopic?.author.name ?? ''}
+        onClose={() => setBlockTopic(null)}
+        onConfirm={handleBlockConfirm}
+      />
+      <SuccessToast
+        visible={!!blockedToast}
+        variant="info"
+        message={blockedToast}
+        onHide={() => setBlockedToast('')}
+      />
+
+      <ReportModal
         visible={!!reportTopic}
+        noun="Discussion"
         onClose={() => setReportTopic(null)}
         onSubmit={submitReport}
       />

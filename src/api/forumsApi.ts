@@ -674,28 +674,6 @@ export const deleteTopic = async (topicId: number): Promise<boolean> => {
   return res.ok;
 };
 
-// ─── Report a topic or reply ─────────────────────────────────────────────────
-// Mirrors the moderation pattern confirmed working for activity posts in
-// feedApi.reportActivity, but targets the 'topic' or 'reply' item type.
-export const reportForumItem = async (
-  itemId: number,
-  itemType: 'topic' | 'reply',
-  reasons: string[],
-): Promise<boolean> => {
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE}/buddyboss/v1/moderation`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      item_id: itemId,
-      item_type: itemType,
-      category_id: reasons.join(','),
-      note: reasons.join(', '),
-    }),
-  });
-  return res.ok;
-};
-
 // ─── Trending / Latest forums for the Explore section ───────────────────────
 // "Trending" = highest reply_count in a recent window; "Latest" = most recent
 // activity. Both derived client-side from the same topics fetch since there's

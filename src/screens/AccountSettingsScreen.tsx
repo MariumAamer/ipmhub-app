@@ -15,7 +15,14 @@ import {
   updateNotificationSettings,
   NOTIFICATION_SETTING_KEYS,
   NotificationSettingsMap,
+  NotifSettingValue,
 } from '../api/notificationsApi';
+import {getLoginInfo, resendEmailChange, cancelEmailChange} from '../api/accountApi';
+import type {LoginInfo} from '../api/accountApi';
+import {takePendingToast} from '../utils/pendingToast';
+import SuccessToast from '../components/SuccessToast';
+import {GoogleIcon, LinkedInSquareIcon} from '../components/SocialButton';
+import AppleMark from '../components/AppleMark';
 
 // ─── Brand color ──────────────────────────────────────────────────────────────
 const NAVY = '#0C4D91';
@@ -32,21 +39,25 @@ const BellIcon = ({size = 20, color = NAVY}: {size?: number; color?: string}) =>
   </Svg>
 );
 
-// ─── Mobile Icon ──────────────────────────────────────────────────────────────
+// ─── Channel icons (Email / In-app / Push) ────────────────────────────────────
+// Rebuilt from the Figma exports. The email export used a <mask>, which
+// react-native-svg@15.3.0 doesn't render, so it's drawn as a direct-fill path.
+
+// ─── Push (phone) Icon ────────────────────────────────────────────────────────
 const MobileIcon = ({color = NAVY}: {color?: string}) => (
-  <Svg width={10} height={16} viewBox="0 0 10 16" fill="none">
+  <Svg width={11} height={16} viewBox="0 0 11 16" fill="none">
     <Path
-      d="M8.5 0H1.5C0.671875 0 0 0.671875 0 1.5V14.5C0 15.3281 0.671875 16 1.5 16H8.5C9.32812 16 10 15.3281 10 14.5V1.5C10 0.671875 9.32812 0 8.5 0ZM5 15C4.44688 15 4 14.5531 4 14C4 13.4469 4.44688 13 5 13C5.55312 13 6 13.4469 6 14C6 14.5531 5.55312 15 5 15ZM8.5 11.625C8.5 11.8313 8.33125 12 8.125 12H1.875C1.66875 12 1.5 11.8313 1.5 11.625V1.875C1.5 1.66875 1.66875 1.5 1.875 1.5H8.125C8.33125 1.5 8.5 1.66875 8.5 1.875V11.625Z"
+      d="M2.75 14.3721C2.45 14.3721 2.192 14.2641 1.976 14.0481C1.748 13.8201 1.634 13.5561 1.634 13.2561V2.74414C1.634 2.43214 1.748 2.16814 1.976 1.95214C2.192 1.73614 2.45 1.62814 2.75 1.62814H8.006C8.318 1.62814 8.582 1.73614 8.798 1.95214C9.014 2.16814 9.122 2.43214 9.122 2.74414V13.2561C9.122 13.5561 9.014 13.8201 8.798 14.0481C8.582 14.2641 8.318 14.3721 8.006 14.3721H2.75ZM8.006 15.5061C8.414 15.5061 8.792 15.4041 9.14 15.2001C9.476 14.9961 9.746 14.7261 9.95 14.3901C10.154 14.0421 10.256 13.6641 10.256 13.2561V2.74414C10.256 2.33614 10.154 1.96414 9.95 1.62814C9.746 1.28014 9.476 1.00414 9.14 0.800141C8.792 0.596141 8.414 0.494141 8.006 0.494141H2.75C2.342 0.494141 1.97 0.596141 1.634 0.800141C1.286 1.00414 1.01 1.28014 0.806 1.62814C0.602 1.96414 0.5 2.33614 0.5 2.74414V13.2561C0.5 13.6641 0.602 14.0421 0.806 14.3901C1.01 14.7261 1.286 14.9961 1.634 15.2001C1.97 15.4041 2.342 15.5061 2.75 15.5061H8.006ZM3.794 12.7161C3.794 12.8721 3.854 13.0101 3.974 13.1301C4.082 13.2381 4.214 13.2921 4.37 13.2921H6.386C6.542 13.2921 6.674 13.2381 6.782 13.1301C6.89 13.0101 6.944 12.8721 6.944 12.7161C6.944 12.5601 6.89 12.4281 6.782 12.3201C6.674 12.2121 6.542 12.1581 6.386 12.1581H4.37C4.214 12.1581 4.082 12.2121 3.974 12.3201C3.854 12.4281 3.794 12.5601 3.794 12.7161Z"
       fill={color}
     />
   </Svg>
 );
 
-// ─── Web Icon ─────────────────────────────────────────────────────────────────
+// ─── In-app (monitor) Icon ────────────────────────────────────────────────────
 const WebIcon = ({color = NAVY}: {color?: string}) => (
-  <Svg width={17} height={17} viewBox="0 0 17 17" fill="none">
+  <Svg width={17.006} height={17.006} viewBox="0 0 17 17" fill="none">
     <Path
-      d="M13.2966 1.85498C14.5773 1.85498 15.6156 2.89324 15.6156 4.174V10.358C15.6156 11.6388 14.5773 12.6771 13.2966 12.6771H9.81487L10.3451 13.7593H12.1371C12.5213 13.7593 12.8328 14.0708 12.8328 14.455C12.8328 14.8392 12.5213 15.1507 12.1371 15.1507H5.0254C4.64118 15.1507 4.3297 14.8392 4.3297 14.455C4.3297 14.0708 4.64118 13.7593 5.0254 13.7593H6.80332L7.34442 12.6771H3.86589C2.58513 12.6771 1.54688 11.6388 1.54688 10.358V4.174C1.54688 2.89324 2.58513 1.85498 3.86589 1.85498H13.2966ZM3.86589 3.40099C3.43897 3.40099 3.09289 3.74708 3.09289 4.174V10.358C3.09289 10.785 3.43897 11.1311 3.86589 11.1311H13.2966C13.7235 11.1311 14.0696 10.785 14.0696 10.358V4.174C14.0696 3.74708 13.7235 3.40099 13.2966 3.40099H3.86589Z"
+      d="M3.53788 12.0916C3.2431 12.0916 2.99368 11.9895 2.78961 11.7855C2.58553 11.5701 2.4835 11.315 2.4835 11.0202V4.25174C2.4835 3.95697 2.58553 3.70755 2.78961 3.50347C2.99368 3.28806 3.2431 3.18036 3.53788 3.18036H13.4695C13.7642 3.18036 14.0137 3.28806 14.2177 3.50347C14.4218 3.70755 14.5238 3.95697 14.5238 4.25174V11.0202C14.5238 11.315 14.4218 11.5701 14.2177 11.7855C14.0137 11.9895 13.7642 12.0916 13.4695 12.0916H3.53788ZM13.4695 13.146C13.8549 13.146 14.2121 13.0496 14.5408 12.8568C14.8583 12.6641 15.1134 12.409 15.3061 12.0916C15.4989 11.7628 15.5952 11.4057 15.5952 11.0202V4.25174C15.5952 3.86627 15.4989 3.51481 15.3061 3.19736C15.1134 2.86858 14.8583 2.60782 14.5408 2.41508C14.2121 2.22234 13.8549 2.12598 13.4695 2.12598H3.53788C3.1524 2.12598 2.80094 2.22234 2.4835 2.41508C2.15471 2.60782 1.89395 2.86858 1.70121 3.19736C1.50848 3.51481 1.41211 3.86627 1.41211 4.25174V11.0202C1.41211 11.4057 1.50848 11.7628 1.70121 12.0916C1.89395 12.409 2.15471 12.6641 2.4835 12.8568C2.80094 13.0496 3.1524 13.146 3.53788 13.146H6.88808L6.0888 14.3534H4.79633C4.64894 14.3534 4.52423 14.4044 4.4222 14.5064C4.32016 14.6085 4.26914 14.7332 4.26914 14.8806C4.26914 15.028 4.32016 15.1527 4.4222 15.2547C4.52423 15.3567 4.64894 15.4078 4.79633 15.4078H12.211C12.3584 15.4078 12.4831 15.3567 12.5851 15.2547C12.6872 15.1527 12.7382 15.028 12.7382 14.8806C12.7382 14.7332 12.6872 14.6085 12.5851 14.5064C12.4831 14.4044 12.3584 14.3534 12.211 14.3534H10.9185L10.1193 13.146H13.4695ZM9.64308 14.3534H7.36426L8.07851 13.282H8.92882L9.64308 14.3534Z"
       fill={color}
     />
   </Svg>
@@ -56,7 +67,7 @@ const WebIcon = ({color = NAVY}: {color?: string}) => (
 const EmailIcon = ({color = NAVY}: {color?: string}) => (
   <Svg width={17} height={17} viewBox="0 0 17 17" fill="none">
     <Path
-      d="M4.18763 2.97949C3.5489 2.97949 2.93633 3.23323 2.48468 3.68488C2.03303 4.13653 1.7793 4.7491 1.7793 5.38783V5.62986L9.0043 9.52053L16.2293 5.63107V5.38783C16.2293 4.7491 15.9756 4.13653 15.5239 3.68488C15.0723 3.23323 14.4597 2.97949 13.821 2.97949H4.18763ZM16.2293 6.9978L9.28969 10.7343C9.20197 10.7815 9.10391 10.8063 9.0043 10.8063C8.90468 10.8063 8.80662 10.7815 8.71891 10.7343L1.7793 6.9978V12.6128C1.7793 13.2516 2.03303 13.8641 2.48468 14.3158C2.93633 14.7674 3.5489 15.0212 4.18763 15.0212H13.821C14.4597 15.0212 15.0723 14.7674 15.5239 14.3158C15.9756 13.8641 16.2293 13.2516 16.2293 12.6128V6.9978Z"
+      d="M1.91016 6.12687V12.3999C1.91016 12.9099 2.03482 13.3802 2.28416 13.8109C2.53349 14.2415 2.87349 14.5815 3.30416 14.8309C3.73482 15.0802 4.19949 15.2049 4.69816 15.2049H13.3002C13.7988 15.2049 14.2635 15.0802 14.6942 14.8309C15.1248 14.5815 15.4648 14.2415 15.7142 13.8109C15.9635 13.3802 16.0882 12.9099 16.0882 12.3999V6.12687C16.0882 5.61687 15.9635 5.1522 15.7142 4.73287C15.4648 4.3022 15.1248 3.9622 14.6942 3.71287C14.2635 3.46353 13.7988 3.33887 13.3002 3.33887H4.69816C4.19949 3.33887 3.73482 3.46353 3.30416 3.71287C2.87349 3.9622 2.53349 4.3022 2.28416 4.73287C2.03482 5.1522 1.91016 5.61687 1.91016 6.12687ZM4.69816 4.39287H13.3002C13.6175 4.39287 13.9065 4.4722 14.1672 4.63087C14.4278 4.78953 14.6375 4.9992 14.7962 5.25987C14.9435 5.52053 15.0172 5.80953 15.0172 6.12687V12.3999C15.0172 12.7172 14.9435 13.0119 14.7962 13.2839C14.6375 13.5445 14.4278 13.7542 14.1672 13.9129C13.9065 14.0602 13.6175 14.1339 13.3002 14.1339H4.69816C4.38082 14.1339 4.09182 14.0602 3.83116 13.9129C3.57049 13.7542 3.36649 13.5445 3.21916 13.2839C3.06049 13.0119 2.98116 12.7172 2.98116 12.3999V6.12687C2.98116 5.80953 3.06049 5.52053 3.21916 5.25987C3.36649 4.9992 3.57049 4.78953 3.83116 4.63087C4.09182 4.4722 4.38082 4.39287 4.69816 4.39287ZM4.20516 6.44987C4.11449 6.5632 4.08049 6.69353 4.10316 6.84087C4.11449 6.9882 4.18249 7.1072 4.30716 7.19787L7.65616 9.71387C8.05282 9.9972 8.50049 10.1389 8.99916 10.1389C9.48649 10.1389 9.92282 9.9972 10.3082 9.71387L13.6402 7.21487C13.7535 7.1242 13.8215 7.01087 13.8442 6.87487C13.8668 6.72753 13.8328 6.59153 13.7422 6.46687C13.6515 6.3422 13.5325 6.2742 13.3852 6.26287C13.2378 6.2402 13.1075 6.2742 12.9942 6.36487L9.66216 8.86387C9.45816 9.0112 9.23149 9.08487 8.98216 9.08487C8.72149 9.08487 8.49482 9.0112 8.30216 8.86387L4.95316 6.34787C4.82849 6.2572 4.69249 6.2232 4.54516 6.24587C4.39782 6.26853 4.28449 6.33653 4.20516 6.44987Z"
       fill={color}
     />
   </Svg>
@@ -126,201 +137,283 @@ const DeleteIcon = () => (
   </Svg>
 );
 
-// ─── Checkbox ─────────────────────────────────────────────────────────────────
-const Checkbox =({checked, onToggle}: {checked: boolean; onToggle: () => void}) => (
+const BlockIcon = () => (
+  <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+    <Path
+      d="M5.625 10.305C4.775 10.305 3.985 10.095 3.255 9.675C2.555 9.255 1.995 8.695 1.575 7.995C1.155 7.265 0.945 6.475 0.945 5.625C0.945 5.075 1.035 4.545 1.215 4.035C1.395 3.525 1.655 3.065 1.995 2.655L8.43 9.39C8.03 9.68 7.5925 9.905 7.1175 10.065C6.6425 10.225 6.145 10.305 5.625 10.305ZM9.12 8.745L2.655 1.995C3.065 1.655 3.52 1.395 4.02 1.215C4.54 1.025 5.075 0.93 5.625 0.93C6.475 0.93 7.265 1.145 7.995 1.575C8.705 1.985 9.265 2.545 9.675 3.255C10.105 3.985 10.32 4.775 10.32 5.625C10.32 6.215 10.21 6.78 9.99 7.32C9.79 7.85 9.5 8.325 9.12 8.745ZM0 5.625C0 6.645 0.255 7.59 0.765 8.46C1.265 9.31 1.94 9.985 2.79 10.485C3.66 10.995 4.605 11.25 5.625 11.25C6.645 11.25 7.59 10.995 8.46 10.485C9.31 9.985 9.985 9.31 10.485 8.46C10.995 7.59 11.25 6.645 11.25 5.625C11.25 4.605 10.995 3.66 10.485 2.79C9.985 1.94 9.31 1.265 8.46 0.765C7.59 0.255 6.645 0 5.625 0C4.605 0 3.66 0.255 2.79 0.765C1.94 1.265 1.265 1.94 0.765 2.79C0.255 3.66 0 4.605 0 5.625Z"
+      fill="#192546"
+    />
+  </Svg>
+);
+
+// ─── Toggle (pill switch) ─────────────────────────────────────────────────────
+const Toggle = ({value, onToggle, label}: {value: boolean; onToggle: () => void; label: string}) => (
   <TouchableOpacity
     onPress={onToggle}
-    style={[checkboxStyles.box, checked && checkboxStyles.boxChecked]}
-    hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
-    activeOpacity={0.8}>
-    {checked && (
-      <Svg width={10} height={8} viewBox="0 0 10 8" fill="none">
-        <Path d="M1 4L3.5 6.5L9 1" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      </Svg>
-    )}
+    activeOpacity={0.8}
+    hitSlop={{top: 8, bottom: 8, left: 6, right: 6}}
+    accessibilityRole="switch"
+    accessibilityLabel={label}
+    accessibilityState={{checked: value}}
+    style={[toggleStyles.track, value ? toggleStyles.trackOn : toggleStyles.trackOff]}>
+    <View style={[toggleStyles.thumb, value ? toggleStyles.thumbOn : toggleStyles.thumbOff]} />
   </TouchableOpacity>
 );
 
-const checkboxStyles = StyleSheet.create({
-  box: {
-    width: 18, height: 18, borderRadius: 4,
-    borderWidth: 1.5, borderColor: '#D0D5DD',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  boxChecked: {backgroundColor: NAVY, borderColor: NAVY},
+const toggleStyles = StyleSheet.create({
+  track: {width: 44, height: 24, borderRadius: 12, padding: 2, justifyContent: 'center'},
+  trackOn: {backgroundColor: NAVY},
+  trackOff: {backgroundColor: '#C5C6CC'},
+  thumb: {width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFFFFF'},
+  thumbOn: {alignSelf: 'flex-end'},
+  thumbOff: {alignSelf: 'flex-start'},
 });
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-// Each row maps directly to real backend field keys (per Robby, 2026-08-02):
-// base key = mobile/push channel, "_web" suffix = web channel, and the one
-// exception — intro replies — uses "_email" instead of "_web". A row only
-// renders the columns it has a key for, so groups with no web/email field
-// just show a single Mobile checkbox.
-interface NotifChannelKeys {
-  mobile?: string;
-  web?: string;
-  email?: string;
-}
-
-interface NotifSetting {
-  key: string; // stable local id, defaults to the mobile key
-  label: string;
-  keys: NotifChannelKeys;
-}
-
-type ChannelId = 'mobile' | 'web' | 'email';
-const CHANNEL_ORDER: ChannelId[] = ['email', 'web', 'mobile'];
-const CHANNEL_LABEL: Record<ChannelId, string> = {
-  email: 'Email',
-  web: 'Web',
-  mobile: 'Mobile',
+// ─── Notification settings config ─────────────────────────────────────────────
+// Channels match the Figma columns: Email / In-app / Push. Backend mapping
+// (per Robby, 2026-08-02): base key = push, "_web" suffix = in-app,
+// "_email" suffix = email. NOTE: "_web" = in-app is an assumption — confirm
+// with Robby.
+//
+// A channel is ONLY shown when it has a real backend key. A row with no keys
+// at all, and a group with no rows, are hidden entirely. To light something
+// up once an endpoint exists, just add its key here — no other change needed.
+type ChannelId = 'email' | 'inapp' | 'push';
+const CHANNEL_ORDER: ChannelId[] = ['email', 'inapp', 'push'];
+const CHANNEL_LABEL: Record<ChannelId, string> = {email: 'Email', inapp: 'In-app', push: 'Push'};
+const CHANNEL_DESC: Record<ChannelId, string> = {
+  email: 'A notification sent to your inbox',
+  inapp: 'In your IPM Hub notifications',
+  push: 'On your phone',
+};
+const CHANNEL_ICON: Record<ChannelId, () => React.ReactElement> = {
+  email: () => <EmailIcon color={NAVY} />,
+  inapp: () => <WebIcon color={NAVY} />,
+  push: () => <MobileIcon color={NAVY} />,
 };
 
-// ─── Notification Row (each row is its own bordered frame) ───────────────────
-const NotifRow = ({
-  setting,
+interface NotifSetting {
+  id: string;
+  title: string;
+  description: string;
+  keys: Partial<Record<ChannelId, string>>; // backend field key per channel
+}
+interface NotifGroup {
+  id: string;
+  title: string;
+  settings: NotifSetting[];
+}
+
+const K = NOTIFICATION_SETTING_KEYS;
+
+// Master "Email notifications" switch — no endpoint yet, so `key` is unset and
+// the card is hidden. Set `key` once the backend adds it.
+const EMAIL_MASTER: {title: string; description: string; key?: string} = {
+  title: 'Email notifications',
+  description: "Turn off to stop all emails from IPM Hub. In-app and push aren't affected.",
+  key: undefined,
+};
+
+const NOTIFICATION_GROUPS: NotifGroup[] = [
+  {
+    id: 'mentions',
+    title: 'MENTIONS',
+    settings: [
+      {
+        id: 'mention',
+        title: 'Mentions',
+        description: 'When someone mentions you, like @camilatorres',
+        keys: {inapp: K.mentionWeb, push: K.mention},
+      },
+    ],
+  },
+  {
+    id: 'activity',
+    title: 'ACTIVITY',
+    settings: [
+      {
+        id: 'activityComment',
+        title: 'Replies to your posts',
+        description: 'When someone replies to your post or comment',
+        keys: {inapp: K.activityCommentWeb, push: K.activityComment},
+      },
+      {
+        id: 'newFollower',
+        title: 'New followers', // title cut off in the Figma frame — confirm
+        description: 'When someone starts following you',
+        keys: {inapp: K.newFollowerWeb, push: K.newFollower},
+      },
+    ],
+  },
+  {
+    id: 'introductions',
+    title: 'INTRODUCTIONS',
+    settings: [
+      {
+        id: 'replyIntro',
+        title: 'Replies to your introduction',
+        description: 'When someone replies to your introduction',
+        keys: {email: K.replyIntroEmail, push: K.replyIntro},
+      },
+    ],
+  },
+  {
+    id: 'discussions',
+    title: 'DISCUSSIONS (FORUMS)',
+    settings: [
+      {
+        id: 'newDiscussion',
+        title: 'New discussions',
+        description: 'When a new discussion is created',
+        keys: {push: K.newDiscussion},
+      },
+      {
+        id: 'forumReply',
+        title: 'Replies to your discussions',
+        description: 'When someone replies to your discussion',
+        keys: {push: K.forumReply},
+      },
+    ],
+  },
+  {
+    id: 'feed',
+    title: 'FEED',
+    settings: [
+      {
+        id: 'feedLike',
+        title: 'Likes',
+        description: 'When someone likes your post or activity',
+        keys: {push: K.feedLike},
+      },
+    ],
+  },
+  {
+    // No endpoint yet — hidden automatically until keys are added.
+    id: 'events',
+    title: 'EVENTS & WEBINARS',
+    settings: [
+      {
+        id: 'events',
+        title: 'Events & webinars',
+        description: 'Announcements of upcoming IPM events and webinars',
+        keys: {},
+      },
+    ],
+  },
+];
+
+const channelsUsed = (settings: NotifSetting[]): ChannelId[] =>
+  CHANNEL_ORDER.filter(ch => settings.some(s => !!s.keys[ch]));
+
+// Drop rows with no keys, then groups with no rows.
+const VISIBLE_GROUPS: NotifGroup[] = NOTIFICATION_GROUPS.map(g => ({
+  ...g,
+  settings: g.settings.filter(s => channelsUsed([s]).length > 0),
+})).filter(g => g.settings.length > 0);
+
+const LEGEND_CHANNELS: ChannelId[] = channelsUsed(VISIBLE_GROUPS.flatMap(g => g.settings));
+
+// ─── Group card (header + column labels + rows) ───────────────────────────────
+const NotifGroupCard = ({
+  group,
   settingsMap,
   onToggle,
 }: {
-  setting: NotifSetting;
+  group: NotifGroup;
   settingsMap: NotificationSettingsMap;
   onToggle: (backendKey: string) => void;
 }) => {
-  const availableChannels = CHANNEL_ORDER.filter(ch => setting.keys[ch]);
+  // Only the channels this group actually has keys for get a column.
+  const channels = channelsUsed(group.settings);
   return (
-    <View style={notifStyles.frame}>
-      <View style={notifStyles.row}>
-        <Text style={notifStyles.label}>{setting.label}</Text>
-        <View style={notifStyles.channelsRow}>
-          {availableChannels.map(ch => {
-            const backendKey = setting.keys[ch] as string;
-            const checked = settingsMap[backendKey] === 'yes';
+    <View style={notifStyles.card}>
+      <View style={notifStyles.cardHeader}>
+        <Text style={notifStyles.groupTitle}>{group.title}</Text>
+        <View style={notifStyles.colLabels}>
+          {channels.map(ch => (
+            <Text key={ch} style={notifStyles.colLabel}>{CHANNEL_LABEL[ch]}</Text>
+          ))}
+        </View>
+      </View>
+      {group.settings.map(s => (
+        <React.Fragment key={s.id}>
+        <View style={notifStyles.divider} />
+        <View style={notifStyles.row}>
+          <View style={notifStyles.rowText}>
+            <Text style={notifStyles.rowTitle}>{s.title}</Text>
+            <Text style={notifStyles.rowDesc}>{s.description}</Text>
+          </View>
+          {channels.map(ch => {
+            const backendKey = s.keys[ch];
             return (
-              <View key={ch} style={notifStyles.channelCell}>
-                <Checkbox checked={checked} onToggle={() => onToggle(backendKey)} />
-                <Text style={notifStyles.channelLabel}>{CHANNEL_LABEL[ch]}</Text>
+              <View key={ch} style={notifStyles.cell}>
+                {backendKey ? (
+                  <Toggle
+                    value={settingsMap[backendKey] === 'yes'}
+                    onToggle={() => onToggle(backendKey)}
+                    label={`${s.title} — ${CHANNEL_LABEL[ch]}`}
+                  />
+                ) : (
+                  <Text style={notifStyles.dash}>{'—'}</Text>
+                )}
               </View>
             );
           })}
         </View>
-      </View>
+        </React.Fragment>
+      ))}
     </View>
   );
 };
 
+const COL_W = 56;
 const notifStyles = StyleSheet.create({
-  frame: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  // Box for each notification group (Introductions, Discussions, ...):
+  // padding 4/12, column, flex-start, stretch, radius 5, 1px #C5C6CC border.
+  card: {
     flexDirection: 'column',
-    justifyContent: 'center',
     alignItems: 'flex-start',
     alignSelf: 'stretch',
+    paddingVertical: 4,
+    paddingHorizontal: 12,
     borderRadius: 5,
     borderWidth: 1,
     borderColor: '#C5C6CC',
-    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
   },
-  row: {
+  // Top text box: padding 10/0, centered row, gap 8, stretch.
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'stretch',
-    gap: 10,
+    gap: 8,
+    paddingVertical: 10,
   },
-  label: {
-    flex: 1,
-    fontFamily: 'Runda',
-    fontSize: 10,
-    fontWeight: '400',
-    lineHeight: 14,
-    color: DARK_NAVY,
-  },
-  channelsRow: {flexDirection: 'row', gap: 10},
-  channelCell: {alignItems: 'center', gap: 4, width: 44},
-  channelLabel: {fontSize: 10, color: '#888'},
+  // Heading/H5: Runda 12 / 500, Navy Blue.
+  groupTitle: {flex: 1, fontFamily: 'Runda-Medium', fontSize: 12, fontWeight: '500', color: DARK_NAVY},
+  colLabels: {flexDirection: 'row'},
+  // Caption: Runda 12 / 400 / 16, Dark Grey.
+  colLabel: {width: COL_W, textAlign: 'center', fontFamily: 'Runda-Normal', fontSize: 12, fontWeight: '400', lineHeight: 16, color: '#7C86A1'},
+  row: {flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', paddingVertical: 8},
+  // 1px line after the heading and after each notification (Neutral Light Medium).
+  divider: {height: 1, alignSelf: 'stretch', backgroundColor: '#E8E9F1'},
+  rowText: {flex: 1, paddingRight: 8},
+  // Notification heading — Heading/H4: Runda 14 / 500, Navy Blue.
+  rowTitle: {fontFamily: 'Runda-Medium', fontSize: 14, fontWeight: '500', color: DARK_NAVY, marginBottom: 2},
+  // Description — Body S: Runda 12 / 400, Neutral Dark Lightest.
+  rowDesc: {fontFamily: 'Runda-Normal', fontSize: 12, fontWeight: '400', color: '#8F9098'},
+  cell: {width: COL_W, alignItems: 'center', justifyContent: 'center'},
+  dash: {fontSize: 12, color: '#8F9098'},
 });
 
-// ─── Notification settings groups ─────────────────────────────────────────────
-// Wired to the confirmed /custom/v1/notifications/settings field keys.
-// Each row only lists the channel keys that actually exist for it — most
-// groups are mobile+web, Introductions is mobile+email, and Discussions/Feed
-// are mobile-only (no web or email field for those yet).
-const GENERAL_GROUP: NotifSetting[] = [
-  {
-    key: NOTIFICATION_SETTING_KEYS.enableAll,
-    label: 'Enable Notifications',
-    keys: {
-      mobile: NOTIFICATION_SETTING_KEYS.enableAll,
-      web: NOTIFICATION_SETTING_KEYS.enableAllWeb,
-    },
-  },
-];
-
-const MENTIONS_GROUP: NotifSetting[] = [
-  {
-    key: NOTIFICATION_SETTING_KEYS.mention,
-    label: 'Notify me when someone mentions me',
-    keys: {
-      mobile: NOTIFICATION_SETTING_KEYS.mention,
-      web: NOTIFICATION_SETTING_KEYS.mentionWeb,
-    },
-  },
-];
-
-const ACTIVITY_GROUP: NotifSetting[] = [
-  {
-    key: NOTIFICATION_SETTING_KEYS.activityComment,
-    label: 'Notify me when someone replies to my post or comment',
-    keys: {
-      mobile: NOTIFICATION_SETTING_KEYS.activityComment,
-      web: NOTIFICATION_SETTING_KEYS.activityCommentWeb,
-    },
-  },
-  {
-    key: NOTIFICATION_SETTING_KEYS.newFollower,
-    label: 'Notify me when someone starts following me',
-    keys: {
-      mobile: NOTIFICATION_SETTING_KEYS.newFollower,
-      web: NOTIFICATION_SETTING_KEYS.newFollowerWeb,
-    },
-  },
-];
-
-const INTRODUCTIONS_GROUP: NotifSetting[] = [
-  {
-    key: NOTIFICATION_SETTING_KEYS.replyIntro,
-    label: 'Notify me when someone replies to my introduction',
-    keys: {
-      mobile: NOTIFICATION_SETTING_KEYS.replyIntro,
-      email: NOTIFICATION_SETTING_KEYS.replyIntroEmail,
-    },
-  },
-];
-
-// Mobile-only — no web/email field confirmed for these yet.
-const DISCUSSIONS_GROUP: NotifSetting[] = [
-  {
-    key: NOTIFICATION_SETTING_KEYS.newDiscussion,
-    label: 'Notify me when a new discussion is created',
-    keys: {mobile: NOTIFICATION_SETTING_KEYS.newDiscussion},
-  },
-  {
-    key: NOTIFICATION_SETTING_KEYS.forumReply,
-    label: 'Notify me when someone replies to a discussion I follow',
-    keys: {mobile: NOTIFICATION_SETTING_KEYS.forumReply},
-  },
-];
-
-const FEED_GROUP: NotifSetting[] = [
-  {
-    key: NOTIFICATION_SETTING_KEYS.feedLike,
-    label: 'Notify me when someone likes my post or activity',
-    keys: {mobile: NOTIFICATION_SETTING_KEYS.feedLike},
-  },
-];
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
+// Backend: provider accounts (Google/LinkedIn/Apple) can't set a password yet —
+// the "set password" endpoint comes after the iOS submission. Flip this to true
+// once it exists; SetPasswordScreen and its route are already in place.
+const SET_PASSWORD_SUPPORTED = false;
+
+const PROVIDER_LABEL: Record<string, string> = {google: 'Google', linkedin: 'LinkedIn', apple: 'Apple'};
+
 const AccountSettingsScreen = ({navigation}: any) => {
   const [activeTab, setActiveTab] = useState<'login' | 'notifications'>('login');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -334,6 +427,18 @@ const AccountSettingsScreen = ({navigation}: any) => {
   const [showRepeat, setShowRepeat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingEmail, setLoadingEmail] = useState(true);
+  // Read-only card + "Change" buttons (per Figma): the email shown in the card
+  // is the last saved value; `email` is the live edit buffer.
+  const [savedEmail, setSavedEmail] = useState('');
+  // Address a confirmation link was sent to (Change Email flow); null if none.
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  // GET /account/login-info — drives the email/password rows and the banner.
+  const [loginInfo, setLoginInfo] = useState<LoginInfo | null>(null);
+  const [pendingBusy, setPendingBusy] = useState<'resend' | 'cancel' | null>(null);
+  // One-line confirmation handed over by another screen (e.g. "Password set").
+  const [toast, setToast] = useState<string | null>(null);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
 
   // ── Notification state ────────────────────────────────────────────────────
   // One flat map of backend key -> 'yes'/'no', loaded straight from
@@ -342,8 +447,10 @@ const AccountSettingsScreen = ({navigation}: any) => {
   // single source of truth instead of per-group local state going stale.
   const [settingsMap, setSettingsMap] = useState<NotificationSettingsMap>({});
   const [loadingNotif, setLoadingNotif] = useState(true);
-  const [savingNotif, setSavingNotif] = useState(false);
-  const pendingChanges = useRef<Partial<NotificationSettingsMap>>({});
+  // Mirror of settingsMap so rapid toggles read the latest value, plus a
+  // per-key save queue so quick taps on one toggle reach the server in order.
+  const settingsRef = useRef<NotificationSettingsMap>({});
+  const saveQueue = useRef<Record<string, Promise<unknown>>>({});
 
   const newPassRef = useRef<TextInput>(null);
   const repeatPassRef = useRef<TextInput>(null);
@@ -353,9 +460,74 @@ const AccountSettingsScreen = ({navigation}: any) => {
     loadNotifSettings();
   }, []);
 
+  // Read login-info on mount and each time we come back from Change Email /
+  // Change Password, so the pending-email banner and the row buttons follow
+  // the server. If it can't be read we keep whatever was shown before.
+  const refreshLoginInfo = () =>
+    getLoginInfo()
+      .then(info => {
+        setLoginInfo(info);
+        setPendingEmail(info.pendingEmail);
+        if (info.email) setSavedEmail(info.email);
+      })
+      .catch(() => {});
+
+  useEffect(() => {
+    const onFocus = () => {
+      refreshLoginInfo();
+      const t = takePendingToast();
+      if (t) setToast(t);
+    };
+    onFocus();
+    const unsubscribe = navigation?.addListener?.('focus', onFocus);
+    return unsubscribe;
+  }, [navigation]);
+
+
+  const handleResendPending = async () => {
+    setPendingBusy('resend');
+    try {
+      await resendEmailChange();
+      Alert.alert('Link sent', `We sent a new confirmation link to ${pendingEmail}.`);
+    } catch (e: any) {
+      if (e?.code === 'nothing_pending') refreshLoginInfo(); // it expired meanwhile
+      Alert.alert('Could not resend', e?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setPendingBusy(null);
+    }
+  };
+
+  const handleCancelPending = async () => {
+    setPendingBusy('cancel');
+    try {
+      await cancelEmailChange();
+      setPendingEmail(null);
+      refreshLoginInfo();
+    } catch (e: any) {
+      if (e?.code === 'nothing_pending') {
+        setPendingEmail(null);
+        refreshLoginInfo();
+      } else {
+        Alert.alert('Could not cancel', e?.message || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      setPendingBusy(null);
+    }
+  };
+
+  // Accounts created with Google/LinkedIn/Apple that can't change a password
+  // (they have none) get "Set" instead of "Change".
+  const needsPasswordSetup = !!loginInfo && !loginInfo.canChangePassword && loginInfo.provider !== 'password';
+  const canSetPassword = needsPasswordSetup && SET_PASSWORD_SUPPORTED;
+  // Buttons follow the server flags (can_change_email / can_change_password);
+  // hidden until login-info has loaded so they don't flash for provider accounts.
+  const showEmailChange = !!loginInfo && loginInfo.canChangeEmail;
+  const showPasswordButton = !!loginInfo && (loginInfo.canChangePassword || canSetPassword);
+
   const loadNotifSettings = async () => {
     try {
       const data = await getNotificationSettings();
+      settingsRef.current = data;
       setSettingsMap(data);
     } catch (e) {
       console.log('[AccountSettings] loadNotifSettings error:', e);
@@ -371,7 +543,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
       const stored = creds ? JSON.parse(creds.password) : null;
       const token = stored?.token ?? null;
       // Show the stored email immediately as a fallback.
-      if (stored?.email) setEmail(stored.email);
+      if (stored?.email) { setEmail(stored.email); setSavedEmail(stored.email); }
       if (token) {
         // context=edit is required — WP omits "email" from /users/me otherwise.
         const res = await fetch(
@@ -380,7 +552,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
         );
         if (res.ok) {
           const data = await res.json();
-          if (data?.email) setEmail(data.email);
+          if (data?.email) { setEmail(data.email); setSavedEmail(data.email); }
         }
       }
     } catch {}
@@ -389,19 +561,69 @@ const AccountSettingsScreen = ({navigation}: any) => {
     }
   };
 
-  // ── Toggle a single checkbox ───────────────────────────────────────────────
-  // Flips the backend key locally and tracks it in pendingChanges so Save
-  // only sends what actually changed, per the "send only what changed, or
-  // the full map" spec.
+  // ── Toggle a setting — saved immediately ("Changes are saved automatically") ─
+  // Optimistic: flips the value locally, POSTs only that key, and reverts it
+  // if the save fails. Saves for the same key are chained so rapid taps reach
+  // the server in order.
+  const applySetting = (backendKey: string, value: NotifSettingValue) => {
+    settingsRef.current = {...settingsRef.current, [backendKey]: value};
+    setSettingsMap(settingsRef.current);
+  };
+
   const toggleSetting = (backendKey: string) => {
-    setSettingsMap(prev => {
-      const nextVal: 'yes' | 'no' = prev[backendKey] === 'yes' ? 'no' : 'yes';
-      pendingChanges.current[backendKey] = nextVal;
-      return {...prev, [backendKey]: nextVal};
+    const previous: NotifSettingValue = settingsRef.current[backendKey] === 'yes' ? 'yes' : 'no';
+    const next: NotifSettingValue = previous === 'yes' ? 'no' : 'yes';
+    applySetting(backendKey, next);
+    saveQueue.current[backendKey] = (saveQueue.current[backendKey] ?? Promise.resolve()).then(async () => {
+      let ok = false;
+      try {
+        ok = await updateNotificationSettings({[backendKey]: next});
+      } catch {}
+      // Only revert if no newer tap has changed this key in the meantime.
+      if (!ok && settingsRef.current[backendKey] === next) {
+        applySetting(backendKey, previous);
+        Alert.alert('Error', 'Could not save your notification preference. Please try again.');
+      }
     });
   };
 
+  const resetPasswordFields = () => {
+    setNewPassword('');
+    setRepeatPassword('');
+    setShowNew(false);
+    setShowRepeat(false);
+  };
+  const cancelEditEmail = () => {
+    setEmail(savedEmail);
+    setEditingEmail(false);
+  };
+  const cancelEditPassword = () => {
+    resetPasswordFields();
+    setEditingPassword(false);
+  };
+  // Only one row is editable at a time.
+  const toggleEditEmail = () => {
+    if (editingEmail) {
+      cancelEditEmail();
+      return;
+    }
+    cancelEditPassword();
+    setEditingEmail(true);
+  };
+  const toggleEditPassword = () => {
+    if (editingPassword) {
+      cancelEditPassword();
+      return;
+    }
+    cancelEditEmail();
+    setEditingPassword(true);
+  };
+
   const handleSaveLoginInfo = async () => {
+    if (editingPassword && !newPassword) {
+      Alert.alert('Error', 'Please enter a new password.');
+      return;
+    }
     if (newPassword && newPassword !== repeatPassword) {
       Alert.alert('Error', 'Passwords do not match.');
       return;
@@ -417,8 +639,9 @@ const AccountSettingsScreen = ({navigation}: any) => {
       const token = creds ? JSON.parse(creds.password)?.token : null;
       if (!token) throw new Error('Not authenticated');
       const body: any = {};
-      if (email.trim()) body.email = email.trim();
-      if (newPassword) body.password = newPassword;
+      if (editingEmail && email.trim()) body.email = email.trim();
+      if (editingPassword && newPassword) body.password = newPassword;
+      if (Object.keys(body).length === 0) return;
       const res = await fetch(
         'https://hub.instituteprojectmanagement.com/wp-json/wp/v2/users/me',
         {
@@ -430,6 +653,11 @@ const AccountSettingsScreen = ({navigation}: any) => {
       if (res.ok) {
         setNewPassword('');
         setRepeatPassword('');
+        if (editingEmail && email.trim()) setSavedEmail(email.trim());
+        setEditingEmail(false);
+        setEditingPassword(false);
+        setShowNew(false);
+        setShowRepeat(false);
         Alert.alert('Success', 'Your login information has been updated.');
       } else {
         const err = await res.json();
@@ -442,38 +670,30 @@ const AccountSettingsScreen = ({navigation}: any) => {
     }
   };
 
-  // ── Save notification preferences ─────────────────────────────────────────
-  // POST /custom/v1/notifications/settings — sends only the keys the user
-  // actually touched this session (pendingChanges), per spec ("send only
-  // what changed, or the full map"). Falls back to the full map if nothing
-  // was tracked (e.g. screen reopened) so Save always has something to send.
-  const handleSaveNotifications = async () => {
-    setSavingNotif(true);
-    try {
-      const changed = pendingChanges.current;
-      const payload = Object.keys(changed).length > 0 ? changed : settingsMap;
-      const ok = await updateNotificationSettings(payload);
-      if (ok) {
-        pendingChanges.current = {};
-        Alert.alert('Saved', 'Notification preferences updated.');
-      } else {
-        Alert.alert('Error', 'Could not save notification preferences.');
-      }
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Something went wrong.');
-    } finally {
-      setSavingNotif(false);
-    }
-  };
-
   // ── Log out ────────────────────────────────────────────────────────────────
   const handleLogout = () => setLogoutConfirmOpen(true);
+
+  const handleBlockedMembers = () => navigation?.navigate?.('BlockedMembers');
 
   const handleConfirmLogout = async () => {
     setLogoutConfirmOpen(false);
     await logoutUser();
     navigation?.reset?.({index: 0, routes: [{name: 'SignIn'}]});
   };
+
+  const loginSaveButton = (
+    <TouchableOpacity
+      style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+      onPress={handleSaveLoginInfo}
+      disabled={saving}
+      activeOpacity={0.85}>
+      {saving ? (
+        <ActivityIndicator color="#FFFFFF" size="small" />
+      ) : (
+        <Text style={styles.saveBtnText}>{'Save  Changes'}</Text>
+      )}
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
@@ -514,7 +734,7 @@ const AccountSettingsScreen = ({navigation}: any) => {
       </View>
 
       <ScrollView
-        style={styles.scroll}
+        style={[styles.scroll, styles.scrollWhite]}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
@@ -525,207 +745,275 @@ const AccountSettingsScreen = ({navigation}: any) => {
             frame spec (390×694, padding 0 16, column, space-between). */}
         {activeTab === 'login' && (
           <View style={styles.loginWrap}>
-          <View style={styles.loginFieldsBlock}>
-            <Text style={styles.sectionHeading}>{'Login Information'}</Text>
-            <Text style={styles.fieldLabel}>{'Account Email'}</Text>
-            {loadingEmail ? (
-              <View style={styles.inputSkeleton}>
-                <ActivityIndicator size="small" color={NAVY} />
-              </View>
-            ) : (
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                returnKeyType="next"
-                onSubmitEditing={() => newPassRef.current?.focus()}
-                placeholderTextColor="#C0C0C0"
-              />
-            )}
-            {isApplePrivateRelay(email) && (
-              <View style={styles.hintRow}>
-                <View style={styles.hintIconBox}>
-                  <ExclamationIcon />
+            {/* ── Login Information card (read-only rows + Change buttons) ── */}
+            <View style={styles.loginCard}>
+              <Text style={styles.cardTitle}>{'Login Information'}</Text>
+              <Text style={styles.cardSubtitle}>
+                {'Manage the email and password you use to sign in.'}
+              </Text>
+              {pendingEmail ? (
+                <View style={styles.pendingBanner}>
+                  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none" style={styles.pendingIcon}>
+                    <Circle cx={8.0013} cy={8.00033} r={7.33333} fill="#46B0E3" />
+                    <Path
+                      fillRule="evenodd"
+                      clipRule="evenodd"
+                      d="M6.42267 7.20901C6.42267 6.84082 6.72115 6.54235 7.08934 6.54235H8.00053C8.36872 6.54235 8.6672 6.84082 8.6672 7.20901V10.3135H9.47111C9.8393 10.3135 10.1378 10.612 10.1378 10.9802C10.1378 11.3484 9.8393 11.6469 9.47111 11.6469H6.52995C6.16176 11.6469 5.86328 11.3484 5.86328 10.9802C5.86328 10.612 6.16176 10.3135 6.52995 10.3135H7.33386V7.87568H7.08934C6.72115 7.87568 6.42267 7.5772 6.42267 7.20901Z"
+                      fill="#FFFFFF"
+                    />
+                    <Path
+                      d="M8.82227 5.22584C8.82227 5.70761 8.43172 6.09816 7.94995 6.09816C7.46818 6.09816 7.07763 5.70761 7.07763 5.22584C7.07763 4.74407 7.46818 4.35352 7.94995 4.35352C8.43172 4.35352 8.82227 4.74407 8.82227 5.22584Z"
+                      fill="#FFFFFF"
+                    />
+                  </Svg>
+                  <View style={styles.pendingTextWrap}>
+                    <Text style={styles.pendingTitle}>{'Confirm your new email'}</Text>
+                    <Text style={styles.pendingBody}>
+                      {`We sent a link to ${pendingEmail}. Your current email keeps working until you confirm.`}
+                    </Text>
+                    <View style={styles.pendingActions}>
+                      <TouchableOpacity
+                        onPress={handleResendPending}
+                        disabled={!!pendingBusy}
+                        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+                        <Text style={styles.pendingAction}>{pendingBusy === 'resend' ? 'Sending…' : 'Resend link'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleCancelPending}
+                        disabled={!!pendingBusy}
+                        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+                        <Text style={styles.pendingAction}>{pendingBusy === 'cancel' ? 'Cancelling…' : 'Cancel change'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
-                <Text style={styles.hintText}>
-                  {'Apple is hiding your real email. Messages are forwarded to you.'}
-                </Text>
-              </View>
-            )}
-            <View style={styles.hintRow}>
-              <View style={styles.hintIconBox}>
-                <ExclamationIcon />
-              </View>
-              <Text style={styles.hintText}>{'Leave password fields blank for no change'}</Text>
-            </View>
-            <Text style={styles.fieldLabel}>{'Add Your New Password'}</Text>
-            <View style={styles.passRow}>
-              <TextInput
-                ref={newPassRef}
-                style={styles.passInput}
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry={!showNew}
-                placeholderTextColor="#C0C0C0"
-                returnKeyType="next"
-                onSubmitEditing={() => repeatPassRef.current?.focus()}
-              />
-              <TouchableOpacity
-                onPress={() => setShowNew(p => !p)}
-                style={styles.eyeBtn}
-                hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-                {showNew ? <EyeOpenIcon /> : <EyeClosedIcon />}
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.fieldLabel}>{'Repeat Your New Password'}</Text>
-            <View style={styles.passRow}>
-              <TextInput
-                ref={repeatPassRef}
-                style={styles.passInput}
-                value={repeatPassword}
-                onChangeText={setRepeatPassword}
-                secureTextEntry={!showRepeat}
-                placeholderTextColor="#C0C0C0"
-                returnKeyType="done"
-                onSubmitEditing={handleSaveLoginInfo}
-              />
-              <TouchableOpacity
-                onPress={() => setShowRepeat(p => !p)}
-                style={styles.eyeBtn}
-                hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-                {showRepeat ? <EyeOpenIcon /> : <EyeClosedIcon />}
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-              onPress={handleSaveLoginInfo}
-              disabled={saving}
-              activeOpacity={0.85}>
-              {saving ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
-                <Text style={styles.saveBtnText}>{'Save  Changes'}</Text>
+                <View style={styles.cardDivider} />
               )}
-            </TouchableOpacity>
-          </View>
 
-          {/* ── Account actions — Login Information tab only ── */}
-          <View style={styles.actionsGroup}>
-            <TouchableOpacity style={styles.actionRow} onPress={handleLogout} activeOpacity={0.7}>
-              <LogoutIcon />
-              <Text style={styles.actionLabel}>{'Log Out'}</Text>
-              <Text style={styles.actionEmail} numberOfLines={1}>{emailForDisplay(email)}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionRow}
-              onPress={() => navigation?.navigate?.('DeleteAccount')}
-              activeOpacity={0.7}>
-              <DeleteIcon />
-              <Text style={styles.deleteLabel}>{'Delete Account'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionRow}
-              onPress={() => navigation?.navigate?.('PrivacyPolicy')}
-              activeOpacity={0.7}>
-              <PrivacyIcon />
-              <Text style={styles.actionLabel}>{'Privacy Policy'}</Text>
-            </TouchableOpacity>
-            <Text style={styles.versionText}>{'1.01.01 VERSION'}</Text>
-          </View>
+              {/* Email address */}
+              <View style={styles.infoRow}>
+                <View style={styles.infoRowTop}>
+                  <View style={styles.infoTextWrap}>
+                    <Text style={styles.infoLabel}>{'Email address'}</Text>
+                    {!editingEmail &&
+                      (loadingEmail ? (
+                        <ActivityIndicator size="small" color={NAVY} style={styles.infoLoader} />
+                      ) : (
+                        <>
+                          <Text style={styles.infoValue} numberOfLines={1}>{savedEmail}</Text>
+                          {!!pendingEmail && (
+                            <Text style={styles.infoPending} numberOfLines={1}>{`Pending: ${pendingEmail}`}</Text>
+                          )}
+                        </>
+                      ))}
+                  </View>
+                  {showEmailChange && (
+                    <TouchableOpacity
+                      style={styles.changeBtn}
+                      onPress={() => navigation?.navigate?.('ChangeEmail', {currentEmail: savedEmail})}
+                      disabled={loadingEmail}
+                      activeOpacity={0.8}>
+                      <Text style={styles.changeBtnText}>{'Change'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {isApplePrivateRelay(savedEmail) && (
+                  <Text style={styles.hintText}>
+                    {'Hidden by Apple. Manage it in iPhone Settings › your name › Sign in with Apple.'}
+                  </Text>
+                )}
+                {editingEmail && (
+                  <View style={styles.editArea}>
+                    <TextInput
+                      style={styles.input}
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoFocus
+                      returnKeyType="done"
+                      onSubmitEditing={handleSaveLoginInfo}
+                      placeholderTextColor="#C0C0C0"
+                    />
+                    {loginSaveButton}
+                  </View>
+                )}
+              </View>
+
+              {needsPasswordSetup ? (
+                // Design D: the account signs in with a social provider and has no
+                // IPM Hub password yet.
+                <View style={styles.providerBox}>
+                  {loginInfo?.provider === 'google' && <GoogleIcon />}
+                  {loginInfo?.provider === 'linkedin' && <LinkedInSquareIcon />}
+                  {loginInfo?.provider === 'apple' && <AppleMark />}
+                  <View style={styles.providerTextWrap}>
+                    <Text style={styles.providerTitle}>
+                      {`You sign in with ${PROVIDER_LABEL[loginInfo?.provider || ''] || 'a social account'}`}
+                    </Text>
+                    <Text style={styles.providerBody}>
+                      {`Your IPM Hub account uses your ${PROVIDER_LABEL[loginInfo?.provider || ''] || 'social'} sign-in, so you don't have an IPM Hub password.`}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.cardDivider} />
+              )}
+
+              {/* Password — hidden for provider accounts until the set-password endpoint exists (Design H) */}
+              {(!needsPasswordSetup || canSetPassword) && (
+              <View style={styles.infoRow}>
+                <View style={styles.infoRowTop}>
+                  <View style={styles.infoTextWrap}>
+                    <Text style={styles.infoLabel}>{'Password'}</Text>
+                    {!editingPassword && (
+                      <Text style={styles.infoValue}>{needsPasswordSetup ? 'No password yet' : '••••••••'}</Text>
+                    )}
+                    {canSetPassword && (
+                      <Text style={styles.passwordHint}>{'Set one to also sign in with your email.'}</Text>
+                    )}
+                  </View>
+                  {showPasswordButton && (
+                    <TouchableOpacity
+                      style={styles.changeBtn}
+                      onPress={() =>
+                        canSetPassword
+                          ? navigation?.navigate?.('SetPassword', {provider: loginInfo?.provider})
+                          : navigation?.navigate?.('ChangePassword')
+                      }
+                      activeOpacity={0.8}>
+                      <Text style={styles.changeBtnText}>{canSetPassword ? 'Set Password' : 'Change'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {editingPassword && (
+                  <View style={styles.editArea}>
+                    <Text style={styles.fieldLabel}>{'Add Your New Password'}</Text>
+                    <View style={styles.passRow}>
+                      <TextInput
+                        ref={newPassRef}
+                        style={styles.passInput}
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                        secureTextEntry={!showNew}
+                        autoFocus
+                        placeholderTextColor="#C0C0C0"
+                        returnKeyType="next"
+                        onSubmitEditing={() => repeatPassRef.current?.focus()}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowNew(p => !p)}
+                        style={styles.eyeBtn}
+                        hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
+                        {showNew ? <EyeOpenIcon /> : <EyeClosedIcon />}
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.fieldLabel}>{'Repeat Your New Password'}</Text>
+                    <View style={styles.passRow}>
+                      <TextInput
+                        ref={repeatPassRef}
+                        style={styles.passInput}
+                        value={repeatPassword}
+                        onChangeText={setRepeatPassword}
+                        secureTextEntry={!showRepeat}
+                        placeholderTextColor="#C0C0C0"
+                        returnKeyType="done"
+                        onSubmitEditing={handleSaveLoginInfo}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowRepeat(p => !p)}
+                        style={styles.eyeBtn}
+                        hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
+                        {showRepeat ? <EyeOpenIcon /> : <EyeClosedIcon />}
+                      </TouchableOpacity>
+                    </View>
+                    {loginSaveButton}
+                  </View>
+                )}
+              </View>
+              )}
+            </View>
+
+            {/* ── Account actions (design order) ── */}
+            <View style={styles.actionsGroup}>
+              <TouchableOpacity style={styles.actionRow} onPress={handleBlockedMembers} activeOpacity={0.7}>
+                <BlockIcon />
+                <Text style={styles.actionLabel}>{'Blocked Members'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => navigation?.navigate?.('DeleteAccount')}
+                activeOpacity={0.7}>
+                <DeleteIcon />
+                <Text style={styles.deleteLabel}>{'Delete Account'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionRow} onPress={handleLogout} activeOpacity={0.7}>
+                <LogoutIcon />
+                <Text style={styles.actionLabel}>{'Log Out'}</Text>
+                <Text style={styles.actionEmail} numberOfLines={1}>{emailForDisplay(savedEmail)}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => navigation?.navigate?.('PrivacyPolicy')}
+                activeOpacity={0.7}>
+                <PrivacyIcon />
+                <Text style={styles.actionLabel}>{'Privacy Policy'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.versionText}>{'1.01.01 VERSION'}</Text>
+            </View>
           </View>
         )}
 
         {/* ══════════════════ NOTIFICATIONS TAB ══════════════════ */}
+        {/* Channels / rows / groups with no backend key are hidden — see
+            NOTIFICATION_GROUPS above. Toggles save on tap (no Save button). */}
         {activeTab === 'notifications' && (
-          <View style={styles.formCard}>
-            <Text style={styles.sectionHeading}>{'Notification Settings'}</Text>
-            <Text style={styles.notifSubtitle}>
-              {'Choose which notifications to receive across all your devices.'}
-            </Text>
+          <View style={styles.notifCard}>
+            <View>
+              <Text style={styles.sectionHeading}>{'Notification Settings'}</Text>
+              <Text style={styles.notifSubtitle}>
+                {'Choose how IPM Hub keeps you posted. Changes are saved automatically.'}
+              </Text>
+            </View>
 
             {loadingNotif ? (
-              <ActivityIndicator color={NAVY} style={{marginTop: 20}} />
+              <ActivityIndicator color={NAVY} style={{marginVertical: 20}} />
             ) : (
               <>
-                {/* ── Channel legend ── */}
+                {/* ── Channel legend (only channels that exist) ── */}
                 <View style={styles.channelLegend}>
-                  <View style={styles.legendItem}>
-                    <EmailIcon color={NAVY} />
-                    <Text style={styles.legendTitle}>{'Email'}</Text>
-                    <Text style={styles.legendDesc}>{'A notification sent to your inbox'}</Text>
+                  {LEGEND_CHANNELS.map(ch => (
+                    <View key={ch} style={styles.legendItem}>
+                      <View style={styles.legendIconCircle}>{CHANNEL_ICON[ch]()}</View>
+                      <View style={styles.legendText}>
+                        <Text style={styles.legendTitle}>{CHANNEL_LABEL[ch]}</Text>
+                        <Text style={styles.legendDesc}>{CHANNEL_DESC[ch]}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                {/* ── Master email switch (hidden until backend adds a key) ── */}
+                {EMAIL_MASTER.key ? (
+                  <View style={notifStyles.card}>
+                    <View style={notifStyles.row}>
+                      <View style={notifStyles.rowText}>
+                        <Text style={notifStyles.rowTitle}>{EMAIL_MASTER.title}</Text>
+                        <Text style={notifStyles.rowDesc}>{EMAIL_MASTER.description}</Text>
+                      </View>
+                      <Toggle
+                        value={settingsMap[EMAIL_MASTER.key] === 'yes'}
+                        onToggle={() => toggleSetting(EMAIL_MASTER.key as string)}
+                        label={EMAIL_MASTER.title}
+                      />
+                    </View>
                   </View>
-                  <View style={styles.legendItem}>
-                    <WebIcon color={NAVY} />
-                    <Text style={styles.legendTitle}>{'Web'}</Text>
-                    <Text style={styles.legendDesc}>{'A notification in the corner of your screen'}</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <MobileIcon color={NAVY} />
-                    <Text style={styles.legendTitle}>{'Mobile'}</Text>
-                    <Text style={styles.legendDesc}>{'Push Notifications'}</Text>
-                  </View>
-                </View>
+                ) : null}
 
-                {/* ── General ── */}
-                <View>
-                  {GENERAL_GROUP.map(s => (
-                    <NotifRow key={s.key} setting={s} settingsMap={settingsMap} onToggle={toggleSetting} />
-                  ))}
-                </View>
-
-                {/* ── Mentions ── */}
-                <Text style={styles.groupLabel}>{'MENTIONS'}</Text>
-                <View>
-                  {MENTIONS_GROUP.map(s => (
-                    <NotifRow key={s.key} setting={s} settingsMap={settingsMap} onToggle={toggleSetting} />
-                  ))}
-                </View>
-
-                {/* ── Activity ── */}
-                <Text style={styles.groupLabel}>{'ACTIVITY'}</Text>
-                <View>
-                  {ACTIVITY_GROUP.map(s => (
-                    <NotifRow key={s.key} setting={s} settingsMap={settingsMap} onToggle={toggleSetting} />
-                  ))}
-                </View>
-
-                {/* ── Introductions — Mobile + Email, no Web field yet ── */}
-                <Text style={styles.groupLabel}>{'INTRODUCTIONS'}</Text>
-                <View>
-                  {INTRODUCTIONS_GROUP.map(s => (
-                    <NotifRow key={s.key} setting={s} settingsMap={settingsMap} onToggle={toggleSetting} />
-                  ))}
-                </View>
-
-                {/* ── Discussions (Forums) — Mobile only, no Web/Email field yet ── */}
-                <Text style={styles.groupLabel}>{'DISCUSSIONS (FORUMS)'}</Text>
-                <View>
-                  {DISCUSSIONS_GROUP.map(s => (
-                    <NotifRow key={s.key} setting={s} settingsMap={settingsMap} onToggle={toggleSetting} />
-                  ))}
-                </View>
-
-                {/* ── Feed — Mobile only, no Web/Email field yet ── */}
-                <Text style={styles.groupLabel}>{'FEED'}</Text>
-                <View>
-                  {FEED_GROUP.map(s => (
-                    <NotifRow key={s.key} setting={s} settingsMap={settingsMap} onToggle={toggleSetting} />
-                  ))}
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.saveBtn, {marginTop: 10}, savingNotif && styles.saveBtnDisabled]}
-                  onPress={handleSaveNotifications}
-                  disabled={savingNotif}
-                  activeOpacity={0.85}>
-                  {savingNotif ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.saveBtnText}>{'Save  Changes'}</Text>
-                  )}
-                </TouchableOpacity>
+                {VISIBLE_GROUPS.map(g => (
+                  <NotifGroupCard key={g.id} group={g} settingsMap={settingsMap} onToggle={toggleSetting} />
+                ))}
               </>
             )}
           </View>
@@ -741,6 +1029,9 @@ const AccountSettingsScreen = ({navigation}: any) => {
         onCancel={() => setLogoutConfirmOpen(false)}
         onConfirm={handleConfirmLogout}
       />
+
+      {/* App-wide navy toast; keep it the last child so it sits on top. */}
+      <SuccessToast visible={!!toast} message={toast || ''} onHide={() => setToast(null)} />
     </View>
   );
 };
@@ -768,13 +1059,8 @@ const styles = StyleSheet.create({
   tabText: {fontSize: 11, fontWeight: '600', color: NAVY},
   tabTextActive: {color: '#FFFFFF'},
   scroll: {flex: 1},
+  scrollWhite: {backgroundColor: '#FFFFFF'},
   scrollContent: {flexGrow: 1, paddingVertical: 16},
-  // Notification Settings tab keeps its bordered card look.
-  formCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20,
-    borderWidth: 1, borderColor: '#EBEBEB',
-    marginHorizontal: 16,
-  },
   // Login Information tab — one continuous layout, no card border, fields
   // at top and account actions pinned to the bottom (space-between), per
   // the Figma frame spec (node 1502-21386: 390×694, padding 0 16, column,
@@ -784,33 +1070,140 @@ const styles = StyleSheet.create({
   // sides, leaving visible grey gutters down the left/right of the screen.
   loginWrap: {
     flex: 1,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     paddingHorizontal: 16,
     backgroundColor: '#FFFFFF',
   },
-  loginFieldsBlock: {alignSelf: 'stretch'},
+  // ── Login Information card ──
+  loginCard: {
+    alignSelf: 'stretch',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+    padding: 16,
+    borderRadius: 8.201,
+    borderWidth: 1.367,
+    borderColor: '#E8E9F1', // Neutral-Light-Medium
+    backgroundColor: '#FFFFFF',
+  },
+  // Heading/H3 — IPM Dark Blue
+  cardTitle: {
+    alignSelf: 'stretch',
+    fontFamily: 'Runda-Medium',
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: 0.08,
+    color: '#0C4D91',
+  },
+  // Body/Body S
+  cardSubtitle: {
+    alignSelf: 'stretch',
+    fontFamily: 'Runda-Normal',
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#8F9098', // Neutral-Dark-Lightest
+  },
+  cardDivider: {alignSelf: 'stretch', height: 1, backgroundColor: '#E8E9F1'},
+  infoRow: {alignSelf: 'stretch'},
+  // Email / Password heading row: padding 12 0, gap 12, centered
+  infoRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  infoTextWrap: {flex: 1},
+  infoLabel: {fontFamily: 'Runda-Medium', fontSize: 14, lineHeight: 18, color: DARK_NAVY},
+  // Body/Body M, IPM Dark Grey
+  infoValue: {fontFamily: 'Runda-Normal', fontSize: 14, lineHeight: 18, color: '#7C86A1', marginTop: 4},
+  infoLoader: {alignSelf: 'flex-start', marginTop: 4},
+  infoPending: {fontFamily: 'Runda-Normal', fontSize: 10, lineHeight: 14, color: '#8F9098', marginTop: 2}, // ESTIMATE
+  // "Confirm your new email" banner — Figma spec: padding 16, row, flex-start,
+  // gap 12, radius 5, 1px IPM Light Blue border, #EEF7FC fill.
+  // (title/body text styles below are still ESTIMATES)
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
+    gap: 12,
+    padding: 16,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#46B0E3',
+    backgroundColor: '#EEF7FC',
+  },
+  pendingIcon: {marginTop: 1},
+  pendingTextWrap: {flex: 1, gap: 2},
+  // "You sign in with Google" box (Figma D): padding 12, row, flex-start, gap 12,
+  // stretch, radius 5, Neutral-Light-Light #F8F9FE.
+  providerBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
+    gap: 12,
+    padding: 12,
+    borderRadius: 5,
+    backgroundColor: '#F8F9FE',
+  },
+  providerTextWrap: {flex: 1, gap: 4},
+  // Heading/H4 — Runda 14 / 500, Navy
+  providerTitle: {fontFamily: 'Runda-Medium', fontSize: 14, fontWeight: '500', color: DARK_NAVY},
+  // Body/Body S — Runda 12 / 400 / 16, Neutral Dark Lightest
+  providerBody: {fontFamily: 'Runda-Normal', fontSize: 12, fontWeight: '400', lineHeight: 16, color: '#8F9098'},
+  // Body/Body S under "No password yet"
+  passwordHint: {fontFamily: 'Runda-Normal', fontSize: 12, fontWeight: '400', lineHeight: 16, color: '#8F9098', marginTop: 2},
+  // Resend / Cancel links under the banner text — ESTIMATE (Action M link blue)
+  pendingActions: {flexDirection: 'row', gap: 16, marginTop: 8},
+  pendingAction: {fontFamily: 'Runda-Medium', fontSize: 12, lineHeight: 16, color: '#46B0E3'},
+  pendingTitle: {fontFamily: 'Runda-Medium', fontSize: 12, lineHeight: 16, color: DARK_NAVY},
+  pendingBody: {fontFamily: 'Runda-Normal', fontSize: 10, lineHeight: 14, color: '#5B6475'},
+  changeBtn: {
+    height: 36,
+    paddingVertical: 0,
+    paddingHorizontal: 16,
+    gap: 8,
+    borderRadius: 50,
+    borderWidth: 1,
+    borderColor: NAVY,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changeBtnText: {fontFamily: 'Runda-Medium', fontSize: 12, lineHeight: 16, color: NAVY, includeFontPadding: false, textAlignVertical: 'center'},
+  editArea: {paddingBottom: 12},
   sectionHeading: {fontSize: 15, fontWeight: '700', color: NAVY, marginBottom: 6},
-  notifSubtitle: {fontSize: 12, color: '#888', lineHeight: 17, marginBottom: 16},
+  // Outer card from the Figma spec: padding 16, column, gap 16, 8.2 radius,
+  // 1.367 #E8E9F1 border, white. Everything on the tab sits inside it.
+  notifCard: {
+    marginHorizontal: 16,
+    padding: 16,
+    gap: 16,
+    alignSelf: 'stretch',
+    borderRadius: 8.201,
+    borderWidth: 1.367,
+    borderColor: '#E8E9F1',
+    backgroundColor: '#FFFFFF',
+  },
+  notifSubtitle: {fontSize: 12, color: '#555', lineHeight: 17},
 
   // ── Channel legend ──
-  channelLegend: {
-    flexDirection: 'row', gap: 8, marginBottom: 16,
-    paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
+  // Card + row + item tokens straight from the Figma spec.
+  channelLegend: {flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'stretch', gap: 16},
+  legendItem: {flex: 1, flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'stretch', gap: 9.276},
+  legendIconCircle: {
+    width: 23.19,
+    height: 23.19,
+    padding: 3.092,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 82.822,
+    backgroundColor: '#EEF7FC',
   },
-  legendItem: {flex: 1, alignItems: 'center', gap: 4},
-  legendTitle: {fontSize: 12, fontWeight: '600', color: NAVY, marginTop: 4},
-  legendDesc: {fontSize: 10, color: '#888', textAlign: 'center', lineHeight: 13},
-
-  // ── Notification group heading (Heading/H4 spec) ──
-  groupLabel: {
-    fontFamily: 'Runda',
-    fontSize: 14,
-    fontWeight: '500',
-    color: DARK_NAVY,
-    marginTop: 16,
-    marginBottom: 8,
-  },
+  legendText: {flex: 1},
+  legendTitle: {fontSize: 12, fontWeight: '600', color: NAVY},
+  legendDesc: {fontSize: 10, color: '#888', lineHeight: 13, marginTop: 2},
 
   // ── Login fields ──
   fieldLabel: {fontSize: 13, fontWeight: '500', color: '#333', marginBottom: 6},
@@ -845,9 +1238,12 @@ const styles = StyleSheet.create({
     backgroundColor: DARK_NAVY,
   },
   hintText: {
-    flex: 1,
+    fontFamily: 'Runda-Normal',
     fontSize: 12,
-    color: '#888',
+    lineHeight: 16,
+    color: '#8F9098',
+    marginTop: 4,
+    marginBottom: 12,
   },
 
   passRow: {
@@ -867,16 +1263,17 @@ const styles = StyleSheet.create({
   // ── Log Out / Privacy Policy rows — no borders, pinned to screen bottom ──
   actionsGroup: {
     alignSelf: 'stretch',
+    marginTop: 8,
     paddingBottom: 8,
   },
   actionRow: {
     height: 56,
-    borderRadius: 5,
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'stretch',
+    paddingVertical: 12,
     paddingHorizontal: 20,
     gap: 10,
-    alignSelf: 'stretch',
   },
   actionLabel: {
     fontFamily: 'Runda-Medium',

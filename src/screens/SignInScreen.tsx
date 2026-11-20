@@ -19,8 +19,10 @@ import {
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import {loginUser, socialLogin, getPostAuthRoute} from '../api/authApi';
+import {resolveScheduledDeletion} from '../utils/deletionPrompt';
 import AppleSignInButton from '../components/AppleSignInButton';
 import SocialButton, {GoogleIcon, LinkedInSquareIcon} from '../components/SocialButton';
+import SocialTermsNotice from '../components/SocialTermsNotice';
 import EyeClosedIcon from '../components/EyeClosedIcon';
 import EyeOpenIcon from '../components/EyeOpenIcon';
 import SuccessToast from '../components/SuccessToast';
@@ -84,6 +86,9 @@ const LINKEDIN_AUTH_URL =
 // same logic applies no matter which device the person signs in on, and no
 // matter whether they used email/password, Google, or LinkedIn.
 const handlePostLogin = async (user: any, navigation: any) => {
+  // Account scheduled for deletion → Restore / Keep prompt first. Keep ends
+  // the session, so stay on Sign In instead of routing into the app.
+  if ((await resolveScheduledDeletion()) === 'signed_out') return;
   const route = await getPostAuthRoute(user);
   navigation.replace(route);
 };
@@ -408,6 +413,9 @@ const SignInScreen = ({navigation, route}: any) => {
             disabled={loading || googleLoading}
           />
         </View>
+
+        {/* Agreement for social sign-in / sign-up (App Store 1.2) */}
+        <SocialTermsNotice navigation={navigation} />
 
         {/* Not a member */}
         <TouchableOpacity

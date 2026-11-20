@@ -40,6 +40,10 @@ import CourseDetailScreen from '../screens/CourseDetailScreen';
 import MentorApplicationScreen from '../screens/MentorApplicationScreen';
 import BottomTabNavigator from './BottomTabNavigator';
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import ChangeEmailScreen from '../screens/ChangeEmailScreen';
+import SetPasswordScreen from '../screens/SetPasswordScreen';
+import BlockedMembersScreen from '../screens/BlockedMembersScreen';
 import MemberProfileScreen from '../screens/MemberProfileScreen';
 import ChangeProfilePhotoScreen from '../screens/ChangeProfilePhotoScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
@@ -68,9 +72,11 @@ import StepContentScreen from '../screens/StepContentScreen';
 import QuizScreen from '../screens/QuizScreen';
 import CommentsScreen from '../screens/CommentsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import CommunityGuidelinesScreen from '../screens/CommunityGuidelinesScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import ConfirmDeleteScreen from '../screens/ConfirmDeleteScreen';
 import DeleteAccountResultScreen from '../screens/DeleteAccountResultScreen';
+import ScheduledDeletionSheetHost from '../components/ScheduledDeletionSheetHost';
 import DownloadMyDataScreen from '../screens/DownloadMyDataScreen';
 import HelpSupportScreen from '../screens/HelpSupportScreen';
 import MentorshipSupportScreen from '../screens/MentorshipSupportScreen';
@@ -193,6 +199,7 @@ const AppNavigator = () => {
         <Stack.Screen name="SignIn"           component={SignInScreen} />
         <Stack.Screen name="ForgotPassword"   component={ForgptPasswordScreen} />
         <Stack.Screen name="SignUp"           component={SignUpScreen} />
+        <Stack.Screen name="CommunityGuidelines" component={CommunityGuidelinesScreen} />
         <Stack.Screen name="VerifyEmail"      component={VerifyEmailScreen} />
         <Stack.Screen name="Welcome"          component={WelcomeScreen} />
         <Stack.Screen name="ProfileSetup"     component={ProfileSetupScreen} />
@@ -205,6 +212,9 @@ const AppNavigator = () => {
         <Stack.Screen name="ArticleSubmission" component={ArticleSubmissionScreen} />
         <Stack.Screen name="Courses"          component={CoursesScreen} />
         <Stack.Screen name="Settings"         component={AccountSettingsScreen}  options={{headerShown: false}} />
+        <Stack.Screen name="ChangePassword"   component={ChangePasswordScreen}   options={{headerShown: false}} />
+        <Stack.Screen name="ChangeEmail"      component={ChangeEmailScreen}      options={{headerShown: false}} />
+        <Stack.Screen name="SetPassword"      component={SetPasswordScreen}      options={{headerShown: false}} />
         <Stack.Screen name="CourseDetail"     component={CourseDetailScreen} />
         <Stack.Screen name="MemberProfile"    component={MemberProfileScreen} />
         <Stack.Screen name="ChangeProfilePhoto" component={ChangeProfilePhotoScreen} />
@@ -236,6 +246,7 @@ const AppNavigator = () => {
   <Stack.Screen name="Quiz" component={QuizScreen} />
   <Stack.Screen name="Comments" component={CommentsScreen} />
   <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+  <Stack.Screen name="BlockedMembers" component={BlockedMembersScreen} options={{headerShown: false}} />
   <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
   <Stack.Screen name="ConfirmDelete" component={ConfirmDeleteScreen} />
   <Stack.Screen name="DownloadMyData" component={DownloadMyDataScreen} />
@@ -253,6 +264,8 @@ const AppNavigator = () => {
 
   </Stack.Navigator>
       </NavigationContainer>
+      {/* Post-sign-in "Restore account?" sheet — above every screen. */}
+      <ScheduledDeletionSheetHost />
     </SafeAreaProvider>
   );
 };

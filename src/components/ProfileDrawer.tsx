@@ -243,10 +243,11 @@ const MENU_ITEMS = [
   {key: 'Help & Support', Icon: HelpIcon,           screen: 'HelpSupport'},
 ];
 
-// iOS: the "Store" entry is hidden from the drawer (kept on Android).
-// The Store screen/route itself is untouched.
+// iOS: the "Store" and "Membership" entries are hidden from the drawer
+// (kept on Android). The screens/routes themselves are untouched.
+const IOS_HIDDEN_MENU_KEYS = ['Store', 'Membership'];
 const VISIBLE_MENU_ITEMS = MENU_ITEMS.filter(
-  item => !(Platform.OS === 'ios' && item.key === 'Store'),
+  item => !(Platform.OS === 'ios' && IOS_HIDDEN_MENU_KEYS.includes(item.key)),
 );
 
 // ─── Props ────────────────────────────────────────────────────────────────────

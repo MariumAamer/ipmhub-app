@@ -1,6 +1,7 @@
 /* eslint-disable prettier/prettier */
-import React, {useEffect, useState} from 'react';
-import {View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, StatusBar} from 'react-native';
+import React, {useCallback, useEffect, useState} from 'react';
+import {View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator, Platform} from 'react-native';
+import {GoogleSignin, statusCodes} from '@react-native-google-signin/google-signin';
 import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
@@ -8,15 +9,17 @@ import BackButton from '../components/BackButton';
 import EyeClosedIcon from '../components/EyeClosedIcon';
 import EyeOpenIcon from '../components/EyeOpenIcon';
 import SocialButton, {GoogleIcon, LinkedInSquareIcon} from '../components/SocialButton';
-import {getStoredUser} from '../api/authApi';
-
-type Provider = 'email' | 'google' | 'linkedin' | 'apple';
-
-const PROVIDER_LABEL: Record<Exclude<Provider, 'email'>, string> = {
-  google: 'Google',
-  linkedin: 'LinkedIn',
-  apple: 'Apple',
-};
+import {requestLinkedInCode} from '../api/linkedinAuth';
+import {getStoredUser, logoutUser} from '../api/authApi';
+import {
+  AccountApiError,
+  DeletionConfirmation,
+  DeletionMode,
+  DeletionStatus,
+  getDeletionStatus,
+  requestAccountDeletion,
+  sendDeletionCode,
+} from '../api/accountApi';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const NAVY = '#192546'; // --IPM-Color-Palette-Navy-Blue
@@ -116,45 +119,219 @@ const OptionCard = ({
 );
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
+// How this member confirms is decided by the server (GET /account/deletion →
+// confirm_with), not by how they signed in. First method we can actually do
+// in the app wins. LinkedIn sends the OAuth code (+ redirect_uri) and the
+// server checks the LinkedIn email matches; if that check fails the member can
+// fall back to an email code.
+const METHOD_ORDER = ['password', 'google', 'apple', 'linkedin', 'email_code'] as const;
+type Method = (typeof METHOD_ORDER)[number] | 'unsupported';
+
+const pickMethod = (list: string[]): Method => {
+  const m = METHOD_ORDER.find(
+    k => list.includes(k) && (k !== 'apple' || Platform.OS === 'ios'),
+  );
+  return m ?? 'unsupported';
+};
+
+const SESSION_EXPIRED = 'Your session has expired. Please sign in again.';
+
 const ConfirmDeleteScreen = ({navigation}: any) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  // TODO: set from the delete-account response (e.g. "Incorrect password. Try again or reset it.").
   const [passwordError, setPasswordError] = useState('');
   const [mode, setMode] = useState<DeleteMode>('deactivate');
   const [confirmed, setConfirmed] = useState(false);
-  const [provider, setProvider] = useState<Provider>('email');
+
+  const [status, setStatus] = useState<DeletionStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  // LinkedIn check failed (e.g. email changed on the Hub) → confirm by email code.
+  const [useEmailCode, setUseEmailCode] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    setLoadingStatus(true);
+    setLoadError('');
+    try {
+      setStatus(await getDeletionStatus());
+    } catch (e: any) {
+      setLoadError(
+        e instanceof AccountApiError && e.isSessionExpired
+          ? SESSION_EXPIRED
+          : e?.message || 'Could not load your account details.',
+      );
+    } finally {
+      setLoadingStatus(false);
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
       const user = await getStoredUser();
       setEmail(user?.email || '');
-      setProvider((user?.provider as Provider) || 'email');
     })();
-  }, []);
+    loadStatus();
+  }, [loadStatus]);
 
-  const isSocial = provider !== 'email';
-  const providerName = isSocial ? PROVIDER_LABEL[provider as Exclude<Provider, 'email'>] : '';
+  const method: Method = status
+    ? useEmailCode
+      ? 'email_code'
+      : pickMethod(status.confirmWith)
+    : 'password';
+  const graceDays = status?.graceDays ?? 30;
+  const until = status?.previewDueLabel || restoreUntil();
+  const blocked = !!status && !status.canDelete;
+  const ready = !!status && !blocked && !submitting;
+  const providerName =
+    method === 'google'
+      ? 'Google'
+      : method === 'apple'
+      ? 'Apple'
+      : method === 'linkedin'
+      ? 'LinkedIn'
+      : '';
 
-  const handleDelete = () => {
+  const submit = async (confirmation: DeletionConfirmation) => {
+    if (!status || submitting) return;
+    setSubmitting(true);
+    setError('');
     setPasswordError('');
-    // TODO: call the delete-account endpoint with { password, mode } once shared,
-    // set passwordError on a wrong password, and only navigate on success.
-    // UI preview only — nothing is deleted yet.
-    navigation?.navigate?.('DeleteAccountResult', {
-      variant: mode === 'immediate' ? 'deleted' : 'scheduled',
-      email,
-      // 30 days from the moment the deletion is requested. Replace with the
-      // date returned by the backend once the endpoint is wired.
-      until: restoreUntil(),
-    });
+    const apiMode: DeletionMode = mode === 'immediate' ? 'now' : 'scheduled';
+    try {
+      const res = await requestAccountDeletion(apiMode, confirmation);
+      // The server has ended the session; clear ours too before leaving.
+      if (res.signedOut) await logoutUser();
+      navigation?.reset?.({
+        index: 0,
+        routes: [
+          {
+            name: 'DeleteAccountResult',
+            params: {
+              variant: apiMode === 'now' ? 'deleted' : 'scheduled',
+              email,
+              until: res.dueLabel || status.previewDueLabel || undefined,
+            },
+          },
+        ],
+      });
+    } catch (e: any) {
+      if (e instanceof AccountApiError) {
+        if (
+          e.code === 'deletion_confirmation_required' &&
+          Array.isArray(e.data?.confirm_with)
+        ) {
+          // Server wants a different method than we offered — switch to it.
+          setStatus(s => (s ? {...s, confirmWith: e.data.confirm_with} : s));
+          setError(e.message);
+        } else if (e.code === 'deletion_blocked') {
+          setStatus(s => (s ? {...s, canDelete: false, blockedReason: e.message} : s));
+        } else if (e.isSessionExpired) {
+          setError(SESSION_EXPIRED);
+        } else if (
+          method === 'password' &&
+          /password/i.test(`${e.code} ${e.message}`)
+        ) {
+          setPasswordError(e.message);
+        } else {
+          setError(e.message);
+        }
+      } else {
+        setError(e?.message || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePassword = () => {
+    if (!password) {
+      setPasswordError('Enter your password.');
+      return;
+    }
+    submit({password});
+  };
+
+  const handleGoogle = async () => {
+    try {
+      await GoogleSignin.hasPlayServices();
+      const info = await GoogleSignin.signIn();
+      const idToken = info.data?.idToken ?? (info as any).idToken;
+      if (!idToken) throw new Error('No token received from Google');
+      await submit({googleIdToken: idToken});
+    } catch (e: any) {
+      if (e?.code !== statusCodes.SIGN_IN_CANCELLED)
+        setError('Google confirmation failed. Please try again.');
+    }
+  };
+
+  const handleApple = async () => {
+    try {
+      // iOS-only native module — load lazily so Android never touches it.
+      const {appleAuth} = require('@invertase/react-native-apple-authentication');
+      const res = await appleAuth.performRequest({
+        requestedOperation: appleAuth.Operation.LOGIN,
+        requestedScopes: [],
+      });
+      if (!res.identityToken) throw new Error('No identity token received from Apple');
+      await submit({appleIdToken: res.identityToken});
+    } catch (e: any) {
+      if (e?.code === '1001') return; // user cancelled the Apple sheet
+      setError('Apple confirmation failed. Please try again.');
+    }
+  };
+
+  const handleLinkedIn = async () => {
+    setError('');
+    try {
+      const result = await requestLinkedInCode();
+      if (!result) return; // came back without finishing — not an error
+      await submit({linkedInCode: result});
+    } catch {
+      setError('LinkedIn confirmation failed. Please try again.');
+    }
+  };
+
+  const handleSendCode = async () => {
+    setSendingCode(true);
+    setError('');
+    try {
+      await sendDeletionCode();
+      setCodeSent(true);
+    } catch (e: any) {
+      setError(e?.message || 'Could not send the code. Please try again.');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleEmailCode = () => {
+    if (!/^\d{6}$/.test(emailCode.trim())) {
+      setError('Enter the 6-digit code from your email.');
+      return;
+    }
+    submit({emailCode: emailCode.trim()});
   };
 
   const handleForgotPassword = () => {
     navigation?.navigate?.('ForgotPassword');
   };
+
+  const intro = (() => {
+    if (method === 'google' || method === 'apple' || method === 'linkedin')
+      return `You signed in with ${providerName}. Choose how to delete ${email || 'your account'}, then confirm with your ${providerName} account.`;
+    if (method === 'email_code')
+      return `To delete ${email || 'your account'}, we'll email you a 6-digit code to confirm it's you.`;
+    if (method === 'unsupported')
+      return "This account can't be deleted from the app yet. Please contact support to delete it.";
+    return `Choose how to delete ${email || 'your account'}, then enter your password.`;
+  })();
 
   return (
     <View style={styles.container}>
@@ -169,101 +346,179 @@ const ConfirmDeleteScreen = ({navigation}: any) => {
 
         <Text style={styles.pageTitle}>{"Confirm it's you"}</Text>
 
-        <Text style={styles.bodyM}>
-          {isSocial
-            ? provider === 'apple'
-              ? 'You signed in with Apple. To delete your account, confirm with your Apple ID.'
-              : `You signed in with ${providerName}. To delete ${email || 'your account'}, confirm with your ${providerName} account.`
-            : `Enter the password for ${email || 'your account'} to delete your account.`}
-        </Text>
-
-        {/* ── Password (email sign-in only) ── */}
-        {!isSocial && (
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>{'Password'}</Text>
-          <View style={[styles.passRow, !!passwordError && styles.passRowError]}>
-            <TextInput
-              style={styles.passInput}
-              value={password}
-              onChangeText={t => {
-                setPassword(t);
-                if (passwordError) setPasswordError('');
-              }}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholderTextColor="#C0C0C0"
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(p => !p)}
-              hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-              {showPassword ? <EyeOpenIcon /> : <EyeClosedIcon />}
-            </TouchableOpacity>
+        {loadingStatus ? (
+          <ActivityIndicator color={DARK_BLUE} style={styles.loader} />
+        ) : loadError ? (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>{loadError}</Text>
+            {loadError !== SESSION_EXPIRED && (
+              <TouchableOpacity onPress={loadStatus} activeOpacity={0.7}>
+                <Text style={styles.actionM}>{'Try again'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          {!!passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
-        </View>
-        )}
+        ) : (
+          <>
+            {blocked && (
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeText}>
+                  {status?.blockedReason || "This account can't be deleted here. Please contact support."}
+                </Text>
+              </View>
+            )}
 
-        {!isSocial && (
-          <TouchableOpacity onPress={handleForgotPassword} activeOpacity={0.7} style={styles.linkWrap}>
-            <Text style={styles.actionM}>{'Forgot password?'}</Text>
-          </TouchableOpacity>
-        )}
+            <Text style={styles.bodyM}>{intro}</Text>
 
-        {/* ── How to delete ── */}
-        <Text style={styles.h4}>{'How do you want to delete your account?'}</Text>
+            {/* ── How to delete ── */}
+            <Text style={styles.h4}>{'How do you want to delete your account?'}</Text>
 
-        <View style={styles.options}>
-          <OptionCard
-            selected={mode === 'deactivate'}
-            title={'Deactivate now, delete in 30 days'}
-            body={`You can restore your account until ${restoreUntil()}.`}
-            onPress={() => setMode('deactivate')}
-          />
-          <OptionCard
-            selected={mode === 'immediate'}
-            title={'Delete immediately'}
-            body={'Your account and data are deleted now. This can’t be undone.'}
-            onPress={() => setMode('immediate')}
-          />
-        </View>
+            <View style={styles.options}>
+              <OptionCard
+                selected={mode === 'deactivate'}
+                title={`Delete after ${graceDays} days`}
+                body={`You'll be signed out. Sign in before ${until} to restore your account.`}
+                onPress={() => setMode('deactivate')}
+              />
+              <OptionCard
+                selected={mode === 'immediate'}
+                title={'Delete now'}
+                body={'Your account and data are deleted straight away. This can’t be undone.'}
+                onPress={() => setMode('immediate')}
+              />
+            </View>
 
-        {/* ── Confirmation checkbox ── */}
-        <TouchableOpacity
-          style={styles.checkRow}
-          onPress={() => setConfirmed(c => !c)}
-          activeOpacity={0.8}>
-          <View style={[styles.checkBox, confirmed && styles.checkBoxChecked]}>
-            {confirmed && <CheckTick />}
-          </View>
-          <Text style={[styles.actionM, styles.checkLabel]}>
-            {"I understand that once my account is permanently deleted, it can't be recovered."}
-          </Text>
-        </TouchableOpacity>
+            {/* ── Password ── */}
+            {method === 'password' && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>{'Password'}</Text>
+                <View style={[styles.passRow, !!passwordError && styles.passRowError]}>
+                  <TextInput
+                    style={styles.passInput}
+                    value={password}
+                    onChangeText={t => {
+                      setPassword(t);
+                      if (passwordError) setPasswordError('');
+                    }}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="Enter your password"
+                    placeholderTextColor="#C0C0C0"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(p => !p)}
+                    hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
+                    {showPassword ? <EyeOpenIcon /> : <EyeClosedIcon />}
+                  </TouchableOpacity>
+                </View>
+                {!!passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
+              </View>
+            )}
 
-        {/* ── Actions ── */}
-        <View style={styles.buttons}>
-          {/* Social sign-in: re-confirm with the provider (disabled until the checkbox is ticked). */}
-          {provider === 'google' && (
-            <SocialButton label="Continue with Google" icon={<GoogleIcon />} onPress={handleDelete} disabled={!confirmed} />
-          )}
-          {provider === 'linkedin' && (
-            <SocialButton label="Continue with LinkedIn" icon={<LinkedInSquareIcon />} onPress={handleDelete} disabled={!confirmed} />
-          )}
-          {provider === 'apple' && <AppleConfirmButton onPress={handleDelete} disabled={!confirmed} />}
-          {!isSocial && (
+            {method === 'password' && (
+              <TouchableOpacity onPress={handleForgotPassword} activeOpacity={0.7} style={styles.linkWrap}>
+                <Text style={styles.actionM}>{'Forgot password?'}</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* ── Email code (accounts without a password) ── */}
+            {method === 'email_code' && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>{'6-digit code'}</Text>
+                <View style={styles.passRow}>
+                  <TextInput
+                    style={styles.passInput}
+                    value={emailCode}
+                    onChangeText={t => {
+                      setEmailCode(t.replace(/\D/g, '').slice(0, 6));
+                      if (error) setError('');
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    placeholder="Enter the code"
+                    placeholderTextColor="#C0C0C0"
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={handleSendCode}
+                  disabled={sendingCode}
+                  activeOpacity={0.7}
+                  style={styles.linkWrap}>
+                  <Text style={styles.actionM}>
+                    {sendingCode ? 'Sending…' : codeSent ? 'Resend code' : 'Email me a code'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+            {/* ── Confirmation checkbox ── */}
             <TouchableOpacity
-              style={[styles.deleteBtn, !confirmed && styles.deleteBtnDisabled]}
-              onPress={handleDelete}
-              disabled={!confirmed}
-              activeOpacity={0.85}>
-              <Text style={styles.deleteText}>{'Delete Account'}</Text>
+              style={styles.checkRow}
+              onPress={() => setConfirmed(c => !c)}
+              activeOpacity={0.8}>
+              <View style={[styles.checkBox, confirmed && styles.checkBoxChecked]}>
+                {confirmed && <CheckTick />}
+              </View>
+              <Text style={[styles.actionM, styles.checkLabel]}>
+                {"I understand that once my account is deleted, it can't be restored."}
+              </Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation?.goBack()} activeOpacity={0.85}>
-            <Text style={styles.cancelText}>{'Cancel'}</Text>
-          </TouchableOpacity>
-        </View>
+
+            {/* ── Actions ── */}
+            <View style={styles.buttons}>
+              {method === 'google' && (
+                <SocialButton
+                  label="Continue with Google"
+                  icon={<GoogleIcon />}
+                  onPress={handleGoogle}
+                  loading={submitting}
+                  disabled={!confirmed || !ready}
+                />
+              )}
+              {method === 'apple' && (
+                <AppleConfirmButton onPress={handleApple} disabled={!confirmed || !ready} />
+              )}
+              {method === 'linkedin' && (
+                <SocialButton
+                  label="Continue with LinkedIn"
+                  icon={<LinkedInSquareIcon />}
+                  onPress={handleLinkedIn}
+                  loading={submitting}
+                  disabled={!confirmed || !ready}
+                />
+              )}
+              {method === 'linkedin' && !!error && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setError('');
+                    setUseEmailCode(true);
+                  }}
+                  activeOpacity={0.7}
+                  style={styles.linkWrap}>
+                  <Text style={styles.actionM}>{'Confirm with an email code instead'}</Text>
+                </TouchableOpacity>
+              )}
+              {(method === 'password' || method === 'email_code') && (
+                <TouchableOpacity
+                  style={[styles.deleteBtn, (!confirmed || !ready) && styles.deleteBtnDisabled]}
+                  onPress={method === 'password' ? handlePassword : handleEmailCode}
+                  disabled={!confirmed || !ready}
+                  activeOpacity={0.85}>
+                  {submitting ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.deleteText}>{'Delete My Account'}</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation?.goBack()} activeOpacity={0.85}>
+                <Text style={styles.cancelText}>{'Cancel'}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
         <View style={{height: 24}} />
       </ScrollView>
@@ -341,6 +596,17 @@ const styles = StyleSheet.create({
     color: ERROR_RED,
   },
   linkWrap: {alignSelf: 'flex-start'},
+  loader: {marginTop: 24},
+  noticeBox: {
+    alignSelf: 'stretch',
+    gap: 8,
+    padding: 12,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: ERROR_RED,
+    backgroundColor: '#FFE2E5', // --Support-Error-Light
+  },
+  noticeText: {fontFamily: 'Runda-Normal', fontSize: 12, lineHeight: 16, color: NAVY},
   options: {alignSelf: 'stretch', gap: 12},
   // Option card spec: padding 12/16, gap 12, radius 5, 1px border.
   optionCard: {

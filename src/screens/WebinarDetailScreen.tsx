@@ -35,7 +35,6 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {WebView} from 'react-native-webview';
 import Svg, {Path} from 'react-native-svg';
 import BackButton from '../components/BackButton';
-import CourseCard from '../components/CourseCard';
 import ShareSheet from '../components/ShareSheet';
 import {
   getSingleWebinar, getSpeakerLinkedIn, toggleSavedWebinar, getSavedWebinarIds,
@@ -344,36 +343,6 @@ const WebinarDetailScreen = ({navigation, route}: any) => {
                   </View>
                 </View>
               </View>
-            </View>
-          )}
-
-          {webinar.recommendedCourse && (
-            <View>
-              <Text style={s.sectionHeading}>{'Recommended Course'}</Text>
-              <View style={{height: 16}}/>
-              <CourseCard
-                variant="default"
-                imageUri={webinar.recommendedCourse.image}
-                title={webinar.recommendedCourse.title}
-                description={webinar.recommendedCourse.description}
-                buttonLabel="View Course"
-                onPressButton={() => {
-                  const rc = webinar.recommendedCourse!;
-                  navigation?.navigate?.('CourseDetail', {
-                    courseId: rc.id,
-                    fallbackTitle: rc.title,
-                    fallbackTagline: rc.description,
-                    fallbackUrl: rc.permalink,
-                  });
-                }}
-              />
-              <TouchableOpacity
-                style={s.viewAllRow}
-                activeOpacity={0.7}
-                onPress={() => navigation?.navigate?.('Courses')}>
-                <Text style={s.viewAllText}>{'View all related courses'}</Text>
-                <ViewAllArrow/>
-              </TouchableOpacity>
             </View>
           )}
 

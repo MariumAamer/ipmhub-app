@@ -126,7 +126,6 @@ export async function sendMessage(
   if (threadId) {
     body.thread_id = threadId;
   }
-  console.log('SEND MESSAGE BODY:', JSON.stringify(body));
   const token = await getToken();
   const res = await fetch(`${BASE}/messages`, {
     method: 'POST',
@@ -137,7 +136,6 @@ export async function sendMessage(
     body: JSON.stringify(body),
   });
   const json = await res.json();
-  console.log('SEND MESSAGE RESPONSE:', JSON.stringify(json));
   if (!res.ok) throw new Error(json?.message ?? 'Send failed');
   return json;
 }

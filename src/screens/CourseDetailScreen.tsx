@@ -1342,7 +1342,8 @@ const CourseDetailScreen = ({route, navigation}: any) => {
               <Text style={styles.emptyStateText}>
                 {"We couldn't load full details for this course on your account right now."}
               </Text>
-              {fallbackUrl ? (
+              {/* iOS: no "View on Website" link (it opens the course's purchase page). */}
+              {fallbackUrl && Platform.OS !== 'ios' ? (
                 <TouchableOpacity
                   style={styles.ctaButton}
                   onPress={() => Linking.openURL(fallbackUrl).catch(() => {})}>

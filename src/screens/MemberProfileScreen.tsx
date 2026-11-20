@@ -31,6 +31,7 @@ import {
   ActivityIndicator,
   Linking,
   Alert,
+  Platform,
 } from 'react-native';
 import Svg, {Path, Rect, Mask, G, Circle, Defs, LinearGradient as SvgLinearGradient, Stop} from 'react-native-svg';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -41,6 +42,16 @@ import {getResources, ResourceItem} from '../api/resourcesApi';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import BackButton from '../components/BackButton';
+import SuccessToast from '../components/SuccessToast';
+import ReportModal from '../components/ReportModal';
+import {submitReport} from '../api/reportApi';
+import {useMemberBlock} from '../hooks/useMemberBlock';
+import {
+  MemberMoreOptionsSheet,
+  BlockMemberSheet,
+  BlockedMemberPanel,
+  UnblockMemberSheet,
+} from '../components/MemberModeration';
 import LinearGradient from 'react-native-linear-gradient';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
@@ -79,6 +90,14 @@ const LinkedInIcon = () => (
     <Circle cx={4.95} cy={4.9} r={1} fill="#FFFFFF" />
     <Path d="M4.15 6.7H5.75V11.9H4.15Z" fill="#FFFFFF" />
     <Path d="M7 6.7H8.6V7.5C8.9 7 9.5 6.55 10.4 6.55C12 6.55 12.4 7.6 12.4 9V11.9H10.8V9.3C10.8 8.6 10.6 8.05 9.9 8.05C9.1 8.05 8.6 8.6 8.6 9.4V11.9H7Z" fill="#FFFFFF" />
+  </Svg>
+);
+
+// Paper-plane for the Message button. Hand-drawn approximation — swap in the
+// exact Figma SVG when shared.
+const SendIcon = () => (
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+    <Path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="#0C4D91" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
@@ -127,6 +146,16 @@ const EmptyProjectsIcon = () => (
     <Path d="M27.667 8C28.8237 8.00009 29.9286 8.47101 30.7393 9.30078C31.5491 10.1298 32 11.2496 32 12.4121V26.0586C32 26.6109 31.5523 27.0586 31 27.0586C30.4477 27.0586 30 26.6109 30 26.0586V12.4121C30 11.7651 29.7487 11.1488 29.3086 10.6982C28.8692 10.2485 28.2781 10.0001 27.667 10H14.333C13.7219 10.0001 13.1308 10.2485 12.6914 10.6982C12.2513 11.1488 12 11.7651 12 12.4121V32.8828C12.0001 33.5296 12.2514 34.1452 12.6914 34.5957C13.1308 35.0454 13.7219 35.2939 14.333 35.2939H18.6914C19.2436 35.2939 19.6913 35.7417 19.6914 36.2939C19.6914 36.8462 19.2437 37.2939 18.6914 37.2939H14.333C13.1763 37.2939 12.0714 36.8239 11.2607 35.9941C10.4508 35.1652 10.0001 34.0453 10 32.8828V12.4121C10 11.2496 10.4509 10.1298 11.2607 9.30078C12.0714 8.47101 13.1763 8.00009 14.333 8H27.667Z" fill="#192647"/>
     <Path d="M21 21.6475C21.5523 21.6475 22 22.0952 22 22.6475C21.9998 23.1996 21.5522 23.6475 21 23.6475H17.667C17.1148 23.6475 16.6672 23.1996 16.667 22.6475C16.667 22.0952 17.1147 21.6475 17.667 21.6475H21Z" fill="#192647"/>
     <Path d="M24.333 14.8232C24.8852 14.8232 25.3329 15.2711 25.333 15.8232C25.333 16.3755 24.8853 16.8232 24.333 16.8232H17.667C17.1147 16.8232 16.667 16.3755 16.667 15.8232C16.6671 15.2711 17.1148 14.8232 17.667 14.8232H24.333Z" fill="#192647"/>
+  </Svg>
+);
+
+// Three dots on the cover (Figma): 16x4 glyph, #0C4D91 dots. The 28x28 white
+// chip around it is the coverMore style.
+const MoreDotsIcon = () => (
+  <Svg width={16} height={4} viewBox="0 0 16 4" fill="none">
+    <Circle cx={1.73913} cy={1.739} r={1.73913} fill="#0C4D91" />
+    <Circle cx={8.00012} cy={1.739} r={1.73913} fill="#0C4D91" />
+    <Circle cx={14.2609} cy={1.739} r={1.73913} fill="#0C4D91" />
   </Svg>
 );
 
@@ -1422,7 +1451,9 @@ const CertificationCard = ({cert, navigation, isOwn}: {cert: any; navigation?: a
   // with fallbacks for the older member-profile shape (name/status_label).
   const title = stripHtml(cert.title || cert.name || '');
   const subtitle = cert.title && cert.name && cert.name !== cert.title ? stripHtml(cert.name) : '';
-  const statusLabel = stripHtml(cert.status?.label || cert.status_label || '');
+  const rawStatusLabel = stripHtml(cert.status?.label || cert.status_label || '');
+  // iOS: show just "Active" / "Expired" — drop any " - Recertify" style suffix.
+  const statusLabel = Platform.OS === 'ios' ? rawStatusLabel.split(' - ')[0] : rawStatusLabel;
   const isExpired = cert.status?.code === 'expired' || /expired/i.test(statusLabel);
   const footerStyle = cert.footer?.style;
   const footerLink = cert.footer?.link && typeof cert.footer.link === 'object' ? cert.footer.link : null;
@@ -1475,7 +1506,8 @@ const CertificationCard = ({cert, navigation, isOwn}: {cert: any; navigation?: a
         </View>
       </View>
 
-      {bannerMessage ? (
+      {/* iOS: no banner under the card (light blue / red upsell hidden). */}
+      {Platform.OS !== 'ios' && bannerMessage ? (
         <View style={[s.certBannerV3, {backgroundColor: bannerBg}]}>
           <Text style={s.certBannerTextV3}>
             {bannerMessage}
@@ -1888,7 +1920,7 @@ const MentorshipTab = ({userId, mentorId, profile, navigation}: {userId: number;
 };
 
 // ─── Profile Header ───────────────────────────────────────────────────────────
-const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollow, navigation, userId}: any) => {
+const ProfileHeader = ({profile, profileData, loading, isOwn, isBlocked, following, onFollow, onMore, navigation, userId}: any) => {
   const xmap = parseXprofile(profile?.xprofile);
   const basic = profileData?.basic;
 
@@ -1935,6 +1967,28 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
     navigation?.navigate('ChangeProfilePhoto');
   };
 
+  // Message — only offered once you follow the member. Same thread lookup as
+  // the Connections tab's openDM: reuse an existing thread, else open a new one.
+  const handleMessage = async () => {
+    if (!userId) return;
+    let threadId: number | null = null;
+    try {
+      const threads = await getThreadList(1);
+      const existing = threads.find((th: any) =>
+        Object.values(th.recipients || {}).some((r: any) => Number(r.user_id) === Number(userId)),
+      );
+      threadId = existing?.id ?? null;
+    } catch {}
+    const myId = await getUserIdFromToken();
+    navigation?.navigate('DMConversation', {
+      threadId,
+      recipientName: displayName,
+      recipientAvatar: avatarUrl,
+      recipientUserId: userId,
+      currentUserId: myId,
+    });
+  };
+
   const handleLinkedIn = () => {
     if (!linkedInUrl) return;
     const url = linkedInUrl.startsWith('http') ? linkedInUrl : `https://${linkedInUrl}`;
@@ -1954,6 +2008,16 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
         }
         {/* Back button — shared component on a white chip, top-left of the cover (Figma) */}
         <BackButton navigation={navigation} style={s.coverBack} />
+        {/* Three dots — top-right of the cover, other members' profiles only.
+            Opens the More Options sheet (Report / Block). */}
+        {!isOwn && !loading && (
+          <TouchableOpacity
+            style={s.coverMore}
+            onPress={onMore}
+            hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+            <MoreDotsIcon />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Profile block */}
@@ -1994,7 +2058,8 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
             </View>
             {designation ? <Text style={s.designation}>{designation}</Text> : null}
             {locationStr ? <Text style={s.location}>{locationStr}</Text> : null}
-            {bio ? <Text style={s.bioText}>{bio}</Text> : null}
+            {/* Blocked: only name / title / location remain (Figma) */}
+            {bio && !isBlocked ? <Text style={s.bioText}>{bio}</Text> : null}
 
             {/* Real PDU count from the new consolidated endpoint's
                 sidebar.pdus.total — no longer a placeholder. */}
@@ -2004,14 +2069,15 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
                 user_id param (same pattern as ProfileDrawer's badge
                 progress fetch) and switches to a public, read-only badge
                 grid when the id isn't the viewer's own. */}
-            <TouchableOpacity style={s.badgesRow} onPress={() => navigation?.navigate('Badges', {userId})}>
+            {!isBlocked && <TouchableOpacity style={s.badgesRow} onPress={() => navigation?.navigate('Badges', {userId})}>
               <Text style={s.badgesText}>
                 {isOwn ? 'My Badges' : 'View Badges'}
                 {isOwn && typeof pduTotal === 'number' ? <Text style={s.badgesDot}>{`  ·  ${pduTotal} PDUs`}</Text> : null}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
 
-            <View style={s.actionRow}>
+            {/* Blocked: LinkedIn / Follow are hidden (Figma) */}
+            {!isBlocked && <View style={s.actionRow}>
               {/* LinkedIn button — with icon */}
               <TouchableOpacity
                 style={[s.headerBtn, !linkedInUrl && s.headerBtnDisabled]}
@@ -2031,17 +2097,27 @@ const ProfileHeader = ({profile, profileData, loading, isOwn, following, onFollo
                 </TouchableOpacity>
               )}
 
+              {/* Message — other profiles, only when you follow them */}
+              {!isOwn && following && (
+                <TouchableOpacity style={s.headerBtn} onPress={handleMessage}>
+                  <SendIcon />
+                  <Text style={s.headerBtnText}>{'Message'}</Text>
+                </TouchableOpacity>
+              )}
+
               {/* Follow button — other profiles only */}
               {!isOwn && (
                 <TouchableOpacity
                   style={[s.followBtn, following && s.followBtnFollowing]}
                   onPress={onFollow}>
-                  <Text style={[s.followBtnText, following && s.followBtnTextFollowing]}>
+                  <Text
+                    style={[s.followBtnText, following && s.followBtnTextFollowing]}
+                    numberOfLines={1}>
                     {following ? '✓ Following' : '+ Follow'}
                   </Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </View>}
           </>
         )}
       </View>
@@ -2066,6 +2142,16 @@ const MemberProfileScreen = ({navigation, route}: any) => {
   const [following,  setFollowing]  = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [targetId,   setTargetId]   = useState<number | null>(null);
+
+  // More Options (three dots), other members' profiles only
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [blockOpen,   setBlockOpen]   = useState(false);
+  const [reportOpen,  setReportOpen]  = useState(false);
+  // Shared block state (same mechanism as the DM screen), synced with the API.
+  const {isBlocked, block, unblock} = useMemberBlock(targetId);
+  const [blockedToast, setBlockedToast] = useState(false);
+  const [unblockOpen, setUnblockOpen] = useState(false);
+  const [unblockedToast, setUnblockedToast] = useState(false);
 
   useEffect(() => { loadProfile(); }, [paramUserId]);
 
@@ -2176,6 +2262,8 @@ const MemberProfileScreen = ({navigation, route}: any) => {
     } catch { setFollowing(!next); }
   };
 
+  const memberName = decodeEntities(profileData?.basic?.full_name || profile?.name || '') || 'this member';
+
   return (
     <View style={s.container}>
       <StatusBar barStyle="dark-content" />
@@ -2187,12 +2275,18 @@ const MemberProfileScreen = ({navigation, route}: any) => {
           profileData={profileData}
           loading={loading}
           isOwn={isOwn}
+          isBlocked={isBlocked}
           following={following}
           onFollow={handleFollow}
+          onMore={() => setOptionsOpen(true)}
           navigation={navigation}
           userId={targetId}
         />
 
+        {isBlocked && !isOwn ? (
+          <BlockedMemberPanel name={memberName} onUnblock={() => setUnblockOpen(true)} />
+        ) : (
+        <>
         {/* Tab bar */}
         <View style={s.tabBar}>
           <View style={s.tabBarInner}>
@@ -2225,11 +2319,70 @@ const MemberProfileScreen = ({navigation, route}: any) => {
         )}
         {targetId && activeTab === 'courses' && <CoursesTab userId={targetId} isOwn={isOwn} displayName={profile?.name || ''} navigation={navigation} profileData={profileData} />}
         {targetId && activeTab === 'mentorship' && isMentor && <MentorshipTab userId={targetId} mentorId={mentorId} profile={profile} navigation={navigation} />}
+        </>
+        )}
 
         <View style={{height: 100}} />
       </ScrollView>
 
       <ProfileDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} navigation={navigation} />
+
+      {/* More Options — overlay, kept last so it sits above everything */}
+      <MemberMoreOptionsSheet
+        visible={optionsOpen}
+        name={memberName}
+        onClose={() => setOptionsOpen(false)}
+        onReport={() => { setOptionsOpen(false); setReportOpen(true); }}
+        onBlock={() => { setOptionsOpen(false); setBlockOpen(true); }}
+      />
+      <ReportModal
+        visible={reportOpen}
+        noun="Member"
+        showIntro={false}
+        onClose={() => setReportOpen(false)}
+        onSubmit={async (labels, note) => {
+          if (targetId == null) throw new Error('Member not found.');
+          await submitReport('user_report', targetId, labels, note);
+        }}
+      />
+      <BlockMemberSheet
+        visible={blockOpen}
+        name={memberName}
+        onClose={() => setBlockOpen(false)}
+        onConfirm={async () => {
+          setBlockOpen(false);
+          const err = await block({
+            name: memberName,
+            avatarUrl: profileData?.basic?.avatar_url || profile?.avatar_urls?.full || '',
+            title: decodeEntities(profileData?.basic?.headline || ''),
+          });
+          if (err) Alert.alert('Could not block member', err);
+          else setBlockedToast(true);
+        }}
+      />
+      <UnblockMemberSheet
+        visible={unblockOpen}
+        name={memberName}
+        onClose={() => setUnblockOpen(false)}
+        onConfirm={async () => {
+          setUnblockOpen(false);
+          const err = await unblock();
+          if (err) Alert.alert('Could not unblock member', err);
+          else setUnblockedToast(true);
+        }}
+      />
+      <SuccessToast
+        visible={blockedToast}
+        variant="info"
+        message={`You blocked ${memberName}.`}
+        onHide={() => setBlockedToast(false)}
+      />
+      <SuccessToast
+        visible={unblockedToast}
+        variant="info"
+        message={`${memberName} unblocked.`}
+        onHide={() => setUnblockedToast(false)}
+      />
     </View>
   );
 };
@@ -2243,6 +2396,9 @@ const s = StyleSheet.create({
   coverImg:     {width:'100%', height:'100%'},
   // 28x28 chip, 16px from the cover's top-left, white fill (Figma)
   coverBack:    {position:'absolute', top:16, left:16, backgroundColor:'#FFF', borderRadius:7},
+  // mirror of coverBack, top-right (Figma)
+  // Figma: 28x28, radius 5, 1px #FFF border, #FFF fill, 16x4 dots centred
+  coverMore:    {position:'absolute', top:16, right:16, width:28, height:28, borderRadius:5, borderWidth:1, borderColor:'#FFF', backgroundColor:'#FFF', alignItems:'center', justifyContent:'center'},
   profileBlock: {backgroundColor:'#FFF', paddingHorizontal:16, paddingBottom:16},
   // Figma (measured): avatar ≈112px, overlapping the cover by ≈55px
   avatarRow: {
@@ -2302,15 +2458,18 @@ const s = StyleSheet.create({
   headerBtnText: {fontFamily:'Runda-Medium', color:'#0C4D91', fontSize:12, fontWeight:'500'},
   headerBtnDisabled: {opacity:0.4},
   // Follow button
+  // Figma: filled blue pill, white Runda-Medium 12 label. Side padding is 12
+  // (not 24) because Following shares the row with LinkedIn + Message, and a
+  // wider label wrapped onto two lines and got clipped.
   followBtn: {
     flex:1,
     flexDirection:'row', alignItems:'center', justifyContent:'center',
-    height:36, paddingHorizontal:24,
+    height:36, paddingHorizontal:12,
     borderRadius:50, borderWidth:1, borderColor:'#0C4D91',
-    backgroundColor:'#FFF',
+    backgroundColor:'#0C4D91',
   },
   followBtnFollowing: {backgroundColor:'#192546', borderColor:'#192546'},
-  followBtnText:      {color:'#0C4D91', fontSize:14, fontWeight:'500'},
+  followBtnText:      {fontFamily:'Runda-Medium', color:'#FFF', fontSize:12, lineHeight:16, fontWeight:'500'},
   followBtnTextFollowing: {color:'#FFF'},
   // Legacy (kept for connections tab)
   msgBtn: {

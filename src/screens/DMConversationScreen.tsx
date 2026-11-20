@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useRef, useCallback, useMemo} from 'react';
-import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Image, StatusBar, ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, ScrollView} from 'react-native';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Image, StatusBar, ActivityIndicator, Modal, Alert, KeyboardAvoidingView, ScrollView} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {BRAND_GRADIENT} from '../config/brandGradient';
 import Svg, {Path, Circle, G, Mask, Rect} from 'react-native-svg';
@@ -9,6 +9,10 @@ import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import BackButton from '../components/BackButton';
+import ReportModal from '../components/ReportModal';
+import {submitReport} from '../api/reportApi';
+import {useMemberBlock} from '../hooks/useMemberBlock';
+import {BlockMemberSheet, ReportIcon, BlockIcon} from '../components/MemberModeration';
 import {
   getThreadDetail,
   sendMessage,
@@ -255,6 +259,10 @@ const DMConversationScreen = ({route, navigation}: any) => {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [blockOpen, setBlockOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const {block, isBlocked} = useMemberBlock(recipientUserId);
+  const cannotCompose = isBlocked || thread?.can_send_message === false;
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedMsgIds, setSelectedMsgIds] = useState<number[]>([]);
   const [attachments, setAttachments] = useState<
@@ -659,10 +667,30 @@ const DMConversationScreen = ({route, navigation}: any) => {
         />
       )}
 
+      {/* Can't message this member: no text box / send — just a notice.
+          - I blocked them → our own wording.
+          - They blocked me (or the server won't allow it): the thread comes
+            back with can_send_message: false → plain "You cannot send message". */}
+      {cannotCompose && (
+        <View style={c.blockedBar}>
+          <Text style={c.blockedBarText}>
+            {isBlocked
+              ? `You blocked ${recipientName}, so you can't send messages to this member.`
+              : 'You cannot send message'}
+          </Text>
+        </View>
+      )}
+
       {/* Compose box */}
+      {!cannotCompose && (
+      // 'padding' on BOTH platforms: Android runs edge-to-edge (targetSdk 36),
+      // where adjustResize no longer lifts the screen, so with behavior
+      // undefined the keyboard sat on top of the text box. The offset is 0
+      // because this view's parent starts at the top of the screen (the old 90
+      // left a gap above the keyboard on iOS).
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={90}>
+        behavior="padding"
+        keyboardVerticalOffset={0}>
         <View style={c.composeOuter}>
           {attachments.length > 0 && (
             <View style={c.attachmentsStrip}>
@@ -697,6 +725,10 @@ const DMConversationScreen = ({route, navigation}: any) => {
             placeholderTextColor="#8F9098"
             value={messageText}
             onChangeText={setMessageText}
+            onFocus={() =>
+              // Keep the newest message in view once the keyboard has opened.
+              setTimeout(() => flatListRef.current?.scrollToEnd({animated: true}), 300)
+            }
             onSelectionChange={e => setTextSelection(e.nativeEvent.selection)}
             multiline
             textAlignVertical="top"
@@ -757,6 +789,7 @@ const DMConversationScreen = ({route, navigation}: any) => {
           </View>
         )}
       </KeyboardAvoidingView>
+      )}
 
       {/* More Options Modal */}
       <Modal
@@ -794,6 +827,26 @@ const DMConversationScreen = ({route, navigation}: any) => {
               }}>
               <DeleteMsgIcon />
               <Text style={c.optionText}>{'Delete Messages'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={c.optionRow}
+              onPress={() => {
+                setShowMoreOptions(false);
+                // Let this Modal finish dismissing first — iOS can drop a Modal
+                // presented while another is still closing.
+                setTimeout(() => setReportOpen(true), 400);
+              }}>
+              <ReportIcon />
+              <Text style={c.optionText}>{'Report member'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={c.optionRow}
+              onPress={() => {
+                setShowMoreOptions(false);
+                setBlockOpen(true);
+              }}>
+              <BlockIcon />
+              <Text style={c.optionText}>{'Block member'}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -856,6 +909,29 @@ const DMConversationScreen = ({route, navigation}: any) => {
         visible={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         navigation={navigation}
+      />
+
+      <ReportModal
+        visible={reportOpen}
+        noun="Member"
+        showIntro={false}
+        onClose={() => setReportOpen(false)}
+        onSubmit={async (labels, note) => {
+          const id = Number(recipientUserId);
+          if (!id) throw new Error('Member not found.');
+          await submitReport('user_report', id, labels, note);
+        }}
+      />
+      <BlockMemberSheet
+        visible={blockOpen}
+        name={recipientName}
+        onClose={() => setBlockOpen(false)}
+        onConfirm={async () => {
+          setBlockOpen(false);
+          const err = await block({name: recipientName, avatarUrl: recipientAvatar, title: ''});
+          if (err) Alert.alert('Could not block member', err);
+          else navigation?.navigate('DMList', {toast: 'Member blocked.'});
+        }}
       />
     </View>
   );
@@ -1073,6 +1149,23 @@ const c = StyleSheet.create({
   },
 
   // Compose
+  // Replaces the compose box when the member is blocked.
+  blockedBar: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 5,
+    backgroundColor: '#F5F6FA',
+    alignItems: 'center',
+  },
+  blockedBarText: {
+    fontFamily: 'Runda-Normal',
+    fontSize: 14,
+    lineHeight: 18,
+    color: '#192546',
+    textAlign: 'center',
+  },
   composeOuter: {
     borderWidth: 1,
     borderColor: '#C5C6CC',
@@ -1310,6 +1403,8 @@ const c = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 16.5,
     position: 'relative',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E9F1',
   },
   optionsTitle: {
     fontFamily: 'Runda',

@@ -228,7 +228,7 @@ const NotificationPermissionModal = ({
           {/* ── Buttons ── */}
           <View style={s.btnGroup}>
             <TouchableOpacity style={s.allowBtn} onPress={handleAllow} activeOpacity={0.85}>
-              <Text style={s.allowBtnText}>Allow Notifications</Text>
+              <Text style={s.allowBtnText}>Continue</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.skipBtn} onPress={onSkip} activeOpacity={0.7}>
               <Text style={s.skipBtnText}>Skip for Now</Text>

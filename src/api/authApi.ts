@@ -404,55 +404,39 @@ export const requestDataExport = async (): Promise<DataExportRequestResult> => {
 // with it attached.
 
 const LOST_PASSWORD_URL = 'https://hub.instituteprojectmanagement.com/lost-password/';
+const FORGOT_PASSWORD_URL = 'https://hub.instituteprojectmanagement.com/wp-json/octopus/v1/forgot-password';
 
-// Step 1 form — confirmed live markup:
-// <form method="post" id="wppb-recover-password" action=".../lost-password/">
-//   <input name="username_email" type="text" />
-//   <input name="action" type="hidden" value="recover_password" />
-//   <input name="password_recovery_nonce_field" type="hidden" value="<nonce>" />
-//   <input name="_wp_http_referer" type="hidden" value="/lost-password/" />
-// </form>
-// Success: <p class="wppb-success">Check your email for the password reset link.</p>
-// Error:   <p class="wppb-warning">The email address entered wasn't found in the database!<br>...</p>
+// Step 1 — request the reset email: POST octopus/v1/forgot-password {email}.
+// Replaced the old /lost-password/ HTML scrape. Step 2 (resetPassword below)
+// still uses the Profile Builder form until a JSON endpoint exists for it.
 export const forgotPassword = async (usernameOrEmail: string): Promise<void> => {
-  const getResponse = await fetch(LOST_PASSWORD_URL, {method: 'GET'});
-  const getHtml = await getResponse.text();
-
-  const nonceMatch = getHtml.match(
-    /id="password_recovery_nonce_field"\s+name="password_recovery_nonce_field"\s+value="([^"]+)"/,
-  );
-  if (!nonceMatch) {
-    throw new Error('Could not start password reset. Please try again.');
+  // JSON endpoint from the backend. It emails the reset link to the member and
+  // returns only a message — never read a "link" field from the response.
+  let response: Response;
+  try {
+    response = await fetch(FORGOT_PASSWORD_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({email: usernameOrEmail}),
+    });
+  } catch {
+    throw new Error('Could not connect. Please check your internet and try again.');
   }
-  const nonce = nonceMatch[1];
 
-  const body =
-    `username_email=${encodeURIComponent(usernameOrEmail)}` +
-    `&recover_password=${encodeURIComponent('Get Reset Link')}` +
-    `&action=recover_password` +
-    `&password_recovery_nonce_field=${encodeURIComponent(nonce)}` +
-    `&_wp_http_referer=${encodeURIComponent('/lost-password/')}`;
-
-  const postResponse = await fetch(LOST_PASSWORD_URL, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body,
-  });
-  if (!postResponse.ok) {
-    throw new Error('Something went wrong. Please try again.');
-  }
-  const postHtml = await postResponse.text();
-
-  if (postHtml.includes('class="wppb-success"')) {
+  if (response.ok) {
     return;
   }
 
-  const errorMatch = postHtml.match(/class="wppb-warning">([\s\S]*?)<\/p>/);
-  if (errorMatch) {
-    throw new Error(clean(errorMatch[1].replace(/<br\s*\/?>/gi, ' ')));
+  let message = '';
+  try {
+    const data = await response.json();
+    if (data && typeof data.message === 'string') {
+      message = clean(data.message);
+    }
+  } catch {
+    // non-JSON error body — fall through to the generic message
   }
-
-  throw new Error('Something went wrong. Please try again.');
+  throw new Error(message || 'Something went wrong. Please try again.');
 };
 
 // Step 2 form — reached via the deep-linked reset email

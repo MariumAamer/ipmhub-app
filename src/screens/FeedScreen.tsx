@@ -1,5 +1,13 @@
 /* eslint-disable prettier/prettier */
 import React, {useState, useEffect, useCallback, useRef, useMemo} from 'react';
+import SuccessToast from '../components/SuccessToast';
+import ReportModal from '../components/ReportModal';
+import {submitReport} from '../api/reportApi';
+import {BlockMemberSheet, BlockIcon} from '../components/MemberModeration';
+import {markMemberBlocked} from '../hooks/useMemberBlock';
+import {AuthorOptionsSheet, blockAuthor} from '../components/AuthorOptionsSheet';
+import {blockPostAuthor} from '../api/accountApi';
+
 import {
   View,
   Text,
@@ -33,7 +41,6 @@ import {
   updateActivity,
   muteActivity,
   unmuteActivity,
-  reportActivity,
   getMemberProfile,
   getMembersBatch,
   resolveFullName,
@@ -56,17 +63,6 @@ import AppHeader from '../components/AppHeader';
 const {width: W} = Dimensions.get('window');
 
 const NOTIF_PROMPT_SEEN_KEY = 'ipm_notif_prompt_seen';
-
-// ─── Report issues ────────────────────────────────────────────────────────────
-const REPORT_ISSUES = [
-  {key: 'harassment', label: 'Harassment', description: 'Harassment or bullying behavior'},
-  {key: 'fraud', label: 'Fraud or scam', description: 'Contains spam, fake content or potential malware'},
-  {key: 'violence', label: 'Threats or violence', description: 'Contains abusive or derogatory content'},
-  {key: 'misinformation', label: 'Misinformation', description: 'False or misleading information'},
-  {key: 'hate', label: 'Hateful Speech', description: 'Promotes hatred or discrimination'},
-  {key: 'selfharm', label: 'Self-harm', description: 'Content that encourages self-harm'},
-  {key: 'extremism', label: 'Dangerous or extremist organisations', description: 'Promotes dangerous groups'},
-];
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 const DotsIcon = () => (
@@ -157,8 +153,25 @@ const CheckCircleIcon = () => (
 
 const MuteIcon = () => (
   <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
-    <Path d="M8.55798 12.3253C8.61346 12.0489 8.88273 11.8691 9.15918 11.9243C9.43556 11.9798 9.61472 12.2491 9.55957 12.5255C9.357 13.5364 8.4116 14.2498 7.33606 14.2498C6.26067 14.2496 5.3151 13.5363 5.11255 12.5255C5.0575 12.2492 5.23727 11.9798 5.51355 11.9243C5.78997 11.8691 6.05922 12.049 6.11475 12.3253C6.21178 12.8087 6.69491 13.2279 7.33606 13.228C7.97743 13.228 8.46097 12.8089 8.55798 12.3253ZM7.40869 0.75C9.86691 0.750215 11.86 2.74304 11.86 5.20129V7.64575C12.6926 7.81489 13.3193 8.55159 13.3193 9.43408C13.3192 10.4414 12.5023 11.2577 11.495 11.2578H3.32239C2.31494 11.2578 1.49821 10.4415 1.49805 9.43408C1.49805 8.55149 2.12469 7.81478 2.9574 7.64575V5.20129C2.95743 2.7429 4.9503 0.75 7.40869 0.75ZM7.40869 1.77173C5.51452 1.77173 3.97915 3.30713 3.97913 5.20129V7.8844C3.97912 8.23132 3.73433 8.53054 3.39441 8.59973L3.16064 8.64734C2.79469 8.72162 2.51917 9.04692 2.51917 9.43408C2.51933 9.87726 2.87917 10.2367 3.32239 10.2367H11.495C11.9381 10.2365 12.2974 9.87717 12.2976 9.43408C12.2976 9.04705 12.0225 8.72176 11.6567 8.64734L11.423 8.59973C11.0829 8.53067 10.8383 8.23144 10.8383 7.8844V5.20129C10.8382 3.30726 9.30268 1.77194 7.40869 1.77173Z" fill="#192546" />
-    <Path d="M2.83316 1.57193C3.07946 1.32563 3.4792 1.32563 3.72549 1.57193L13.3117 11.1587C13.5578 11.405 13.5579 11.8042 13.3117 12.0504C13.0654 12.2967 12.6663 12.2966 12.42 12.0504L2.83316 2.46426C2.58686 2.21797 2.58686 1.81823 2.83316 1.57193Z" fill="#192546" />
+    <Path d="M5.80488 11.64C5.68488 11.69 5.60488 11.78 5.56488 11.91C5.52488 12.03 5.52988 12.15 5.57988 12.27C5.58988 12.27 5.59488 12.28 5.59488 12.3C5.66488 12.43 5.73488 12.555 5.80488 12.675C6.00488 12.955 6.25988 13.18 6.56988 13.35C6.86988 13.51 7.19988 13.59 7.55988 13.59C7.99988 13.59 8.39988 13.47 8.75988 13.23C9.11988 12.98 9.37988 12.655 9.53988 12.255C9.58988 12.135 9.58988 12.015 9.53988 11.895C9.48988 11.775 9.40488 11.69 9.28488 11.64C9.16488 11.59 9.04488 11.59 8.92488 11.64C8.80488 11.69 8.71988 11.775 8.66988 11.895C8.58988 12.125 8.44988 12.31 8.24988 12.45C8.03988 12.59 7.80988 12.66 7.55988 12.66C7.35988 12.66 7.17488 12.615 7.00488 12.525C6.83488 12.425 6.68988 12.295 6.56988 12.135C6.51988 12.065 6.47988 11.985 6.44988 11.895V11.88C6.43988 11.87 6.43488 11.86 6.43488 11.85C6.37488 11.74 6.28488 11.665 6.16488 11.625C6.03488 11.575 5.91488 11.58 5.80488 11.64ZM3.70488 2.64C3.61488 2.73 3.56988 2.84 3.56988 2.97C3.55988 3.09 3.59988 3.2 3.68988 3.3L4.85988 4.545L11.6999 11.565C11.7899 11.655 11.8999 11.7 12.0299 11.7C12.1599 11.7 12.2699 11.655 12.3599 11.565C12.4499 11.475 12.4999 11.365 12.5099 11.235C12.5099 11.105 12.4649 10.995 12.3749 10.905L5.53488 3.9L4.36488 2.655C4.28488 2.555 4.17988 2.505 4.04988 2.505C3.91988 2.505 3.80488 2.55 3.70488 2.64ZM11.1899 8.715C11.3199 8.755 11.4299 8.83 11.5199 8.94C11.5999 9.05 11.6399 9.175 11.6399 9.315C11.6399 9.485 11.5799 9.635 11.4599 9.765C11.3299 9.885 11.1799 9.945 11.0099 9.945H4.06488C3.89488 9.945 3.74988 9.885 3.62988 9.765C3.49988 9.635 3.43488 9.485 3.43488 9.315C3.43488 9.175 3.47988 9.05 3.56988 8.94C3.65988 8.82 3.77488 8.745 3.91488 8.715C4.11488 8.665 4.28488 8.555 4.42488 8.385C4.55488 8.215 4.61988 8.02 4.61988 7.8V5.76C4.61988 5.22 4.75488 4.725 5.02488 4.275C5.28488 3.825 5.63988 3.47 6.08988 3.21C6.53988 2.94 7.02988 2.805 7.55988 2.805C8.08988 2.805 8.57988 2.94 9.02988 3.21C9.47988 3.47 9.83988 3.825 10.1099 4.275C10.3699 4.725 10.4999 5.22 10.4999 5.76V7.815C10.4999 8.025 10.5649 8.215 10.6949 8.385C10.8249 8.545 10.9899 8.655 11.1899 8.715ZM3.67488 7.8C3.33488 7.89 3.05488 8.075 2.83488 8.355C2.61488 8.635 2.50488 8.955 2.50488 9.315C2.50488 9.605 2.57488 9.87 2.71488 10.11C2.85488 10.35 3.04488 10.54 3.28488 10.68C3.51488 10.82 3.77488 10.89 4.06488 10.89H11.0099C11.2999 10.89 11.5649 10.82 11.8049 10.68C12.0349 10.54 12.2199 10.35 12.3599 10.11C12.4999 9.87 12.5699 9.605 12.5699 9.315C12.5699 8.965 12.4649 8.65 12.2549 8.37C12.0449 8.09 11.7749 7.905 11.4449 7.815V5.76C11.4449 5.06 11.2699 4.415 10.9199 3.825C10.5699 3.225 10.0999 2.75 9.50988 2.4C8.90988 2.05 8.25988 1.875 7.55988 1.875C6.85988 1.875 6.21488 2.05 5.62488 2.4C5.02488 2.75 4.54988 3.225 4.19988 3.825C3.84988 4.415 3.67488 5.06 3.67488 5.76V7.8Z" fill="#192546" />
+  </Svg>
+);
+
+// Figma close icon (20x20). The export draws the X as a mask over a
+// #C5C6CC rect, same result as filling the X path directly.
+const SheetCloseIcon = () => (
+  <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+    <Path
+      d="M5.80012 6.67912L9.02012 9.89907L5.80012 13.099C5.68012 13.219 5.62012 13.3657 5.62012 13.539C5.62012 13.7123 5.68012 13.859 5.80012 13.979C5.92012 14.099 6.06678 14.159 6.24012 14.159C6.41345 14.159 6.56012 14.099 6.68012 13.979L9.90012 10.7791L13.1001 13.979C13.2201 14.099 13.3668 14.159 13.5401 14.159C13.7135 14.159 13.8601 14.099 13.9801 13.979C14.1001 13.859 14.1601 13.7123 14.1601 13.539C14.1601 13.3657 14.1001 13.219 13.9801 13.099L10.7801 9.89907L13.9801 6.67912C14.1001 6.55913 14.1601 6.41246 14.1601 6.23913C14.1601 6.0658 14.1001 5.91914 13.9801 5.79914C13.8601 5.67914 13.7135 5.61914 13.5401 5.61914C13.3668 5.61914 13.2201 5.67914 13.1001 5.79914L9.90012 8.99909L6.68012 5.79914C6.56012 5.67914 6.41345 5.61914 6.24012 5.61914C6.06678 5.61914 5.92012 5.67914 5.80012 5.79914C5.68012 5.91914 5.62012 6.0658 5.62012 6.23913C5.62012 6.41246 5.68012 6.55913 5.80012 6.67912Z"
+      fill="#C5C6CC"
+    />
+  </Svg>
+);
+
+// Figma "Report" flag icon (More Options sheet).
+const FlagIcon = () => (
+  <Svg width={15} height={15} viewBox="0 0 15 15" fill="none">
+    <Path d="M2.65488 2.22C2.55488 2.32 2.50488 2.435 2.50488 2.565V13.125C2.50488 13.255 2.54988 13.365 2.63988 13.455C2.72988 13.545 2.83988 13.59 2.96988 13.59C3.09988 13.59 3.20988 13.545 3.29988 13.455C3.38988 13.365 3.43488 13.255 3.43488 13.125V8.445H12.1649C12.2949 8.445 12.3899 8.395 12.4499 8.295C12.5099 8.185 12.5049 8.08 12.4349 7.98L12.1649 7.515L10.9349 5.49C10.8749 5.38 10.8449 5.27 10.8449 5.16C10.8449 5.05 10.8749 4.945 10.9349 4.845L12.4349 2.355C12.5049 2.245 12.5099 2.14 12.4499 2.04C12.3899 1.93 12.2949 1.875 12.1649 1.875H3.20988C3.08988 1.875 2.97988 1.91 2.87988 1.98C2.76988 2.04 2.69488 2.12 2.65488 2.22ZM3.52488 2.805H11.0699L10.1399 4.35C9.98988 4.6 9.91488 4.87 9.91488 5.16C9.91488 5.45 9.98988 5.72 10.1399 5.97L11.0699 7.515H3.58488L3.52488 2.805Z" fill="#192546" />
   </Svg>
 );
 
@@ -245,154 +258,6 @@ const getStoredUser = async () => {
 };
 
 // ─── Report Modal ─────────────────────────────────────────────────────────────
-type ReportStep = 'intro' | 'select' | 'confirm' | 'done';
-
-const ReportModal = ({
-  visible,
-  onClose,
-  onSubmit,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSubmit: (reasons: string[]) => void;
-}) => {
-  const [step, setStep] = useState<ReportStep>('intro');
-  const [selected, setSelected] = useState<string[]>([]);
-
-  const reset = () => {
-    setStep('intro');
-    setSelected([]);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
-
-  const toggleIssue = (key: string) => {
-    setSelected(prev =>
-      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key],
-    );
-  };
-
-  const handleSubmit = () => {
-    onSubmit(selected);
-    setStep('done');
-  };
-
-  const handleDone = () => {
-    reset();
-    onClose();
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <View style={rs.overlay}>
-        <View style={rs.sheet}>
-          {/* ── Step: intro ── */}
-          {step === 'intro' && (
-            <>
-              <View style={rs.sheetHeader}>
-                <Text style={rs.sheetTitle}>{'Report Post'}</Text>
-                <TouchableOpacity onPress={handleClose} style={rs.closeBtn}>
-                  <Text style={rs.closeX}>{'✕'}</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={rs.introText}>
-                {'Help us maintain a professional and respectful community.'}
-              </Text>
-              <TouchableOpacity
-                style={rs.primaryBtn}
-                onPress={() => setStep('select')}>
-                <Text style={rs.primaryBtnText}>{'Continue'}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* ── Step: select ── */}
-          {step === 'select' && (
-            <>
-              <View style={rs.sheetHeader}>
-                <Text style={rs.sheetTitle}>{'Report This Post'}</Text>
-                <TouchableOpacity onPress={handleClose} style={rs.closeBtn}>
-                  <Text style={rs.closeX}>{'✕'}</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={rs.selectLabel}>
-                {'Please select any report issue'}
-              </Text>
-              <ScrollView style={rs.issueList} showsVerticalScrollIndicator={false}>
-                {REPORT_ISSUES.map(issue => (
-                  <TouchableOpacity
-                    key={issue.key}
-                    style={rs.issueRow}
-                    onPress={() => toggleIssue(issue.key)}>
-                    <Text style={rs.issueLabel}>{issue.label}</Text>
-                    <Text style={[rs.issuePlus, selected.includes(issue.key) && rs.issueMinus]}>
-                      {selected.includes(issue.key) ? '−' : '+'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <TouchableOpacity
-                style={[rs.primaryBtn, selected.length === 0 && rs.primaryBtnDisabled]}
-                disabled={selected.length === 0}
-                onPress={() => setStep('confirm')}>
-                <Text style={rs.primaryBtnText}>{'Continue'}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* ── Step: confirm ── */}
-          {step === 'confirm' && (
-            <>
-              <View style={rs.sheetHeader}>
-                <Text style={rs.sheetTitle}>{'Report This Post'}</Text>
-                <TouchableOpacity onPress={handleClose} style={rs.closeBtn}>
-                  <Text style={rs.closeX}>{'✕'}</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={rs.selectLabel}>
-                {"You've selected the following reason"}
-              </Text>
-              <ScrollView style={rs.selectedList} showsVerticalScrollIndicator={false}>
-                {REPORT_ISSUES.filter(i => selected.includes(i.key)).map(issue => (
-                  <View key={issue.key} style={rs.selectedItem}>
-                    <Text style={rs.selectedItemLabel}>{issue.label}</Text>
-                    <Text style={rs.selectedItemDesc}>{issue.description}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={rs.primaryBtn} onPress={handleSubmit}>
-                <Text style={rs.primaryBtnText}>{'Submit Report'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={rs.outlineBtn} onPress={() => setStep('select')}>
-                <Text style={rs.outlineBtnText}>{'Back'}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* ── Step: done ── */}
-          {step === 'done' && (
-            <View style={rs.doneContainer}>
-              <Text style={rs.sheetTitle}>{'Report Submitted'}</Text>
-              <View style={rs.doneIcon}>
-                <CheckCircleIcon />
-              </View>
-              <Text style={rs.doneText}>
-                {'Thank you for helping us maintain a professional and respectful community.'}
-              </Text>
-              <TouchableOpacity style={rs.primaryBtn} onPress={handleDone}>
-                <Text style={rs.primaryBtnText}>{'Done'}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
 // ─── More Options Bottom Sheet ────────────────────────────────────────────────
 const MoreOptionsSheet = ({
   visible,
@@ -403,6 +268,9 @@ const MoreOptionsSheet = ({
   onDelete,
   onEdit,
   onReport,
+  authorName,
+  canBlock,
+  onBlock,
 }: {
   visible: boolean;
   isOwnPost: boolean;
@@ -412,6 +280,9 @@ const MoreOptionsSheet = ({
   onDelete: () => void;
   onEdit: () => void;
   onReport: () => void;
+  authorName: string;
+  canBlock: boolean;
+  onBlock: () => void;
 }) => (
   <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
     <TouchableOpacity style={ms.overlay} activeOpacity={1} onPress={onClose}>
@@ -419,9 +290,10 @@ const MoreOptionsSheet = ({
         <View style={ms.sheetHeader}>
           <Text style={ms.sheetTitle}>{'More Options'}</Text>
           <TouchableOpacity onPress={onClose} style={ms.closeBtn}>
-            <Text style={ms.closeX}>{'✕'}</Text>
+            <SheetCloseIcon />
           </TouchableOpacity>
         </View>
+        <View style={ms.options}>
         {isOwnPost ? (
           <>
             <TouchableOpacity style={ms.optionRow} onPress={onMuteToggle}>
@@ -440,13 +312,26 @@ const MoreOptionsSheet = ({
             </TouchableOpacity>
           </>
         ) : (
-          <TouchableOpacity style={ms.optionRow} onPress={onReport}>
-            <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-              <Path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="#192546" />
-            </Svg>
-            <Text style={ms.optionText}>{'Report'}</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={ms.optionRow} onPress={onReport}>
+              <FlagIcon />
+              <Text style={ms.optionText}>{'Report post'}</Text>
+            </TouchableOpacity>
+            {canBlock && (
+              <TouchableOpacity style={ms.optionRow} onPress={onBlock}>
+                <BlockIcon />
+                <Text style={ms.optionText}>{authorName ? `Block ${authorName}` : 'Block member'}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={ms.optionRow} onPress={onMuteToggle}>
+              <MuteIcon />
+              <Text style={ms.optionText}>
+                {isMuted ? 'Turn on notifications' : 'Turn off notifications'}
+              </Text>
+            </TouchableOpacity>
+          </>
         )}
+        </View>
       </View>
     </TouchableOpacity>
   </Modal>
@@ -572,6 +457,17 @@ const NewestMembersSection = ({members, loading, followBusy, onFollow, navigatio
 );
 
 // ─── Comments Panel — input row always visible (Intro-style), list toggles ────
+// A comment's "…" menu (Report / Block author) is owned by FeedScreen because
+// its sheets must cover the whole screen, not the post card. FeedScreen
+// registers its opener here so the memoised post rows need no extra props.
+type CommentTarget = {
+  id: number;
+  authorId: number;
+  authorName: string;
+  authorAvatar?: string;
+};
+let openCommentOptions: ((c: CommentTarget) => void) | null = null;
+
 const CommentsPanel = ({
   postId,
   myUserId,
@@ -746,6 +642,21 @@ const CommentsPanel = ({
                       <Text style={styles.commentLikeCount}>
                         {`${c.likes} ${c.likes === 1 ? 'Like' : 'Likes'}`}
                       </Text>
+                    </TouchableOpacity>
+                  )}
+                  {typeof c.id === 'number' && c.author.id !== myUserId && (
+                    <TouchableOpacity
+                      style={styles.commentReportBtn}
+                      hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                      onPress={() =>
+                        openCommentOptions?.({
+                          id: c.id,
+                          authorId: c.author.id,
+                          authorName: c.author.name,
+                          authorAvatar: c.author.avatar,
+                        })
+                      }>
+                      <Text style={styles.commentReportText}>{'•••'}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1041,6 +952,13 @@ const FeedScreen = ({navigation}: any) => {
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showBlock, setShowBlock] = useState(false);
+  // Comment "…" menu: Report comment / Block author.
+  const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
+  const [showCommentMenu, setShowCommentMenu] = useState(false);
+  const [showCommentReport, setShowCommentReport] = useState(false);
+  const [showCommentBlock, setShowCommentBlock] = useState(false);
+  const [blockedToast, setBlockedToast] = useState('');
 
   // Mute toast state
   const [muteToastVisible, setMuteToastVisible] = useState(false);
@@ -1365,11 +1283,84 @@ const FeedScreen = ({navigation}: any) => {
     setShowReport(true);
   };
 
-  const handleReportSubmit = async (reasons: string[]) => {
-    if (!moreOptionsPost) return;
+  useEffect(() => {
+    openCommentOptions = c => {
+      setCommentTarget(c);
+      setShowCommentMenu(true);
+    };
+    return () => {
+      openCommentOptions = null;
+    };
+  }, []);
+
+  // Sheets that are native Modals can't open while the menu Modal is still
+  // dismissing on iOS, hence the short delay.
+  const handleCommentReportPress = () => {
+    setShowCommentMenu(false);
+    setTimeout(() => setShowCommentReport(true), 400);
+  };
+
+  const handleCommentBlockPress = () => {
+    setShowCommentMenu(false);
+    setShowCommentBlock(true);
+  };
+
+  // POST /blocked-members {user_id}. Their posts leave the feed, same as
+  // blocking from a post.
+  const handleCommentBlockConfirm = async () => {
+    const target = commentTarget;
+    setShowCommentBlock(false);
+    if (!target) return;
+    const err = await blockAuthor(target.authorId, {
+      name: target.authorName,
+      avatarUrl: target.authorAvatar,
+    });
+    if (err) {
+      Alert.alert('Could not block member', err);
+      return;
+    }
+    setPosts(prev => prev.filter(p => p.author.id !== target.authorId));
+    setBlockedToast(`You blocked ${target.authorName}.`);
+  };
+
+  const handleCommentReportSubmit = async (reasons: string[], note: string) => {
+    if (!commentTarget) return;
+    await submitReport('activity_comment', commentTarget.id, reasons, note);
+  };
+
+  const handleBlockPress = () => {
+    setShowMoreOptions(false);
+    setShowBlock(true);
+  };
+
+  // POST /blocked-members/post {activity_id}: blocks that post's author.
+  // On success their posts leave the feed and the shared blocked list updates.
+  const handleBlockConfirm = async () => {
+    const post = moreOptionsPost;
+    setShowBlock(false);
+    if (!post) return;
     try {
-      await reportActivity(moreOptionsPost.id, reasons);
-    } catch {}
+      const m = await blockPostAuthor(post.id);
+      const authorId = m?.id || post.author.id;
+      const name = m?.name || post.author.name;
+      markMemberBlocked({
+        id: authorId,
+        name,
+        avatarUrl: m?.avatarUrl || post.author.avatar,
+        title: post.author.title,
+      });
+      setPosts(prev => prev.filter(p => p.author.id !== authorId));
+      setBlockedToast(`You blocked ${name}.`);
+    } catch (e: any) {
+      Alert.alert('Could not block member', e?.message || 'Please try again.');
+    }
+  };
+
+  // POST /buddyboss/v1/moderation/report (item_type 'activity'). Errors bubble
+  // up to the modal, which shows the server's message.
+  const handleReportSubmit = async (reasons: string[], note: string) => {
+    if (!moreOptionsPost) return;
+    await submitReport('activity', moreOptionsPost.id, reasons, note);
   };
 
   // PERF: renderItem is memoised; it changes identity only when something a
@@ -1536,6 +1527,46 @@ const FeedScreen = ({navigation}: any) => {
         onDelete={handleDeletePress}
         onEdit={handleEditPress}
         onReport={handleReportPress}
+        authorName={moreOptionsPost?.author?.name ?? ''}
+        canBlock={!!moreOptionsPost && moreOptionsPost.type !== 'ipm'}
+        onBlock={handleBlockPress}
+      />
+
+      {/* Comment "…" menu */}
+      <AuthorOptionsSheet
+        visible={showCommentMenu}
+        onClose={() => setShowCommentMenu(false)}
+        reportLabel="Report comment"
+        onReport={handleCommentReportPress}
+        authorName={commentTarget?.authorName}
+        onBlock={handleCommentBlockPress}
+      />
+      <ReportModal
+        visible={showCommentReport}
+        noun="Comment"
+        showIntro={false}
+        onClose={() => setShowCommentReport(false)}
+        onSubmit={handleCommentReportSubmit}
+      />
+      <BlockMemberSheet
+        visible={showCommentBlock}
+        name={commentTarget?.authorName ?? ''}
+        onClose={() => setShowCommentBlock(false)}
+        onConfirm={handleCommentBlockConfirm}
+      />
+
+      {/* Block member confirmation (same sheet as profile / DM) */}
+      <BlockMemberSheet
+        visible={showBlock}
+        name={moreOptionsPost?.author?.name ?? ''}
+        onClose={() => setShowBlock(false)}
+        onConfirm={handleBlockConfirm}
+      />
+      <SuccessToast
+        visible={!!blockedToast}
+        variant="info"
+        message={blockedToast}
+        onHide={() => setBlockedToast('')}
       />
 
       {/* Delete Confirm */}
@@ -1907,6 +1938,8 @@ const styles = StyleSheet.create({
   commentFooterRow: {flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6},
   commentLikeBtn: {padding: 2},
   commentLikeCount: {fontSize: 11, color: '#0C4D91', fontWeight: '600', fontFamily: 'Runda'},
+  commentReportBtn: {marginLeft: 'auto', paddingVertical: 2, paddingHorizontal: 4},
+  commentReportText: {fontSize: 14, letterSpacing: 1, color: '#8F9098', fontWeight: '500', fontFamily: 'Runda'},
 
   errorBanner: {
     backgroundColor: '#FEF2F2',
@@ -1952,103 +1985,43 @@ const styles = StyleSheet.create({
 });
 
 // ─── Report Modal Styles ──────────────────────────────────────────────────────
-const rs = StyleSheet.create({
-  overlay: {flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end'},
-  sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 36,
-    maxHeight: '85%',
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    position: 'relative',
-  },
-  sheetTitle: {fontSize: 17, fontWeight: '700', color: '#192546', textAlign: 'center', fontFamily: 'Runda'},
-  closeBtn: {position: 'absolute', right: 0, top: -4, padding: 6},
-  closeX: {fontSize: 18, color: '#8F9098'},
-  introText: {fontSize: 14, color: '#8F9098', textAlign: 'center', lineHeight: 20, marginBottom: 24, fontFamily: 'Runda'},
-  selectLabel: {fontSize: 15, fontWeight: '700', color: '#192546', marginBottom: 16, fontFamily: 'Runda'},
-  issueList: {maxHeight: 320, marginBottom: 16},
-  issueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  issueLabel: {fontSize: 14, color: '#192546', fontFamily: 'Runda'},
-  issuePlus: {fontSize: 20, color: '#192546', fontWeight: '300'},
-  issueMinus: {color: '#1A3A6B', fontWeight: '700'},
-  selectedList: {maxHeight: 260, marginBottom: 16},
-  selectedItem: {
-    backgroundColor: '#F5F6FA',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  selectedItemLabel: {fontSize: 14, fontWeight: '700', color: '#192546', marginBottom: 3, fontFamily: 'Runda'},
-  selectedItemDesc: {fontSize: 12, color: '#8F9098', fontFamily: 'Runda'},
-  primaryBtn: {
-    backgroundColor: '#0C4D91',
-    borderRadius: 50,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  primaryBtnDisabled: {opacity: 0.4},
-  primaryBtnText: {color: '#FFF', fontSize: 15, fontWeight: '700', fontFamily: 'Runda'},
-  outlineBtn: {
-    borderWidth: 1.5,
-    borderColor: '#0C4D91',
-    borderRadius: 50,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  outlineBtnText: {color: '#0C4D91', fontSize: 15, fontWeight: '600', fontFamily: 'Runda'},
-  doneContainer: {alignItems: 'center', paddingVertical: 10},
-  doneIcon: {marginVertical: 20},
-  doneText: {fontSize: 14, color: '#8F9098', textAlign: 'center', lineHeight: 20, marginBottom: 24, fontFamily: 'Runda'},
-});
 
 // ─── More Options Styles ──────────────────────────────────────────────────────
 const ms = StyleSheet.create({
   overlay: {flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end'},
+  // Figma: column, gap 24 between header and options box.
   sheet: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 0,
-    paddingTop: 20,
+    paddingTop: 0,
     paddingBottom: 36,
+    gap: 24,
   },
+  // Figma header: height 56, padding 18 24 16.5; title centred, X on the right.
   sheetHeader: {
+    height: 56,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 16.5,
+    paddingHorizontal: 24,
     position: 'relative',
   },
   // Figma Heading/H3
   sheetTitle: {
     fontSize: 16,
-    fontWeight: '700',
     lineHeight: 20,
     letterSpacing: 0.08,
     textAlign: 'center',
     color: '#0C4D91',
-    fontFamily: 'Runda',
+    fontFamily: 'Runda-Medium',
   },
-  closeBtn: {position: 'absolute', right: 20, top: -4, padding: 6},
-  closeX: {fontSize: 18, color: '#8F9098'},
+  closeBtn: {position: 'absolute', right: 24, top: 18, height: 20, width: 20, alignItems: 'center', justifyContent: 'center'},
+  // Figma options box: padding 0 16, gap 6.
+  options: {alignSelf: 'stretch', paddingHorizontal: 16, gap: 6},
   // Figma row: padding 12 20, gap 10, align center
   optionRow: {
     flexDirection: 'row',
@@ -2058,8 +2031,8 @@ const ms = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
   },
-  // Figma Action/Action L
-  optionText: {fontSize: 14, fontWeight: '700', color: '#192546', fontFamily: 'Runda'},
+  // Figma Action/Action L (14, weight 500, navy)
+  optionText: {fontSize: 14, color: '#192546', fontFamily: 'Runda-Medium'},
 });
 
 // ─── Delete Confirm Styles ────────────────────────────────────────────────────

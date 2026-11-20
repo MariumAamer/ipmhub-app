@@ -1,9 +1,10 @@
 /* eslint-disable prettier/prettier */
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Image, StatusBar, ActivityIndicator, RefreshControl} from 'react-native';
 import Svg, {Path, Circle, Rect, G, Mask, Defs} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
+import SuccessToast from '../components/SuccessToast';
 import {getUserIdFromToken} from '../api/profileApi';
 import {
   getThreadList,
@@ -13,6 +14,9 @@ import {
   DMThread,
 } from '../api/dmApi';
 import {getMembersBatch, resolveFullName} from '../api/feedApi';
+// App Store 1.2: a blocked member's thread must disappear from the inbox too,
+// not just their posts/comments. Same shared block list every other screen uses.
+import {useBlockedMembers} from '../hooks/useMemberBlock';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -113,7 +117,7 @@ const ThreadRow = ({
 
 // ─── DMListScreen ─────────────────────────────────────────────────────────────
 
-const DMListScreen = ({navigation}: any) => {
+const DMListScreen = ({navigation, route}: any) => {
   const [threads, setThreads] = useState<DMThread[]>([]);
   const [filtered, setFiltered] = useState<DMThread[]>([]);
   const [search, setSearch] = useState('');
@@ -121,6 +125,27 @@ const DMListScreen = ({navigation}: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number>(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [toast, setToast] = useState('');
+
+  // Refreshed on mount and kept live by useMemberBlock's shared store, so a
+  // block made from a profile, a post or the conversation itself (and an
+  // unblock from Settings → Blocked Members) is reflected here immediately.
+  const {members: blockedMembers} = useBlockedMembers();
+  const blockedIds = useMemo(
+    () => new Set(blockedMembers.map(m => m.id)),
+    [blockedMembers],
+  );
+
+  // A conversation can hand back a toast, e.g. "Member blocked." after
+  // blocking from a chat. Consume the param so it doesn't re-fire.
+  const incomingToast: string | undefined = route?.params?.toast;
+  useEffect(() => {
+    if (!incomingToast) return;
+    setToast(incomingToast);
+    navigation?.setParams?.({toast: undefined});
+    loadThreads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingToast]);
 
   useEffect(() => {
     initUser();
@@ -128,18 +153,22 @@ const DMListScreen = ({navigation}: any) => {
   }, []);
 
   useEffect(() => {
+    const visible = threads.filter(t => {
+      const other = getOtherRecipient(t, currentUserId);
+      return !(other && blockedIds.has(Number(other.user_id)));
+    });
     if (!search.trim()) {
-      setFiltered(threads);
+      setFiltered(visible);
     } else {
       const q = search.toLowerCase();
       setFiltered(
-        threads.filter(t => {
+        visible.filter(t => {
           const other = getOtherRecipient(t, currentUserId);
           return other?.name?.toLowerCase().includes(q);
         }),
       );
     }
-  }, [search, threads, currentUserId]);
+  }, [search, threads, currentUserId, blockedIds]);
 
   const initUser = async () => {
     const id = await getUserIdFromToken();
@@ -179,7 +208,9 @@ const DMListScreen = ({navigation}: any) => {
         };
       });
       setThreads(enriched);
-      setFiltered(enriched);
+      // Not setFiltered(enriched) here — the effect above derives `filtered`
+      // from `threads` (search + blocked-member filter), so this alone would
+      // only flash the unfiltered list in before that effect runs.
     } catch (e) {
       console.log('DM list error:', e);
     } finally {
@@ -264,6 +295,12 @@ const DMListScreen = ({navigation}: any) => {
         visible={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         navigation={navigation}
+      />
+      <SuccessToast
+        visible={!!toast}
+        variant="info"
+        message={toast}
+        onHide={() => setToast('')}
       />
     </View>
   );

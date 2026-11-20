@@ -1,11 +1,12 @@
 /* eslint-disable prettier/prettier */
 import React, {useEffect, useState} from 'react';
-import {View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Linking, Platform} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar} from 'react-native';
 import Svg, {Path, Circle} from 'react-native-svg';
 import AppHeader from '../components/AppHeader';
 import ProfileDrawer from '../components/ProfileDrawer';
 import BackButton from '../components/BackButton';
 import {getStoredUser} from '../api/authApi';
+import {getDeletionStatus, DeletionStatus} from '../api/accountApi';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const NAVY = '#192546'; // --IPM-Color-Palette-Navy-Blue
@@ -14,9 +15,6 @@ const LIGHT_BLUE = '#46B0E3'; // --IPM-Color-Palette-Light-Blue
 const GREY = '#8F9098'; // --Neutral-Dark-Lightest
 const ERROR_LIGHT = '#FFE2E5'; // --Support-Error-Light
 const SUCCESS_LIGHT = '#E7F4E8'; // --Support-Success-Light
-const WARNING_LIGHT = '#FFF4E4'; // --Support-Warning-Light
-const WARNING_MEDIUM = '#FFB37C'; // --Support-Warning-Medium
-const WARNING_ORANGE = '#E86339';
 // TODO: confirm exact blue-banner tokens from Figma (not in the CSS shared).
 const INFO_BG = '#EEF8FD';
 const INFO_BORDER = '#8FD0F0';
@@ -46,6 +44,13 @@ const UsersIcon = () => (
   </Svg>
 );
 
+const UserIcon = () => (
+  <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+    <Path d="M16.6673 17.5V15.8333C16.6673 14.9493 16.3161 14.1014 15.691 13.4763C15.0659 12.8512 14.218 12.5 13.334 12.5H6.66732C5.78326 12.5 4.93542 12.8512 4.3103 13.4763C3.68517 14.1014 3.33398 14.9493 3.33398 15.8333V17.5" {...strokeProps} />
+    <Path d="M10.0007 9.16667C11.8416 9.16667 13.334 7.67428 13.334 5.83333C13.334 3.99238 11.8416 2.5 10.0007 2.5C8.15970 2.5 6.66732 3.99238 6.66732 5.83333C6.66732 7.67428 8.15970 9.16667 10.0007 9.16667Z" {...strokeProps} />
+  </Svg>
+);
+
 const CapIcon = () => (
   <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
     <Path d="M18.334 8.33301V13.333" {...strokeProps} />
@@ -61,27 +66,9 @@ const AwardIcon = () => (
   </Svg>
 );
 
-const FileIcon = () => (
-  <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-    <Path d="M12.5007 1.66699H5.00065C4.55862 1.66699 4.1347 1.84259 3.82214 2.15515C3.50958 2.46771 3.33398 2.89163 3.33398 3.33366V16.667C3.33398 17.109 3.50958 17.5329 3.82214 17.8455C4.1347 18.1581 4.55862 18.3337 5.00065 18.3337H15.0007C15.4427 18.3337 15.8666 18.1581 16.1792 17.8455C16.4917 17.5329 16.6673 17.109 16.6673 16.667V5.83366L12.5007 1.66699Z" {...strokeProps} />
-    <Path d="M11.666 1.66699V5.00033C11.666 5.44235 11.8416 5.86628 12.1542 6.17884C12.4667 6.4914 12.8907 6.66699 13.3327 6.66699H16.666" {...strokeProps} />
-    <Path d="M8.33268 7.5H6.66602" {...strokeProps} />
-    <Path d="M13.3327 10.833H6.66602" {...strokeProps} />
-    <Path d="M13.3327 14.167H6.66602" {...strokeProps} />
-  </Svg>
-);
-
-// ─── Banner icons ─────────────────────────────────────────────────────────────
+// ─── Banner icon ──────────────────────────────────────────────────────────────
 // Rebuilt without <mask> (react-native-svg@15.3.0 doesn't render it): a solid
 // circle with the white glyph on top gives the identical result.
-const WarningIcon = () => (
-  <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-    <Circle cx="8.0013" cy="8.00033" r="7.33333" fill={WARNING_ORANGE} />
-    <Path d="M7.63098 4.04032C7.74717 3.98915 7.87276 3.96278 7.99972 3.96289C8.12659 3.96292 8.25207 3.9894 8.36814 4.04063C8.48422 4.09185 8.58834 4.16671 8.67387 4.26043C8.7594 4.35414 8.82445 4.46465 8.86489 4.58491C8.90533 4.70517 8.92025 4.83254 8.90872 4.95889L8.54472 8.96489C8.53057 9.09957 8.46705 9.22425 8.36641 9.31487C8.26577 9.40548 8.13514 9.45563 7.99972 9.45563C7.86429 9.45563 7.73367 9.40548 7.63303 9.31487C7.53239 9.22425 7.46887 9.09957 7.45472 8.96489L7.08972 4.95889C7.07818 4.83246 7.09313 4.705 7.13363 4.58468C7.17412 4.46435 7.23927 4.35379 7.32491 4.26006C7.41054 4.16633 7.51479 4.09149 7.63098 4.04032Z" fill="#FFFFFF" />
-    <Path d="M8.87208 11.1654C8.87208 11.6472 8.48153 12.0377 7.99976 12.0377C7.51798 12.0377 7.12743 11.6472 7.12743 11.1654C7.12743 10.6836 7.51798 10.2931 7.99976 10.2931C8.48153 10.2931 8.87208 10.6836 8.87208 11.1654Z" fill="#FFFFFF" />
-  </Svg>
-);
-
 const InfoIcon = () => (
   <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
     <Circle cx="8.0013" cy="8.00033" r="7.33333" fill={LIGHT_BLUE} />
@@ -101,24 +88,31 @@ interface InfoRow {
 
 const LOSE_ROWS: InfoRow[] = [
   {
+    key: 'courses',
+    title: 'Access to your enrolled courses',
+    body: 'Including course progress, badges and PDU records.',
+    Icon: CapIcon,
+    tile: ERROR_LIGHT,
+  },
+  {
     key: 'profile',
-    title: 'Profile, posts & discussions',
-    body: 'Your profile, Feed posts, forum discussions and comments are permanently deleted.',
-    Icon: ChatIcon,
+    title: 'Your profile',
+    body: 'Name, photo, bio and job details.',
+    Icon: UserIcon,
     tile: ERROR_LIGHT,
   },
   {
     key: 'connections',
-    title: 'Connections & messages',
-    body: 'Your followers, following and direct messages are deleted.',
+    title: 'Connections and messages',
+    body: 'Followers, following and direct messages.',
     Icon: UsersIcon,
     tile: ERROR_LIGHT,
   },
   {
-    key: 'progress',
-    title: 'Course progress, badges & PDUs',
-    body: 'Your learning progress, badges and PDU records are removed.',
-    Icon: CapIcon,
+    key: 'posts',
+    title: 'Your posts and comments',
+    body: 'Removed from the feed, forums and groups.',
+    Icon: ChatIcon,
     tile: ERROR_LIGHT,
   },
 ];
@@ -129,13 +123,6 @@ const STAY_ROWS: InfoRow[] = [
     title: 'Issued certificates',
     body: 'Certificates already issued stay valid and verifiable.',
     Icon: AwardIcon,
-    tile: SUCCESS_LIGHT,
-  },
-  {
-    key: 'invoices',
-    title: 'Invoices & payment records',
-    body: 'Kept only as long as the law requires.',
-    Icon: FileIcon,
     tile: SUCCESS_LIGHT,
   },
 ];
@@ -156,6 +143,9 @@ const Row = ({row}: {row: InfoRow}) => (
 const DeleteAccountScreen = ({navigation}: any) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [firstName, setFirstName] = useState('');
+  // GET /account/deletion — tells us whether this account may be deleted at
+  // all (staff accounts can't) and how many days the restore window is.
+  const [status, setStatus] = useState<DeletionStatus | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -163,23 +153,17 @@ const DeleteAccountScreen = ({navigation}: any) => {
       const name = (user?.displayName || user?.username || '').trim();
       setFirstName(name.split(/\s+/)[0] || '');
     })();
+    // A failed lookup must not trap the member here: the next screen loads
+    // the status again and shows its own retry.
+    getDeletionStatus().then(setStatus).catch(() => {});
   }, []);
 
+  const blocked = !!status && !status.canDelete;
+  const graceDays = status?.graceDays ?? 30;
+
   const handleContinue = () => {
+    if (blocked) return;
     navigation?.navigate?.('ConfirmDelete');
-  };
-
-  const handleManageSubscription = () => {
-    // Opens the store's own subscription-management page.
-    const url =
-      Platform.OS === 'ios'
-        ? 'https://apps.apple.com/account/subscriptions'
-        : 'https://play.google.com/store/account/subscriptions';
-    Linking.openURL(url).catch(() => {});
-  };
-
-  const handleDownloadData = () => {
-    navigation?.navigate?.('DownloadMyData');
   };
 
   return (
@@ -195,7 +179,7 @@ const DeleteAccountScreen = ({navigation}: any) => {
         <Text style={styles.pageTitle}>{'Delete Account'}</Text>
 
         <Text style={styles.bodyM}>
-          {`We're sorry to see you go${firstName ? `, ${firstName}` : ''}. Before you continue, here's what deleting your IPM Hub account means.`}
+          {`We're sorry to see you go${firstName ? `, ${firstName}` : ''}. Here's what deleting your IPM Hub account means.`}
         </Text>
 
         {/* ── What you'll lose ── */}
@@ -208,44 +192,38 @@ const DeleteAccountScreen = ({navigation}: any) => {
 
         {/* ── What stays ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeading}>{'What stays'}</Text>
+          <Text style={styles.sectionHeading}>{'What we keep'}</Text>
           {STAY_ROWS.map(r => (
             <Row key={r.key} row={r} />
           ))}
-        </View>
-
-        {/* ── Membership notice ── */}
-        <View style={styles.warnBanner}>
-          <WarningIcon />
-          <View style={styles.bannerText}>
-            <Text style={styles.rowTitle}>{"Your membership isn't cancelled"}</Text>
-            <Text style={styles.bodySNavy}>
-              {'Cancel any active membership or subscription separately. Store subscriptions are managed in your App Store or Google Play account.'}
-            </Text>
-            <TouchableOpacity onPress={handleManageSubscription} activeOpacity={0.7}>
-              <Text style={styles.actionM}>{'Manage subscription'}</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* ── 30 days notice ── */}
         <View style={styles.infoBanner}>
           <InfoIcon />
           <View style={styles.bannerText}>
-            <Text style={styles.rowTitle}>{'30 days to change your mind'}</Text>
+            <Text style={styles.rowTitle}>{`${graceDays} days to change your mind`}</Text>
             <Text style={styles.bodySNavy}>
-              {'Your account is deactivated now and permanently deleted after 30 days, unless you choose to delete it immediately in the next step. Sign in before then and choose Restore account to keep it.'}
+              {`If you choose Delete after ${graceDays} days, you can restore your account by signing in before it's deleted.`}
             </Text>
           </View>
         </View>
 
-        <TouchableOpacity onPress={handleDownloadData} activeOpacity={0.7}>
-          <Text style={styles.actionL}>{'Download a copy of my data'}</Text>
-        </TouchableOpacity>
+        {blocked && (
+          <View style={styles.blockedBanner}>
+            <Text style={styles.bodySNavy}>
+              {status?.blockedReason || "This account can't be deleted here. Please contact support."}
+            </Text>
+          </View>
+        )}
 
         {/* ── Actions ── */}
         <View style={styles.buttons}>
-          <TouchableOpacity style={styles.continueBtn} onPress={handleContinue} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={[styles.continueBtn, blocked && styles.continueBtnDisabled]}
+            onPress={handleContinue}
+            disabled={blocked}
+            activeOpacity={0.85}>
             <Text style={styles.continueText}>{'Continue'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation?.goBack()} activeOpacity={0.85}>
@@ -330,17 +308,6 @@ const styles = StyleSheet.create({
     color: NAVY,
   },
   // Banners
-  warnBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    alignSelf: 'stretch',
-    padding: 16,
-    gap: 12,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: WARNING_MEDIUM,
-    backgroundColor: WARNING_LIGHT,
-  },
   infoBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -353,17 +320,13 @@ const styles = StyleSheet.create({
     backgroundColor: INFO_BG,
   },
   bannerText: {flex: 1, gap: 4},
-  // Action/Action M
-  actionM: {
-    fontFamily: 'Runda-Medium',
-    fontSize: 12,
-    color: LIGHT_BLUE,
-  },
-  // Action/Action L
-  actionL: {
-    fontFamily: 'Runda-Medium',
-    fontSize: 14,
-    color: LIGHT_BLUE,
+  blockedBanner: {
+    alignSelf: 'stretch',
+    padding: 12,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#ED3241', // --Support-Error-Dark
+    backgroundColor: ERROR_LIGHT,
   },
   // Buttons
   buttons: {alignSelf: 'stretch', gap: 12, marginTop: 8},
@@ -374,6 +337,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  continueBtnDisabled: {opacity: 0.5},
   continueText: {fontFamily: 'Runda-Medium', fontSize: 12, color: '#FFFFFF'},
   cancelBtn: {
     height: 40,

@@ -1634,6 +1634,8 @@ export interface StepComment {
   id: number;
   author_name: string;
   author_avatar: string;
+  /** Commenter's user id (0 if the endpoint doesn't send one). Used for Block. */
+  author_id: number;
   content: string;
   date_formatted: string;
   replies?: StepComment[];
@@ -1689,6 +1691,13 @@ const normalizeStepComment = (c: any): StepComment => {
       c?.author_display_name, c?.comment_author, c?.user?.display_name, c?.user?.name, c?.name,
     ),
     author_avatar: avatar,
+    // Backend confirmed the user id comes back as author.user_id; the other
+    // keys stay as a defensive fallback in case an endpoint shapes it differently.
+    author_id:
+      Number(
+        c?.author_id ?? c?.user_id ?? c?.author?.user_id ?? c?.author?.id ?? c?.user?.id ??
+          (typeof c?.author === 'number' ? c.author : 0),
+      ) || 0,
     content: stripCommentHtml(
       pickText(c?.content, c?.comment_content, c?.text, c?.comment, c?.body, c?.message),
     ),

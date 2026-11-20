@@ -14,6 +14,7 @@ import {
   Animated,
   Linking,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 // Was importing SafeAreaView from 'react-native' — that core component is
 // iOS-only (a no-op on Android), which is why the back button on both the
@@ -33,6 +34,10 @@ import {
 import ShareSheet, {ShareButton} from '../components/ShareSheet';
 import InfographicViewer from '../components/InfographicViewer';
 import {ChevronDownIcon} from '../components/forumsIcons';
+
+// iOS (App Store 3.1.1): article buttons that open the website — course promo
+// card buttons and plain CTA buttons — are hidden. The course card text stays.
+const HIDE_WEB_CTAS = Platform.OS === 'ios';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
@@ -378,7 +383,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
                           <Image source={{uri: block.imageSrc}} style={s.courseIcon} resizeMode="cover" />
                         ) : null}
                       </View>
-                      {block.primaryUrl ? (
+                      {block.primaryUrl && !HIDE_WEB_CTAS ? (
                         <TouchableOpacity
                           style={s.courseBtnPrimary}
                           onPress={() => Linking.openURL(block.primaryUrl as string)}
@@ -386,7 +391,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
                           <Text style={s.courseBtnPrimaryText}>{block.primaryLabel}</Text>
                         </TouchableOpacity>
                       ) : null}
-                      {block.secondaryUrl ? (
+                      {block.secondaryUrl && !HIDE_WEB_CTAS ? (
                         <TouchableOpacity
                           style={s.courseBtnSecondary}
                           onPress={() => Linking.openURL(block.secondaryUrl as string)}
@@ -457,6 +462,7 @@ const ResourceDetailScreen = ({navigation, route}: any) => {
                     />
                   );
                 }
+                if (block.type === 'button' && HIDE_WEB_CTAS) return null;
                 if (block.type === 'button' && block.url) {
                   return (
                     <TouchableOpacity
