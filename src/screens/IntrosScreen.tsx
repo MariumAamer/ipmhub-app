@@ -25,6 +25,11 @@ import {submitReport} from '../api/reportApi';
 import {AuthorOptionsSheet, blockAuthor} from '../components/AuthorOptionsSheet';
 import {BlockMemberSheet} from '../components/MemberModeration';
 import SuccessToast from '../components/SuccessToast';
+// App Store 1.2: the one-time setPosts filter below only removes a post at
+// the moment you block someone — it doesn't survive a refresh/reload, so a
+// blocked member's older posts were reappearing. Filter the rendered list
+// against the shared block list instead, the same fix made for DMListScreen.
+import {useBlockedMembers} from '../hooks/useMemberBlock';
 
 const BASE = 'https://hub.instituteprojectmanagement.com/wp-json';
 
@@ -524,6 +529,18 @@ const IntrosScreen = ({navigation}: any) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<number | null>(null);
+
+  // Persistent block filter — survives refresh/pagination, unlike the
+  // optimistic setPosts filter in handleBlockConfirm below.
+  const {members: blockedMembers} = useBlockedMembers();
+  const blockedIds = useMemo(
+    () => new Set(blockedMembers.map(m => m.id)),
+    [blockedMembers],
+  );
+  const visiblePosts = useMemo(
+    () => posts.filter(p => !blockedIds.has(Number(p.author?.id))),
+    [posts, blockedIds],
+  );
   // Report / Block
   const [optionsTarget, setOptionsTarget] = useState<IntroReportTarget | null>(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -788,7 +805,7 @@ const IntrosScreen = ({navigation}: any) => {
           lives in the header/footer (the comment inputs are inside rows and
           rows are keyed by post.id), so nothing here can steal keyboard focus. */}
       <FlatList
-        data={loading ? EMPTY_POSTS : posts}
+        data={loading ? EMPTY_POSTS : visiblePosts}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         extraData={rowExtraData}

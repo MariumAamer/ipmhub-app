@@ -4,7 +4,12 @@ import SuccessToast from '../components/SuccessToast';
 import ReportModal from '../components/ReportModal';
 import {submitReport} from '../api/reportApi';
 import {BlockMemberSheet, BlockIcon} from '../components/MemberModeration';
-import {markMemberBlocked} from '../hooks/useMemberBlock';
+// App Store 1.2: the one-time setPosts filter in handleBlockConfirm/
+// handleCommentBlockConfirm below only removes a post at the moment you
+// block someone — it doesn't survive a refresh/reload/pagination, so a
+// blocked member's older posts were reappearing. Filter the rendered list
+// against the shared block list instead (same fix made for DMListScreen).
+import {markMemberBlocked, useBlockedMembers} from '../hooks/useMemberBlock';
 import {AuthorOptionsSheet, blockAuthor} from '../components/AuthorOptionsSheet';
 import {blockPostAuthor} from '../api/accountApi';
 
@@ -911,6 +916,19 @@ const postKeyExtractor = (post: FeedPost) => String(post.id);
 // ─── Main FeedScreen ──────────────────────────────────────────────────────────
 const FeedScreen = ({navigation}: any) => {
   const [posts, setPosts] = useState<FeedPost[]>([]);
+
+  // Persistent block filter — survives refresh/pagination, unlike the
+  // optimistic setPosts filter in handleBlockConfirm/handleCommentBlockConfirm.
+  const {members: blockedMembers} = useBlockedMembers();
+  const blockedIds = useMemo(
+    () => new Set(blockedMembers.map(m => m.id)),
+    [blockedMembers],
+  );
+  const visiblePosts = useMemo(
+    () => posts.filter(p => !blockedIds.has(Number(p.author?.id))),
+    [posts, blockedIds],
+  );
+
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(true);
@@ -1423,7 +1441,7 @@ const FeedScreen = ({navigation}: any) => {
       <FlatList
         // While the feed is (re)loading the skeletons replace the posts, exactly
         // as before, so feed an empty list in that state.
-        data={loadingFeed ? EMPTY_POSTS : posts}
+        data={loadingFeed ? EMPTY_POSTS : visiblePosts}
         renderItem={renderPost}
         keyExtractor={postKeyExtractor}
         extraData={listExtraData}
